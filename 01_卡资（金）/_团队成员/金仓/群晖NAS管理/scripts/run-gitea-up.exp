@@ -1,0 +1,16 @@
+#!/usr/bin/expect -f
+set timeout 60
+set nas_user "fnvtk"
+set nas_host "192.168.1.201"
+set nas_pass "Zhiqun1984"
+spawn sshpass -p $nas_pass ssh -t -o StrictHostKeyChecking=no -o KexAlgorithms=+diffie-hellman-group1-sha1 -o Ciphers=+aes128-cbc,3des-cbc,aes192-cbc,aes256-cbc ${nas_user}@${nas_host} "cd /volume1/docker/gitea && sudo /volume1/@appstore/ContainerManager/usr/bin/docker compose up -d"
+expect {
+    -re "\[Pp\]assword:" { send "$nas_pass\r"; exp_continue }
+    "password for" { send "$nas_pass\r"; exp_continue }
+    "Creating" { exp_continue }
+    "Started" { exp_continue }
+    "done" { exp_continue }
+    "Container" { exp_continue }
+    eof { exit 0 }
+    timeout { exit 1 }
+}

@@ -1,0 +1,132 @@
+# ====================================
+# 量化交易系统配置文件
+# 
+# 使用方法:
+# 1. 复制本文件为 config.yaml
+# 2. 填写你的账户信息
+# 3. 勿将 config.yaml 提交到版本控制
+# ====================================
+
+# 券商账户配置 (湘财证券)
+broker:
+  # 券商类型: xcsc(湘财证券), ths(同花顺通用)
+  type: "xcsc"
+  
+  # 资金账号 (替换为你的账号)
+  account: ""
+  
+  # 交易密码 (替换为你的密码)
+  password: ""
+  
+  # 客户端路径 (Windows)
+  # client_path: "C:\\同花顺\\xiadan.exe"
+  
+  # 客户端路径 (Mac - 使用easytrader远程模式)
+  # remote_url: "http://windows-server:5000"
+
+# 交易参数
+trading:
+  # 交易模式: paper(模拟), live(实盘)
+  mode: "paper"
+  
+  # 最大持仓数量
+  max_positions: 5
+  
+  # 单股仓位比例 (20%)
+  position_pct: 0.2
+  
+  # 止损比例 (-5%)
+  stop_loss: -0.05
+  
+  # 止盈比例 (8%)
+  take_profit: 0.08
+  
+  # 每日交易金额 (元)
+  daily_amount: 50000
+  
+  # 保留现金比例 (10%)
+  cash_reserve: 0.1
+
+# 策略配置
+strategies:
+  # 启用的策略列表
+  enabled:
+    - "holiday"    # 节假日策略
+    - "7k_line"    # 7根K线策略
+    - "expert"     # 高手跟踪策略
+  
+  # 节假日策略参数
+  holiday:
+    buy_before_days: 2      # 节前N天买入
+    sell_after_days: 7      # 节后N天卖出
+    stop_loss: -0.03        # 止损-3%
+    target_profit: 0.08     # 目标收益8%
+    top_sectors: 5          # 选择前5个板块
+    top_stocks_per_sector: 3  # 每板块选3只
+  
+  # 7根K线策略参数
+  7k_line:
+    hold_days: 7            # 持有天数
+    stop_loss: -0.05        # 止损-5%
+    target_profit: 0.05     # 目标收益5%
+    min_rise_days: 3        # 最近N天涨幅要求
+    min_rise_rate: 0.05     # 最近N天最低涨幅5%
+    max_capital: 10         # 最大流通盘10亿
+    min_volume_ratio: 1.5   # 最小量比
+  
+  # 高手跟踪策略参数
+  expert:
+    top_n: 10               # 跟踪前N名高手
+    min_score: 0.75         # 最低高手评分
+    stop_loss: -0.05        # 止损-5%
+    delay_threshold: 1.0    # 最大延迟(秒)
+
+# 数据源配置
+data:
+  # 上帝之眼API地址
+  godeye_api: "http://localhost:8000"
+  
+  # 雪球爬虫配置
+  xueqiu:
+    enabled: true
+    crawl_interval: 60      # 爬取间隔(秒)
+    hot_posts_count: 50     # 每次采集热帖数
+  
+  # 行情数据源
+  quotes:
+    provider: "tushare"     # tushare, akshare, sina
+    token: ""               # tushare token (如需要)
+
+# 数据库配置
+database:
+  # MongoDB
+  mongodb:
+    uri: "mongodb://localhost:27017"
+    database: "godeye"
+  
+  # Redis (消息队列)
+  redis:
+    host: "localhost"
+    port: 6379
+    password: ""
+
+# 日志配置
+logging:
+  level: "INFO"             # DEBUG, INFO, WARNING, ERROR
+  file: "logs/trading.log"
+  max_size: "10MB"
+  backup_count: 5
+
+# 通知配置
+notification:
+  # 企业微信机器人
+  wechat_webhook: ""
+  
+  # 钉钉机器人
+  dingtalk_webhook: ""
+  
+  # 通知事件
+  events:
+    - "trade_executed"      # 交易执行
+    - "stop_loss_triggered" # 止损触发
+    - "daily_summary"       # 每日汇总

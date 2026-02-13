@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>卡若AI 本地助手</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.72);
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            --blur: 20px;
+            --accent: #007AFF;
+            --accent-light: rgba(0, 122, 255, 0.1);
+            --text-primary: #1d1d1f;
+            --text-secondary: #86868b;
+            --success: #34C759;
+            --warning: #FF9500;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background-attachment: fixed;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 800px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        /* 薄玻璃卡片 */
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(var(--blur));
+            -webkit-backdrop-filter: blur(var(--blur));
+            border-radius: 20px;
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            padding: 24px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .glass-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+        }
+        
+        /* 头部 */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 24px;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, #FF6B6B, #FF8E53);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 4px 12px rgba(255, 107, 107, 0.3);
+        }
+        
+        .logo-text h1 {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        
+        .logo-text span {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--success);
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.offline {
+            background: var(--warning);
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* 聊天区域 */
+        .chat-container {
+            min-height: 400px;
+            max-height: 500px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 8px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .message {
+            display: flex;
+            gap: 12px;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .message.user {
+            flex-direction: row-reverse;
+        }
+        
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+        
+        .message.user .message-avatar {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+        }
+        
+        .message.assistant .message-avatar {
+            background: linear-gradient(135deg, #FF6B6B, #FF8E53);
+        }
+        
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 16px;
+            font-size: 15px;
+            line-height: 1.5;
+        }
+        
+        .message.user .message-content {
+            background: var(--accent);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .message.assistant .message-content {
+            background: rgba(0, 0, 0, 0.05);
+            color: var(--text-primary);
+            border-bottom-left-radius: 4px;
+        }
+        
+        /* 输入区域 */
+        .input-area {
+            display: flex;
+            gap: 12px;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(0, 0, 0, 0.05);
+        }
+        
+        .input-wrapper {
+            flex: 1;
+            position: relative;
+        }
+        
+        .input-field {
+            width: 100%;
+            padding: 14px 50px 14px 18px;
+            border: 2px solid rgba(0, 0, 0, 0.08);
+            border-radius: 16px;
+            font-size: 15px;
+            font-family: inherit;
+            background: rgba(255, 255, 255, 0.8);
+            transition: all 0.2s ease;
+            outline: none;
+        }
+        
+        .input-field:focus {
+            border-color: var(--accent);
+            background: white;
+            box-shadow: 0 0 0 4px var(--accent-light);
+        }
+        
+        .voice-btn {
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: transparent;
+            border-radius: 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s ease;
+        }
+        
+        .voice-btn:hover {
+            background: var(--accent-light);
+        }
+        
+        .voice-btn.recording {
+            background: #FF3B30;
+            color: white;
+            animation: recording 1s infinite;
+        }
+        
+        @keyframes recording {
+            0%, 100% { transform: translateY(-50%) scale(1); }
+            50% { transform: translateY(-50%) scale(1.1); }
+        }
+        
+        .send-btn {
+            width: 48px;
+            height: 48px;
+            border: none;
+            background: var(--accent);
+            color: white;
+            border-radius: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
+        }
+        
+        .send-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 6px 16px rgba(0, 122, 255, 0.4);
+        }
+        
+        .send-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* 功能面板 */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+        }
+        
+        .feature-btn {
+            background: rgba(255, 255, 255, 0.6);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            border-radius: 14px;
+            padding: 16px 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .feature-btn:hover {
+            background: rgba(255, 255, 255, 0.9);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        }
+        
+        .feature-btn .icon {
+            font-size: 24px;
+        }
+        
+        .feature-btn .label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        
+        /* 记忆面板 */
+        .memory-panel {
+            display: none;
+        }
+        
+        .memory-panel.active {
+            display: block;
+        }
+        
+        .memory-content {
+            max-height: 200px;
+            overflow-y: auto;
+            padding: 16px;
+            background: rgba(0, 0, 0, 0.03);
+            border-radius: 12px;
+            font-size: 13px;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            white-space: pre-wrap;
+        }
+        
+        /* 技能列表 */
+        .skills-panel {
+            display: none;
+        }
+        
+        .skills-panel.active {
+            display: block;
+        }
+        
+        .skills-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        
+        .skill-tag {
+            padding: 8px 12px;
+            background: var(--accent-light);
+            color: var(--accent);
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .skill-tag:hover {
+            background: var(--accent);
+            color: white;
+        }
+        
+        /* 加载动画 */
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 12px 16px;
+        }
+        
+        .typing-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--text-secondary);
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+        
+        .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+        
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-8px); opacity: 1; }
+        }
+        
+        /* 移动端适配 */
+        @media (max-width: 600px) {
+            body { padding: 12px; }
+            .glass-card { padding: 16px; border-radius: 16px; }
+            .features { grid-template-columns: repeat(2, 1fr); }
+            .skills-grid { grid-template-columns: repeat(2, 1fr); }
+            .message-content { max-width: 85%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 头部 -->
+        <div class="glass-card header">
+            <div class="logo">
+                <div class="logo-icon">🔥</div>
+                <div class="logo-text">
+                    <h1>卡若AI</h1>
+                    <span>本地智能助手</span>
+                </div>
+            </div>
+            <div class="status">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">连接中...</span>
+            </div>
+        </div>
+        
+        <!-- 聊天区域 -->
+        <div class="glass-card chat-container">
+            <div class="messages" id="messages">
+                <div class="message assistant">
+                    <div class="message-avatar">🔥</div>
+                    <div class="message-content">
+                        你好！我是卡若AI本地助手，完全离线运行。<br>
+                        可以语音对话、查看技能、管理记忆。有什么可以帮你的？
+                    </div>
+                </div>
+            </div>
+            
+            <div class="input-area">
+                <div class="input-wrapper">
+                    <input type="text" class="input-field" id="inputField" 
+                           placeholder="输入消息，或点击麦克风语音输入..." 
+                           autocomplete="off">
+                    <button class="voice-btn" id="voiceBtn" title="语音输入">🎤</button>
+                </div>
+                <button class="send-btn" id="sendBtn" title="发送">➤</button>
+            </div>
+        </div>
+        
+        <!-- 功能按钮 -->
+        <div class="glass-card features">
+            <button class="feature-btn" onclick="toggleVoiceOutput()">
+                <span class="icon" id="voiceIcon">🔊</span>
+                <span class="label">语音播报</span>
+            </button>
+            <button class="feature-btn" onclick="showMemory()">
+                <span class="icon">🧠</span>
+                <span class="label">查看记忆</span>
+            </button>
+            <button class="feature-btn" onclick="showSkills()">
+                <span class="icon">⚡</span>
+                <span class="label">技能库</span>
+            </button>
+            <button class="feature-btn" onclick="clearChat()">
+                <span class="icon">🗑️</span>
+                <span class="label">清空对话</span>
+            </button>
+        </div>
+        
+        <!-- 记忆面板 -->
+        <div class="glass-card memory-panel" id="memoryPanel">
+            <h3 style="margin-bottom: 12px; color: var(--text-primary);">🧠 最近记忆</h3>
+            <div class="memory-content" id="memoryContent">加载中...</div>
+        </div>
+        
+        <!-- 技能面板 -->
+        <div class="glass-card skills-panel" id="skillsPanel">
+            <h3 style="margin-bottom: 12px; color: var(--text-primary);">⚡ 可用技能</h3>
+            <div class="skills-grid" id="skillsGrid">加载中...</div>
+        </div>
+    </div>
+    
+    <script>
+        const API_BASE = '';
+        let voiceOutput = true;
+        let isRecording = false;
+        let recognition = null;
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            checkStatus();
+            initVoiceRecognition();
+            
+            // 绑定事件
+            document.getElementById('inputField').addEventListener('keypress', e => {
+                if (e.key === 'Enter') sendMessage();
+            });
+            document.getElementById('sendBtn').addEventListener('click', sendMessage);
+            document.getElementById('voiceBtn').addEventListener('click', toggleRecording);
+        });
+        
+        // 检查服务状态
+        async function checkStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/api/status`);
+                const data = await res.json();
+                const dot = document.getElementById('statusDot');
+                const text = document.getElementById('statusText');
+                
+                if (data.status === 'online') {
+                    dot.classList.remove('offline');
+                    text.textContent = data.model;
+                } else {
+                    dot.classList.add('offline');
+                    text.textContent = '离线';
+                }
+            } catch (e) {
+                document.getElementById('statusDot').classList.add('offline');
+                document.getElementById('statusText').textContent = '服务未启动';
+            }
+        }
+        
+        // 发送消息
+        async function sendMessage() {
+            const input = document.getElementById('inputField');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            // 显示用户消息
+            addMessage(message, 'user');
+            input.value = '';
+            
+            // 显示加载
+            const loadingId = showLoading();
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/chat`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message, voice: voiceOutput})
+                });
+                const data = await res.json();
+                
+                removeLoading(loadingId);
+                addMessage(data.response || data.error, 'assistant');
+            } catch (e) {
+                removeLoading(loadingId);
+                addMessage('连接失败，请检查服务是否启动', 'assistant');
+            }
+        }
+        
+        // 添加消息
+        function addMessage(text, role) {
+            const messages = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+            div.innerHTML = `
+                <div class="message-avatar">${role === 'user' ? '👤' : '🔥'}</div>
+                <div class="message-content">${text.replace(/\n/g, '<br>')}</div>
+            `;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        // 加载动画
+        function showLoading() {
+            const messages = document.getElementById('messages');
+            const id = 'loading-' + Date.now();
+            const div = document.createElement('div');
+            div.id = id;
+            div.className = 'message assistant';
+            div.innerHTML = `
+                <div class="message-avatar">🔥</div>
+                <div class="typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            `;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+            return id;
+        }
+        
+        function removeLoading(id) {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        }
+        
+        // 语音识别
+        function initVoiceRecognition() {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+                recognition.lang = 'zh-CN';
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                
+                recognition.onresult = e => {
+                    const text = e.results[0][0].transcript;
+                    document.getElementById('inputField').value = text;
+                    sendMessage();
+                };
+                
+                recognition.onend = () => {
+                    isRecording = false;
+                    document.getElementById('voiceBtn').classList.remove('recording');
+                };
+            }
+        }
+        
+        function toggleRecording() {
+            if (!recognition) {
+                alert('浏览器不支持语音识别');
+                return;
+            }
+            
+            const btn = document.getElementById('voiceBtn');
+            if (isRecording) {
+                recognition.stop();
+                isRecording = false;
+                btn.classList.remove('recording');
+            } else {
+                recognition.start();
+                isRecording = true;
+                btn.classList.add('recording');
+            }
+        }
+        
+        // 语音输出开关
+        function toggleVoiceOutput() {
+            voiceOutput = !voiceOutput;
+            document.getElementById('voiceIcon').textContent = voiceOutput ? '🔊' : '🔇';
+        }
+        
+        // 清空对话
+        async function clearChat() {
+            await fetch(`${API_BASE}/api/clear`, {method: 'POST'});
+            document.getElementById('messages').innerHTML = `
+                <div class="message assistant">
+                    <div class="message-avatar">🔥</div>
+                    <div class="message-content">对话已清空，有什么新问题吗？</div>
+                </div>
+            `;
+        }
+        
+        // 显示记忆
+        async function showMemory() {
+            const panel = document.getElementById('memoryPanel');
+            panel.classList.toggle('active');
+            document.getElementById('skillsPanel').classList.remove('active');
+            
+            if (panel.classList.contains('active')) {
+                try {
+                    const res = await fetch(`${API_BASE}/api/memory`);
+                    const data = await res.json();
+                    document.getElementById('memoryContent').textContent = data.memories || '暂无记忆';
+                } catch (e) {
+                    document.getElementById('memoryContent').textContent = '加载失败';
+                }
+            }
+        }
+        
+        // 显示技能
+        async function showSkills() {
+            const panel = document.getElementById('skillsPanel');
+            panel.classList.toggle('active');
+            document.getElementById('memoryPanel').classList.remove('active');
+            
+            if (panel.classList.contains('active')) {
+                try {
+                    const res = await fetch(`${API_BASE}/api/skills`);
+                    const skills = await res.json();
+                    const grid = document.getElementById('skillsGrid');
+                    grid.innerHTML = skills.map(s => 
+                        `<div class="skill-tag" onclick="useSkill('${s.name}')">${s.name}</div>`
+                    ).join('');
+                } catch (e) {
+                    document.getElementById('skillsGrid').innerHTML = '加载失败';
+                }
+            }
+        }
+        
+        // 使用技能
+        function useSkill(name) {
+            document.getElementById('inputField').value = `使用${name}技能`;
+            sendMessage();
+        }
+        
+        // 定期检查状态
+        setInterval(checkStatus, 30000);
+    </script>
+</body>
+</html>

@@ -18,9 +18,8 @@ group: 金
 | **前提** | 先确保 v0 项目、项目页正确，再做其它优化 |
 | **命名** | v0 **项目名**与**对话名**均使用**中文**（如项目「上帝之眼」、对话「前端优化计划」），不得使用英文项目/对话名 |
 | **本地前端位置** | **固定为 项目根/frontend**，不要搞错；v0 改完代码落回此处再同步 |
-| **Git 主从** | **以本地 → GitHub fnvtk/godeye main 为主**；v0 连接的即该仓库。默认链路是「本地/GitHub main → 链接到 v0」，**不要从 v0 往下降为主**；若无 v0 分支则用本地 GitHub。v0 上该对话/项目应以 **main（本地项目）覆盖为当前项目主体**。 |
-| **三段式同步** | **本地 = GitHub main = v0**。要 v0 与 Git 页均为**本地最新前端**（不用现有 v0 状态）：① `node scripts/push-local-frontend-to-main.js` 使 main=本地；② 在 v0 该对话 Git 面板点击「Pull from main」/「Sync from main」使 v0=main。 |
 | **反馈** | 执行完成后将结果**反馈给卡若**；**做完任务同步后更新「同步与反馈记录」**（开发文档/8、部署/同步与反馈记录.md），项目状态可查 |
+| **开发文档** | `开发文档/00_汇总索引.md`：功能迭代、需求、汇总入口 |
 
 ---
 
@@ -40,7 +39,6 @@ group: 金
 | 6 | 打开/创建「前端优化」对话（先检查再创建，中文名） | `scripts/create-v0-optimization-chat.js` [--open] | V0_API_KEY |
 | 7 | 整理多条对话：保留最完善 1 条、改中文名、删其余并反馈 | `scripts/consolidate-v0-chats.js` | V0_API_KEY |
 | 8 | v0 优化后同步 GitHub → Vercel → 本地拉齐，并写入任务反馈 | `scripts/sync-after-v0.js` [备注] | VERCEL_TOKEN |
-| 9 | 将本地最新前端推 main，供 v0 从 main 拉取（三段式同步 ①） | `scripts/push-local-frontend-to-main.js` [说明] | - |
 
 ---
 
@@ -56,7 +54,6 @@ node scripts/sync-to-v0.js
 - 执行后必须做**步骤 5**：确认 v0 项目页、名称、vercelProjectId 正确。
 - **在 v0 里做前端优化对话**：运行 `node scripts/create-v0-optimization-chat.js [--open]`。脚本会**先检查**项目下是否已有「前端优化计划」对话，有则直接返回链接（不循环创建），无则新建且使用**中文名称**；打开后按对话内首条消息执行优化。
 - **v0 优化完成后同步（丝滑一条龙）**：代码落回**本地 frontend**（位置固定：项目根/frontend）→ 运行 `node scripts/sync-after-v0.js "本次说明"` → 自动 push GitHub、触发 Vercel、本地 pull 拉齐 → 结果写入 `开发文档/8、部署/同步与反馈记录.md`，做完任务即反馈到项目。
-- **直接让 v0 = 本地最新前端（三段式协同）**：运行 `node scripts/push-local-frontend-to-main.js "说明"` 将本地推送到 main → 打开 v0 该对话 → **Git** → 点击「Pull from main」/「Sync from main」→ v0 与 Git 页均为本地最新，不用现有 v0 状态。
 
 ---
 
@@ -67,7 +64,6 @@ node scripts/sync-to-v0.js
 | Vercel 项目 ID | prj_7Icpm7qR1hc6X61ydY1bzxAsjLVz |
 | 生产地址 | https://godeye-lime.vercel.app |
 | v0 项目页 | https://v0.app/chat/projects/MvSR6KzOHAn |
-| GitHub 主源 | fnvtk/godeye **main**（本地 push 为准）；v0 Git 连此仓，以 main 覆盖 v0 当前项目 |
 | **本地前端目录（固定）** | 项目根/frontend（勿搞错） |
 | 同步与反馈记录 | 上帝之眼 `开发文档/8、部署/同步与反馈记录.md` |
 | 完整流程与问题 | 本目录 `references/完整流程与问题手册.md` |
@@ -84,9 +80,7 @@ node scripts/sync-to-v0.js
 | 预览/生产需登录 | 脚本已设 ssoProtection 为 preview；仍异常则检查项目设置 |
 | v0 401 | 确认 V0_API_KEY 为 v0 Platform API Key 或索引中 v0 Secret |
 
-- **v0 Git**：v0 里已连接 fnvtk/godeye 时，以 **main** 为基准；在 v0 的 Git 面板若有「从 main 拉取」「Reset to main」等，用 main 覆盖当前对话的代码，使 v0 上的上帝之眼与本地 main 一致。默认不要以 v0 分支为唯一来源往 GitHub 推为主。
-
-详细列表与校验命令见 **references/完整流程与问题手册.md**（含「二、Git 主从与 v0 连接」）。
+详细列表与校验命令见 **references/完整流程与问题手册.md**。
 
 ---
 

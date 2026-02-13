@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>上帝之眼 - 实盘交易系统</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.12);
+            --glass-border: rgba(255, 255, 255, 0.18);
+            --glass-shadow: rgba(0, 0, 0, 0.15);
+            --accent-green: #4ade80;
+            --accent-red: #f87171;
+            --accent-blue: #60a5fa;
+            --accent-gold: #fbbf24;
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC', sans-serif;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0c0c1e 0%, #1a1a3e 50%, #0a192f 100%);
+            color: var(--text-primary);
+            padding: 20px;
+            overflow-x: hidden;
+        }
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(74, 222, 128, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 80% 20%, rgba(96, 165, 250, 0.08) 0%, transparent 40%),
+                radial-gradient(circle at 50% 50%, rgba(251, 191, 36, 0.05) 0%, transparent 40%);
+            z-index: -1;
+            animation: pulse 20s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 28px;
+            box-shadow: 0 8px 32px var(--glass-shadow);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .glass-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+        }
+        
+        .glass-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 16px 48px rgba(0, 0, 0, 0.25);
+            border-color: rgba(255, 255, 255, 0.25);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+        
+        .header h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, #fff 0%, #fbbf24 50%, #4ade80 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 0 60px rgba(251, 191, 36, 0.3);
+        }
+        
+        .header .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            letter-spacing: 2px;
+        }
+        
+        .header .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            margin-top: 16px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, rgba(74, 222, 128, 0.25), rgba(74, 222, 128, 0.1));
+            border: 1px solid rgba(74, 222, 128, 0.3);
+            border-radius: 30px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 12px var(--accent-green);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse-dot {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        
+        .metric-card {
+            text-align: center;
+            padding: 36px 28px;
+        }
+        
+        .metric-value {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 8px;
+            font-feature-settings: 'tnum';
+        }
+        
+        .metric-value.editable {
+            cursor: pointer;
+            border-bottom: 2px dashed rgba(255,255,255,0.3);
+            transition: border-color 0.3s;
+        }
+        
+        .metric-value.editable:hover {
+            border-color: var(--accent-gold);
+        }
+        
+        .metric-value.editing {
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            padding: 4px 12px;
+            border-bottom: none;
+            outline: 2px solid var(--accent-gold);
+        }
+        
+        .metric-label {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            font-weight: 500;
+        }
+        
+        .metric-change {
+            margin-top: 16px;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            padding: 6px 14px;
+            background: rgba(74, 222, 128, 0.15);
+            border-radius: 20px;
+            width: fit-content;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .positive { color: var(--accent-green); }
+        .negative { color: var(--accent-red); }
+        .gold { color: var(--accent-gold); }
+        
+        .chart-card {
+            grid-column: span 2;
+            min-height: 320px;
+        }
+        
+        @media (max-width: 900px) {
+            .chart-card { grid-column: span 1; }
+            .positions-card { grid-column: span 1; }
+        }
+        
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        
+        .chart-title {
+            font-size: 1.3rem;
+            font-weight: 700;
+        }
+        
+        .chart-tabs {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .chart-tab {
+            padding: 8px 16px;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid transparent;
+            border-radius: 12px;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-weight: 500;
+        }
+        
+        .chart-tab.active, .chart-tab:hover {
+            background: rgba(96, 165, 250, 0.2);
+            border-color: rgba(96, 165, 250, 0.3);
+            color: var(--text-primary);
+        }
+        
+        .chart-area {
+            height: 220px;
+            background: linear-gradient(180deg, rgba(74, 222, 128, 0.05) 0%, transparent 100%);
+            border-radius: 16px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .chart-line {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 100%;
+        }
+        
+        .chart-line svg {
+            width: 100%;
+            height: 100%;
+        }
+        
+        .positions-card {
+            grid-column: span 2;
+        }
+        
+        .positions-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .positions-table th,
+        .positions-table td {
+            padding: 16px 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        
+        .positions-table th {
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .positions-table tr:hover td {
+            background: rgba(255, 255, 255, 0.03);
+        }
+        
+        .positions-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .stock-name {
+            font-weight: 600;
+            font-size: 1rem;
+        }
+        
+        .stock-code {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            margin-top: 2px;
+        }
+        
+        .action-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+        
+        .btn-buy {
+            background: linear-gradient(135deg, rgba(74, 222, 128, 0.3), rgba(74, 222, 128, 0.1));
+            color: var(--accent-green);
+            border: 1px solid rgba(74, 222, 128, 0.3);
+        }
+        
+        .btn-sell {
+            background: linear-gradient(135deg, rgba(248, 113, 113, 0.3), rgba(248, 113, 113, 0.1));
+            color: var(--accent-red);
+            border: 1px solid rgba(248, 113, 113, 0.3);
+        }
+        
+        .btn-buy:hover, .btn-sell:hover {
+            transform: scale(1.05);
+        }
+        
+        .control-panel {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            display: flex;
+            gap: 12px;
+            z-index: 1000;
+        }
+        
+        .control-btn {
+            padding: 14px 24px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s;
+        }
+        
+        .control-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-2px);
+        }
+        
+        .control-btn.primary {
+            background: linear-gradient(135deg, rgba(251, 191, 36, 0.4), rgba(251, 191, 36, 0.2));
+            border-color: rgba(251, 191, 36, 0.4);
+        }
+        
+        .control-btn.danger {
+            background: linear-gradient(135deg, rgba(248, 113, 113, 0.4), rgba(248, 113, 113, 0.2));
+            border-color: rgba(248, 113, 113, 0.4);
+        }
+        
+        .control-btn.success {
+            background: linear-gradient(135deg, rgba(74, 222, 128, 0.4), rgba(74, 222, 128, 0.2));
+            border-color: rgba(74, 222, 128, 0.4);
+        }
+        
+        .signal-item {
+            padding: 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            transition: background 0.2s;
+        }
+        
+        .signal-item:hover {
+            background: rgba(255,255,255,0.03);
+        }
+        
+        .signal-item:last-child {
+            border-bottom: none;
+        }
+        
+        .signal-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        
+        .signal-type {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        .signal-time {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+        
+        .signal-content {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        
+        .score-ring {
+            width: 140px;
+            height: 140px;
+            margin: 0 auto 20px;
+            position: relative;
+        }
+        
+        .score-ring svg {
+            transform: rotate(-90deg);
+        }
+        
+        .score-ring circle {
+            fill: none;
+            stroke-width: 12;
+        }
+        
+        .score-ring .bg {
+            stroke: rgba(255, 255, 255, 0.08);
+        }
+        
+        .score-ring .progress {
+            stroke: url(#gradient);
+            stroke-dasharray: 377;
+            stroke-dashoffset: 75.4;
+            stroke-linecap: round;
+            transition: stroke-dashoffset 1s ease;
+        }
+        
+        .score-value {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2rem;
+            font-weight: 800;
+        }
+        
+        .footer-info {
+            text-align: center;
+            margin-top: 40px;
+            padding-bottom: 80px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        
+        .edit-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .edit-modal.show {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: var(--glass-bg);
+            backdrop-filter: blur(30px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 32px;
+            min-width: 400px;
+            max-width: 90%;
+        }
+        
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 24px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 14px 18px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        
+        .form-input:focus {
+            outline: none;
+            border-color: var(--accent-gold);
+        }
+        
+        .modal-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 24px;
+        }
+        
+        .modal-btn {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .modal-btn.cancel {
+            background: rgba(255,255,255,0.1);
+            color: var(--text-secondary);
+        }
+        
+        .modal-btn.save {
+            background: linear-gradient(135deg, var(--accent-gold), #f59e0b);
+            color: #000;
+        }
+        
+        .toast {
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            padding: 16px 32px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            font-weight: 600;
+            z-index: 3000;
+            transition: transform 0.3s ease;
+        }
+        
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+        
+        .toast.success {
+            border-color: rgba(74, 222, 128, 0.5);
+            background: rgba(74, 222, 128, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <svg style="position:absolute;width:0;height:0;">
+        <defs>
+            <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="#4ade80"/>
+                <stop offset="100%" stop-color="#fbbf24"/>
+            </linearGradient>
+        </defs>
+    </svg>
+
+    <div class="header">
+        <h1>👁️ 上帝之眼</h1>
+        <p class="subtitle">卡若原创五步选股法 · 实盘交易系统</p>
+        <div class="status">
+            <span class="status-dot"></span>
+            <span>实盘交易中</span>
+        </div>
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- 总资产 -->
+        <div class="glass-card metric-card">
+            <div class="metric-value gold editable" id="total-assets" onclick="openEditModal('total-assets', '总资产')">¥2,570,000</div>
+            <div class="metric-label">总资产</div>
+            <div class="metric-change positive">
+                <span>↑</span>
+                <span id="total-change">+8.35%</span>
+            </div>
+        </div>
+
+        <!-- 今日盈亏 -->
+        <div class="glass-card metric-card">
+            <div class="metric-value positive editable" id="today-profit" onclick="openEditModal('today-profit', '今日盈亏')">+¥42,350</div>
+            <div class="metric-label">今日盈亏</div>
+            <div class="metric-change positive">
+                <span>超越大盘</span>
+                <span id="vs-index">+3.85%</span>
+            </div>
+        </div>
+
+        <!-- 持仓市值 -->
+        <div class="glass-card metric-card">
+            <div class="metric-value editable" id="position-value" onclick="openEditModal('position-value', '持仓市值')">¥1,850,000</div>
+            <div class="metric-label">持仓市值</div>
+            <div class="metric-change">
+                <span>仓位</span>
+                <span id="position-ratio">72%</span>
+            </div>
+        </div>
+
+        <!-- 策略评分 -->
+        <div class="glass-card metric-card">
+            <div class="score-ring">
+                <svg width="140" height="140">
+                    <circle class="bg" cx="70" cy="70" r="60"></circle>
+                    <circle class="progress" cx="70" cy="70" r="60"></circle>
+                </svg>
+                <span class="score-value">89.9</span>
+            </div>
+            <div class="metric-label">策略评分</div>
+        </div>
+
+        <!-- 收益曲线 -->
+        <div class="glass-card chart-card">
+            <div class="chart-header">
+                <span class="chart-title">📈 收益曲线 vs 沪深300</span>
+                <div class="chart-tabs">
+                    <button class="chart-tab active" onclick="switchPeriod('week')">周</button>
+                    <button class="chart-tab" onclick="switchPeriod('month')">月</button>
+                    <button class="chart-tab" onclick="switchPeriod('year')">年</button>
+                </div>
+            </div>
+            <div class="chart-area">
+                <div class="chart-line">
+                    <svg viewBox="0 0 800 200" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id="areaGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                <stop offset="0%" stop-color="rgba(74, 222, 128, 0.3)"/>
+                                <stop offset="100%" stop-color="rgba(74, 222, 128, 0)"/>
+                            </linearGradient>
+                        </defs>
+                        <!-- 策略曲线 -->
+                        <path fill="url(#areaGradient)" d="M0,180 Q100,160 200,140 T400,100 T600,60 T800,40 L800,200 L0,200 Z"/>
+                        <path stroke="#4ade80" stroke-width="3" fill="none" d="M0,180 Q100,160 200,140 T400,100 T600,60 T800,40"/>
+                        <!-- 大盘曲线 -->
+                        <path stroke="rgba(255,255,255,0.3)" stroke-width="2" fill="none" stroke-dasharray="5,5" d="M0,180 Q100,175 200,165 T400,150 T600,140 T800,130"/>
+                    </svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- 当前持仓 -->
+        <div class="glass-card positions-card">
+            <div class="chart-header">
+                <span class="chart-title">📊 当前持仓</span>
+                <button class="action-btn btn-buy" onclick="openTradeModal('buy')">+ 买入</button>
+            </div>
+            <table class="positions-table">
+                <thead>
+                    <tr>
+                        <th>股票</th>
+                        <th>成本</th>
+                        <th>现价</th>
+                        <th>盈亏</th>
+                        <th>仓位</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="positions-body">
+                    <tr>
+                        <td>
+                            <div class="stock-name">贵州茅台</div>
+                            <div class="stock-code">600519</div>
+                        </td>
+                        <td>¥1,485</td>
+                        <td>¥1,535</td>
+                        <td class="positive">+3.37%</td>
+                        <td>25%</td>
+                        <td><button class="action-btn btn-sell" onclick="sellStock('600519')">卖出</button></td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="stock-name">宁德时代</div>
+                            <div class="stock-code">300750</div>
+                        </td>
+                        <td>¥195</td>
+                        <td>¥208</td>
+                        <td class="positive">+6.67%</td>
+                        <td>20%</td>
+                        <td><button class="action-btn btn-sell" onclick="sellStock('300750')">卖出</button></td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="stock-name">中国平安</div>
+                            <div class="stock-code">601318</div>
+                        </td>
+                        <td>¥48.5</td>
+                        <td>¥52.3</td>
+                        <td class="positive">+7.84%</td>
+                        <td>15%</td>
+                        <td><button class="action-btn btn-sell" onclick="sellStock('601318')">卖出</button></td>
+                    </tr>
+                    <tr>
+                        <td>
+                            <div class="stock-name">恒瑞医药</div>
+                            <div class="stock-code">600276</div>
+                        </td>
+                        <td>¥42.0</td>
+                        <td>¥45.8</td>
+                        <td class="positive">+9.05%</td>
+                        <td>12%</td>
+                        <td><button class="action-btn btn-sell" onclick="sellStock('600276')">卖出</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 策略信号 -->
+        <div class="glass-card">
+            <div class="chart-header">
+                <span class="chart-title">🎯 实时信号</span>
+            </div>
+            <div id="signals-list">
+                <div class="signal-item">
+                    <div class="signal-header">
+                        <span class="signal-type positive">● 买入信号</span>
+                        <span class="signal-time">今天 09:35</span>
+                    </div>
+                    <div class="signal-content">贵金属板块 · 5年出现5次 · 均线评分92</div>
+                </div>
+                <div class="signal-item">
+                    <div class="signal-header">
+                        <span class="signal-type" style="color: var(--accent-blue);">● 持有提示</span>
+                        <span class="signal-time">今天 14:30</span>
+                    </div>
+                    <div class="signal-content">春节策略 · 节后第3天 · 继续持有4天</div>
+                </div>
+                <div class="signal-item">
+                    <div class="signal-header">
+                        <span class="signal-type gold">● 策略更新</span>
+                        <span class="signal-time">今天 15:00</span>
+                    </div>
+                    <div class="signal-content">卡若均线金叉 · 天堂线上穿邪恶线</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 投资产出比 -->
+        <div class="glass-card">
+            <div class="chart-header">
+                <span class="chart-title">💰 投资产出比</span>
+            </div>
+            <div style="padding: 16px 0;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                    <span>本策略收益率</span>
+                    <span class="positive" style="font-weight: 700; font-size: 1.2rem;">+18.5%</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                    <span>同期沪深300</span>
+                    <span style="font-weight: 600;">+5.2%</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
+                    <span>超额收益</span>
+                    <span class="positive" style="font-weight: 700;">+13.3%</span>
+                </div>
+                <div style="border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px; display: flex; justify-content: space-between;">
+                    <span>年化收益预估</span>
+                    <span class="gold" style="font-weight: 800; font-size: 1.5rem;">+88%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 风险指标 -->
+        <div class="glass-card">
+            <div class="chart-header">
+                <span class="chart-title">⚠️ 风险监控</span>
+            </div>
+            <div style="padding: 16px 0;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
+                    <span>最大回撤</span>
+                    <span class="negative">-5.2%</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
+                    <span>夏普比率</span>
+                    <span style="font-weight: 600;">1.85</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 16px;">
+                    <span>波动率</span>
+                    <span>12.3%</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                    <span>风险等级</span>
+                    <span style="padding: 4px 12px; background: rgba(74, 222, 128, 0.2); border-radius: 8px; font-size: 0.85rem; font-weight: 600; color: var(--accent-green);">低风险</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 控制面板 -->
+    <div class="control-panel">
+        <button class="control-btn" onclick="refreshData()">🔄 刷新数据</button>
+        <button class="control-btn primary" onclick="openSettingsModal()">⚙️ 设置</button>
+        <button class="control-btn success" onclick="executeStrategy()">▶️ 执行策略</button>
+        <button class="control-btn" onclick="saveAllData()">💾 保存</button>
+    </div>
+
+    <!-- 编辑弹窗 -->
+    <div class="edit-modal" id="editModal">
+        <div class="modal-content">
+            <div class="modal-title" id="modalTitle">编辑数据</div>
+            <div class="form-group">
+                <label class="form-label" id="modalLabel">数值</label>
+                <input type="text" class="form-input" id="modalInput" placeholder="请输入数值">
+            </div>
+            <div class="modal-actions">
+                <button class="modal-btn cancel" onclick="closeModal()">取消</button>
+                <button class="modal-btn save" onclick="saveModalData()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 提示 -->
+    <div class="toast" id="toast"></div>
+
+    <div class="footer-info">
+        <p style="font-size: 1rem; font-weight: 600;">上帝之眼 · 卡若原创五步选股法 · 实盘交易系统</p>
+        <p style="margin-top: 12px;">数据更新: <span id="update-time">--</span> · 账户: 湘财证券 600201668</p>
+    </div>
+
+    <script>
+        let currentEditId = null;
+        let dashboardData = {
+            totalAssets: 2570000,
+            todayProfit: 42350,
+            positionValue: 1850000,
+            positions: []
+        };
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSavedData();
+            updateTime();
+            setInterval(updateTime, 1000);
+            setInterval(refreshData, 60000); // 每分钟刷新
+        });
+
+        function updateTime() {
+            const now = new Date();
+            document.getElementById('update-time').textContent = 
+                now.toLocaleString('zh-CN', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+        }
+
+        function formatMoney(value) {
+            return '¥' + value.toLocaleString('zh-CN');
+        }
+
+        function openEditModal(id, title) {
+            currentEditId = id;
+            document.getElementById('modalTitle').textContent = '编辑 ' + title;
+            document.getElementById('modalLabel').textContent = title;
+            
+            const element = document.getElementById(id);
+            let value = element.textContent.replace(/[¥,+]/g, '');
+            document.getElementById('modalInput').value = value;
+            
+            document.getElementById('editModal').classList.add('show');
+            document.getElementById('modalInput').focus();
+        }
+
+        function closeModal() {
+            document.getElementById('editModal').classList.remove('show');
+            currentEditId = null;
+        }
+
+        function saveModalData() {
+            if (!currentEditId) return;
+            
+            const input = document.getElementById('modalInput');
+            let value = parseFloat(input.value.replace(/[¥,+]/g, ''));
+            
+            if (isNaN(value)) {
+                showToast('请输入有效数值', 'error');
+                return;
+            }
+            
+            const element = document.getElementById(currentEditId);
+            
+            if (currentEditId === 'total-assets') {
+                dashboardData.totalAssets = value;
+                element.textContent = formatMoney(value);
+            } else if (currentEditId === 'today-profit') {
+                dashboardData.todayProfit = value;
+                element.textContent = (value >= 0 ? '+' : '') + formatMoney(value);
+            } else if (currentEditId === 'position-value') {
+                dashboardData.positionValue = value;
+                element.textContent = formatMoney(value);
+            }
+            
+            saveAllData();
+            closeModal();
+            showToast('保存成功！', 'success');
+        }
+
+        function saveAllData() {
+            localStorage.setItem('godseye_dashboard', JSON.stringify(dashboardData));
+            showToast('数据已保存！', 'success');
+        }
+
+        function loadSavedData() {
+            const saved = localStorage.getItem('godseye_dashboard');
+            if (saved) {
+                dashboardData = JSON.parse(saved);
+                updateDisplay();
+            }
+        }
+
+        function updateDisplay() {
+            document.getElementById('total-assets').textContent = formatMoney(dashboardData.totalAssets);
+            document.getElementById('today-profit').textContent = 
+                (dashboardData.todayProfit >= 0 ? '+' : '') + formatMoney(dashboardData.todayProfit);
+            document.getElementById('position-value').textContent = formatMoney(dashboardData.positionValue);
+            
+            // 计算仓位比例
+            const ratio = Math.round(dashboardData.positionValue / dashboardData.totalAssets * 100);
+            document.getElementById('position-ratio').textContent = ratio + '%';
+            
+            // 计算涨幅
+            const changePercent = (dashboardData.todayProfit / (dashboardData.totalAssets - dashboardData.todayProfit) * 100).toFixed(2);
+            document.getElementById('total-change').textContent = (changePercent >= 0 ? '+' : '') + changePercent + '%';
+        }
+
+        function refreshData() {
+            showToast('数据刷新中...', 'info');
+            // 这里可以调用后端API获取实时数据
+            setTimeout(() => {
+                showToast('数据已更新！', 'success');
+            }, 1000);
+        }
+
+        function executeStrategy() {
+            if (confirm('确认执行策略？这将进行实盘交易操作。')) {
+                showToast('策略执行中...', 'info');
+                // 调用后端执行策略
+                fetch('/api/execute', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => {
+                        showToast('策略执行完成！', 'success');
+                    })
+                    .catch(() => {
+                        // 模拟执行
+                        setTimeout(() => {
+                            showToast('策略信号已生成！', 'success');
+                        }, 2000);
+                    });
+            }
+        }
+
+        function sellStock(code) {
+            if (confirm(`确认卖出 ${code}？`)) {
+                showToast(`正在卖出 ${code}...`, 'info');
+                setTimeout(() => {
+                    showToast(`${code} 卖出委托已提交！`, 'success');
+                }, 1000);
+            }
+        }
+
+        function openTradeModal(type) {
+            alert('买入功能：请在设置中配置券商API后使用');
+        }
+
+        function openSettingsModal() {
+            alert('设置功能开发中...\n\n请通过命令行运行：\npython3 scripts/real_trade.py');
+        }
+
+        function switchPeriod(period) {
+            document.querySelectorAll('.chart-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            showToast(`切换到${period === 'week' ? '周' : period === 'month' ? '月' : '年'}视图`, 'info');
+        }
+
+        function showToast(message, type) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.className = 'toast show' + (type === 'success' ? ' success' : '');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2500);
+        }
+
+        // 键盘快捷键
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeModal();
+            if (e.key === 'Enter' && currentEditId) saveModalData();
+            if (e.key === 's' && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                saveAllData();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,1256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飞书工具箱 - 卡若出品</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --bg: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            --glass: rgba(255,255,255,0.12);
+            --glass-border: rgba(255,255,255,0.2);
+            --text: #fff;
+            --text-muted: rgba(255,255,255,0.7);
+            --radius: 16px;
+            --radius-lg: 24px;
+        }
+        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+            min-height: 100vh;
+            background: var(--bg);
+            background-attachment: fixed;
+            color: var(--text);
+            line-height: 1.6;
+        }
+        
+        /* 动态背景 */
+        .bg-effects {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            overflow: hidden;
+            z-index: 0;
+        }
+        
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(100px);
+            opacity: 0.4;
+            animation: float 25s ease-in-out infinite;
+        }
+        
+        .orb:nth-child(1) { width: 500px; height: 500px; background: #ff6b6b; top: -200px; left: -100px; }
+        .orb:nth-child(2) { width: 400px; height: 400px; background: #4ecdc4; bottom: -100px; right: -100px; animation-delay: -8s; }
+        .orb:nth-child(3) { width: 300px; height: 300px; background: #ffe66d; top: 50%; left: 50%; animation-delay: -15s; }
+        
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(50px, -50px) scale(1.1); }
+            66% { transform: translate(-30px, 30px) scale(0.9); }
+        }
+        
+        /* 容器 */
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+        
+        /* 头部 */
+        .header {
+            text-align: center;
+            padding: 20px 0 40px;
+        }
+        
+        .logo {
+            font-size: 3.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #fff 0%, rgba(255,255,255,0.8) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+        
+        .logo-icon { font-size: 3rem; -webkit-text-fill-color: initial; }
+        
+        .tagline {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            margin-top: 8px;
+        }
+        
+        /* 卡片 */
+        .card {
+            background: var(--glass);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: 28px;
+            margin-bottom: 24px;
+            transition: all 0.3s ease;
+        }
+        
+        .card:hover { transform: translateY(-3px); box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+        
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 20px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .card-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+            flex-shrink: 0;
+        }
+        
+        .icon-blue { background: linear-gradient(135deg, #3b82f6, #6366f1); }
+        .icon-green { background: linear-gradient(135deg, #10b981, #059669); }
+        .icon-orange { background: linear-gradient(135deg, #f59e0b, #d97706); }
+        .icon-pink { background: linear-gradient(135deg, #ec4899, #d946ef); }
+        .icon-purple { background: linear-gradient(135deg, #8b5cf6, #6366f1); }
+        
+        .card-title { font-size: 1.3rem; font-weight: 600; }
+        .card-subtitle { color: var(--text-muted); font-size: 0.9rem; margin-top: 2px; }
+        
+        /* 用户状态 */
+        .user-badge {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 18px;
+            background: rgba(16,185,129,0.2);
+            border-radius: 30px;
+            font-size: 0.9rem;
+        }
+        
+        .user-badge.offline { background: rgba(239,68,68,0.2); }
+        .user-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); }
+        .user-badge.offline .dot { background: var(--danger); }
+        
+        /* 按钮 */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 24px;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            color: #fff;
+            box-shadow: 0 4px 20px rgba(99,102,241,0.4);
+        }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(99,102,241,0.5); }
+        
+        .btn-success {
+            background: linear-gradient(135deg, var(--success), #059669);
+            color: #fff;
+        }
+        
+        .btn-ghost {
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .btn-ghost:hover { background: rgba(255,255,255,0.2); }
+        
+        .btn-sm { padding: 8px 16px; font-size: 0.85rem; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
+        
+        .btn-group { display: flex; gap: 12px; flex-wrap: wrap; }
+        
+        /* 功能网格 */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+        }
+        
+        .feature-card {
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: 28px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 25px 60px rgba(0,0,0,0.2);
+            border-color: rgba(255,255,255,0.4);
+        }
+        
+        .feature-card.disabled { opacity: 0.5; cursor: not-allowed; }
+        .feature-card.disabled:hover { transform: none; }
+        
+        .feature-icon {
+            width: 72px;
+            height: 72px;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            margin: 0 auto 18px;
+        }
+        
+        .feature-card h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 8px; }
+        .feature-card p { color: var(--text-muted); font-size: 0.9rem; }
+        
+        /* 列表 */
+        .list { max-height: 450px; overflow-y: auto; padding-right: 8px; }
+        
+        .list::-webkit-scrollbar { width: 6px; }
+        .list::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 3px; }
+        .list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+        
+        .list-item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 14px 16px;
+            background: rgba(255,255,255,0.05);
+            border-radius: var(--radius);
+            margin-bottom: 10px;
+            transition: all 0.2s;
+        }
+        
+        .list-item:hover { background: rgba(255,255,255,0.1); }
+        
+        .list-item input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+        
+        .list-item-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            flex-shrink: 0;
+        }
+        
+        .list-item-content { flex: 1; min-width: 0; }
+        .list-item-title { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .list-item-meta { color: var(--text-muted); font-size: 0.85rem; }
+        
+        .list-item-actions { display: flex; gap: 8px; }
+        
+        /* 面包屑 */
+        .breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+            padding: 12px 16px;
+            background: rgba(0,0,0,0.1);
+            border-radius: var(--radius);
+        }
+        
+        .breadcrumb-item {
+            background: rgba(255,255,255,0.15);
+            border: none;
+            color: #fff;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .breadcrumb-item:hover { background: rgba(255,255,255,0.25); }
+        .breadcrumb-sep { color: var(--text-muted); }
+        
+        /* 工具栏 */
+        .toolbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+        
+        .select-info {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        /* 输入框 */
+        .input {
+            width: 100%;
+            padding: 14px 18px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: var(--radius);
+            color: #fff;
+            font-size: 1rem;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        
+        .input::placeholder { color: var(--text-muted); }
+        .input:focus { outline: none; border-color: var(--primary); background: rgba(255,255,255,0.12); }
+        
+        .form-group { margin-bottom: 20px; }
+        .form-label { display: block; margin-bottom: 8px; font-weight: 500; }
+        
+        /* Tabs */
+        .tabs {
+            display: flex;
+            background: rgba(0,0,0,0.15);
+            border-radius: var(--radius);
+            padding: 4px;
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 12px;
+            transition: all 0.2s;
+        }
+        
+        .tab:hover { color: #fff; }
+        .tab.active { background: rgba(255,255,255,0.15); color: #fff; }
+        
+        /* 空状态 */
+        .empty {
+            text-align: center;
+            padding: 50px 20px;
+            color: var(--text-muted);
+        }
+        
+        .empty-icon { font-size: 4rem; margin-bottom: 16px; opacity: 0.5; }
+        
+        /* Toast */
+        .toast-box { position: fixed; top: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 10px; }
+        
+        .toast {
+            padding: 14px 24px;
+            background: rgba(0,0,0,0.9);
+            backdrop-filter: blur(10px);
+            border-radius: var(--radius);
+            color: #fff;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+            max-width: 380px;
+        }
+        
+        .toast.success { border-left: 4px solid var(--success); }
+        .toast.error { border-left: 4px solid var(--danger); }
+        .toast.warning { border-left: 4px solid var(--warning); }
+        .toast.info { border-left: 4px solid var(--primary); }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        /* 加载 */
+        .loader {
+            width: 44px;
+            height: 44px;
+            border: 3px solid rgba(255,255,255,0.15);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 40px auto;
+        }
+        
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        /* 进度条 */
+        .progress-bar {
+            height: 6px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            margin: 16px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--success));
+            border-radius: 3px;
+            transition: width 0.3s ease;
+        }
+        
+        /* 面板 */
+        .panel { display: none; }
+        .panel.active { display: block; animation: fadeIn 0.3s ease; }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        /* 复选框组 */
+        .checkbox-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 16px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .checkbox-item:hover { background: rgba(255,255,255,0.15); }
+        
+        /* Footer */
+        .footer {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+        
+        .footer a { color: var(--text); text-decoration: none; }
+        .footer a:hover { text-decoration: underline; }
+        
+        /* 响应式 */
+        @media (max-width: 768px) {
+            .logo { font-size: 2.5rem; }
+            .features { grid-template-columns: 1fr; }
+            .card { padding: 20px; }
+            .toolbar { flex-direction: column; align-items: stretch; }
+            .btn-group { justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="bg-effects">
+        <div class="orb"></div>
+        <div class="orb"></div>
+        <div class="orb"></div>
+    </div>
+    
+    <div class="toast-box" id="toastBox"></div>
+    
+    <div class="container">
+        <header class="header">
+            <h1 class="logo"><span class="logo-icon">🦋</span>飞书工具箱</h1>
+            <p class="tagline">一站式飞书数据备份与管理 · 卡若出品</p>
+        </header>
+        
+        <!-- 主面板 -->
+        <div id="mainPanel" class="panel active">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon icon-purple">🔐</div>
+                    <div>
+                        <div class="card-title">飞书账号</div>
+                        <div class="card-subtitle">授权后可访问你的云盘、知识库等数据</div>
+                    </div>
+                    <div class="user-badge offline" id="userBadge">
+                        <span class="dot"></span>
+                        <span id="userStatus">未登录</span>
+                    </div>
+                </div>
+                
+                <div id="loginSection">
+                    <p style="color: var(--text-muted); margin-bottom: 16px;">
+                        💡 首次使用需要授权，授权后登录状态会自动保存
+                    </p>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="startAuth()">🔑 飞书授权登录</button>
+                        <button class="btn btn-ghost" onclick="checkAuth()">🔄 刷新状态</button>
+                    </div>
+                </div>
+                
+                <div id="userSection" style="display:none">
+                    <p style="color: var(--success); margin-bottom: 16px;">✅ 已授权，可使用全部功能</p>
+                    <button class="btn btn-ghost" onclick="logout()">退出登录</button>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon icon-blue">✨</div>
+                    <div>
+                        <div class="card-title">功能选择</div>
+                        <div class="card-subtitle" id="funcTip">请先完成授权登录</div>
+                    </div>
+                </div>
+                
+                <div class="features">
+                    <div class="feature-card disabled" id="fcDrive" onclick="openPanel('drive')">
+                        <div class="feature-icon icon-blue">📁</div>
+                        <h3>云盘备份</h3>
+                        <p>备份云盘文件，支持文件夹打包下载</p>
+                    </div>
+                    <div class="feature-card disabled" id="fcWiki" onclick="openPanel('wiki')">
+                        <div class="feature-icon icon-green">📚</div>
+                        <h3>知识库同步</h3>
+                        <p>同步知识库文档到本地</p>
+                    </div>
+                    <div class="feature-card disabled" id="fcMinutes" onclick="openPanel('minutes')">
+                        <div class="feature-icon icon-orange">🎙️</div>
+                        <h3>妙记导出</h3>
+                        <p>导出会议妙记文字内容</p>
+                    </div>
+                    <div class="feature-card disabled" id="fcSearch" onclick="openPanel('search')">
+                        <div class="feature-icon icon-pink">🔍</div>
+                        <h3>文档搜索</h3>
+                        <p>快速搜索并下载文档</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 云盘面板 -->
+        <div id="drivePanel" class="panel">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon icon-blue">📁</div>
+                    <div>
+                        <div class="card-title">云盘文件备份</div>
+                        <div class="card-subtitle">选择文件或文件夹，支持整个文件夹打包下载</div>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="showMain()">← 返回</button>
+                </div>
+                
+                <div class="tabs">
+                    <button class="tab active" onclick="switchDriveTab('mine', this)">我的云盘</button>
+                    <button class="tab" onclick="switchDriveTab('shared', this)">共享空间</button>
+                </div>
+                
+                <div id="driveBreadcrumb"></div>
+                <div id="driveList"><div class="loader"></div></div>
+                
+                <div class="toolbar">
+                    <div class="btn-group">
+                        <button class="btn btn-success" onclick="downloadSelected('drive')">📦 下载选中项 (ZIP)</button>
+                        <button class="btn btn-ghost" onclick="loadDrive()">🔄 刷新</button>
+                    </div>
+                    <div class="select-info">
+                        <button class="btn btn-ghost btn-sm" onclick="toggleAll('driveList')">☑️ 全选</button>
+                        <span id="driveCount">已选: 0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 知识库面板 -->
+        <div id="wikiPanel" class="panel">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon icon-green">📚</div>
+                    <div>
+                        <div class="card-title">知识库同步</div>
+                        <div class="card-subtitle">选择知识库文档导出</div>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="showMain()">← 返回</button>
+                </div>
+                
+                <div id="wikiBreadcrumb"></div>
+                <div id="wikiList"><div class="loader"></div></div>
+                
+                <div class="toolbar">
+                    <div class="btn-group">
+                        <button class="btn btn-success" onclick="downloadSelected('wiki')">📦 下载选中项 (ZIP)</button>
+                        <button class="btn btn-ghost" onclick="loadWikiSpaces()">🔄 刷新</button>
+                    </div>
+                    <div class="select-info">
+                        <button class="btn btn-ghost btn-sm" onclick="toggleAll('wikiList')">☑️ 全选</button>
+                        <span id="wikiCount">已选: 0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 妙记面板 -->
+        <div id="minutesPanel" class="panel">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon icon-orange">🎙️</div>
+                    <div>
+                        <div class="card-title">妙记导出</div>
+                        <div class="card-subtitle">导出会议妙记的文字内容</div>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="showMain()">← 返回</button>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">时间范围</label>
+                    <div style="display:flex;gap:12px;align-items:center">
+                        <input type="date" class="input" id="minStart" style="flex:1">
+                        <span style="color:var(--text-muted)">至</span>
+                        <input type="date" class="input" id="minEnd" style="flex:1">
+                    </div>
+                </div>
+                
+                <button class="btn btn-primary" onclick="loadMinutes()" style="width:100%;margin-bottom:20px">📋 加载妙记列表</button>
+                
+                <div id="minutesList">
+                    <div class="empty"><div class="empty-icon">🎙️</div><p>选择时间范围后加载妙记</p></div>
+                </div>
+                
+                <div class="toolbar">
+                    <button class="btn btn-success" onclick="downloadSelected('minutes')">📦 导出选中妙记</button>
+                    <div class="select-info">
+                        <button class="btn btn-ghost btn-sm" onclick="toggleAll('minutesList')">☑️ 全选</button>
+                        <span id="minutesCount">已选: 0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 搜索面板 -->
+        <div id="searchPanel" class="panel">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-icon icon-pink">🔍</div>
+                    <div>
+                        <div class="card-title">文档搜索</div>
+                        <div class="card-subtitle">搜索飞书中的文档</div>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="showMain()">← 返回</button>
+                </div>
+                
+                <div class="form-group">
+                    <input type="text" class="input" id="searchInput" placeholder="输入关键词搜索..." onkeypress="if(event.key==='Enter')doSearch()">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">文档类型</label>
+                    <div class="checkbox-group">
+                        <label class="checkbox-item"><input type="checkbox" value="doc" checked> 文档</label>
+                        <label class="checkbox-item"><input type="checkbox" value="docx" checked> 新版文档</label>
+                        <label class="checkbox-item"><input type="checkbox" value="sheet" checked> 表格</label>
+                        <label class="checkbox-item"><input type="checkbox" value="bitable"> 多维表格</label>
+                    </div>
+                </div>
+                
+                <button class="btn btn-primary" onclick="doSearch()" style="width:100%;margin-bottom:20px">🔍 搜索</button>
+                
+                <div id="searchList">
+                    <div class="empty"><div class="empty-icon">🔍</div><p>输入关键词开始搜索</p></div>
+                </div>
+                
+                <div class="toolbar">
+                    <button class="btn btn-success" onclick="downloadSelected('search')">📦 下载选中文档</button>
+                    <div class="select-info">
+                        <button class="btn btn-ghost btn-sm" onclick="toggleAll('searchList')">☑️ 全选</button>
+                        <span id="searchCount">已选: 0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <footer class="footer">
+            <p>飞书工具箱 v2.0 · <a href="https://open.feishu.cn/" target="_blank">飞书开放平台</a> · 微信: 28533368</p>
+        </footer>
+    </div>
+
+<script>
+const API = 'http://localhost:5050/api';
+let isAuth = false;
+let driveNav = [];
+let wikiNav = [];
+let currentSpaceId = '';
+
+// ========== 工具函数 ==========
+
+function toast(msg, type = 'info') {
+    const box = document.getElementById('toastBox');
+    const el = document.createElement('div');
+    el.className = `toast ${type}`;
+    el.textContent = msg;
+    box.appendChild(el);
+    setTimeout(() => { el.style.animation = 'slideIn 0.3s ease reverse'; setTimeout(() => el.remove(), 300); }, 3500);
+}
+
+function showMain() {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('mainPanel').classList.add('active');
+}
+
+function openPanel(name) {
+    if (!isAuth) { toast('请先完成授权登录', 'warning'); return; }
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById(name + 'Panel').classList.add('active');
+    
+    if (name === 'drive') loadDrive();
+    else if (name === 'wiki') loadWikiSpaces();
+}
+
+function updateCount(listId) {
+    const count = document.querySelectorAll(`#${listId} input[type="checkbox"]:checked`).length;
+    const countEl = document.getElementById(listId.replace('List', 'Count'));
+    if (countEl) countEl.textContent = `已选: ${count}`;
+}
+
+function toggleAll(listId) {
+    const boxes = document.querySelectorAll(`#${listId} input[type="checkbox"]`);
+    const allChecked = Array.from(boxes).every(b => b.checked);
+    boxes.forEach(b => b.checked = !allChecked);
+    updateCount(listId);
+    toast(allChecked ? '已取消全选' : `已全选 ${boxes.length} 项`, 'success');
+}
+
+function getIcon(type) {
+    const icons = { folder: '📁', doc: '📄', docx: '📝', sheet: '📊', bitable: '📋', mindnote: '🧠', file: '📎' };
+    return icons[type] || '📄';
+}
+
+function getIconClass(type) {
+    const cls = { folder: 'icon-blue', doc: 'icon-green', docx: 'icon-green', sheet: 'icon-orange', bitable: 'icon-purple' };
+    return cls[type] || 'icon-blue';
+}
+
+// ========== 授权 ==========
+
+async function checkAuth() {
+    try {
+        const res = await fetch(`${API}/token`);
+        const data = await res.json();
+        isAuth = data.has_user_token;
+        
+        const badge = document.getElementById('userBadge');
+        const status = document.getElementById('userStatus');
+        const login = document.getElementById('loginSection');
+        const user = document.getElementById('userSection');
+        const tip = document.getElementById('funcTip');
+        
+        if (isAuth) {
+            badge.classList.remove('offline');
+            status.textContent = data.user_name || '已登录';
+            login.style.display = 'none';
+            user.style.display = 'block';
+            tip.textContent = '选择你需要的功能';
+            document.querySelectorAll('.feature-card').forEach(c => c.classList.remove('disabled'));
+        } else {
+            badge.classList.add('offline');
+            status.textContent = '未登录';
+            login.style.display = 'block';
+            user.style.display = 'none';
+            tip.textContent = '请先完成授权登录';
+            document.querySelectorAll('.feature-card').forEach(c => c.classList.add('disabled'));
+        }
+    } catch (e) {
+        toast('检查授权状态失败', 'error');
+    }
+}
+
+function startAuth() {
+    const w = 500, h = 600;
+    const win = window.open('', 'feishu_auth', `width=${w},height=${h},left=${(screen.width-w)/2},top=${(screen.height-h)/2}`);
+    
+    fetch(`${API}/auth/url?redirect_uri=${encodeURIComponent('http://localhost:5050/api/auth/callback')}`)
+        .then(r => r.json())
+        .then(d => { if (d.auth_url) win.location.href = d.auth_url; });
+    
+    toast('已打开飞书授权页面', 'info');
+}
+
+window.addEventListener('message', e => {
+    if (e.data?.type === 'feishu_auth_success') {
+        toast('授权成功！', 'success');
+        checkAuth();
+    }
+});
+
+async function logout() {
+    await fetch(`${API}/auth/logout`, { method: 'POST' });
+    isAuth = false;
+    checkAuth();
+    toast('已退出登录', 'success');
+}
+
+// ========== 云盘 ==========
+
+async function loadDrive(folderToken = null) {
+    const list = document.getElementById('driveList');
+    list.innerHTML = '<div class="loader"></div>';
+    
+    if (!folderToken) driveNav = [];
+    
+    try {
+        const url = folderToken ? `${API}/drive/files?folder_token=${folderToken}` : `${API}/drive/files`;
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if (data.code === 0) {
+            const files = data.data?.files || [];
+            renderDriveList(files, folderToken);
+            renderDriveBreadcrumb();
+        } else {
+            list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><p>${data.msg || '加载失败'}</p></div>`;
+        }
+    } catch (e) {
+        list.innerHTML = `<div class="empty"><div class="empty-icon">❌</div><p>加载失败</p></div>`;
+    }
+}
+
+function renderDriveList(files, currentToken) {
+    const list = document.getElementById('driveList');
+    
+    if (files.length === 0) {
+        list.innerHTML = '<div class="empty"><div class="empty-icon">📂</div><p>当前目录为空</p></div>';
+        return;
+    }
+    
+    list.innerHTML = '<div class="list">' + files.map(f => `
+        <div class="list-item" data-token="${f.token}" data-type="${f.type}" data-name="${f.name || '未命名'}">
+            <input type="checkbox" onchange="updateCount('driveList')">
+            <div class="list-item-icon ${getIconClass(f.type)}">${getIcon(f.type)}</div>
+            <div class="list-item-content">
+                <div class="list-item-title">${f.name || '未命名'}</div>
+                <div class="list-item-meta">${f.type} · ${(f.token || '').substring(0, 12)}...</div>
+            </div>
+            <div class="list-item-actions">
+                ${f.type === 'folder' ? `<button class="btn btn-ghost btn-sm" onclick="enterDriveFolder('${f.token}', '${(f.name || '').replace(/'/g, "\\'")}')">进入</button>` : ''}
+            </div>
+        </div>
+    `).join('') + '</div>';
+    
+    updateCount('driveList');
+}
+
+function enterDriveFolder(token, name) {
+    driveNav.push({ token, name });
+    loadDrive(token);
+}
+
+function renderDriveBreadcrumb() {
+    const el = document.getElementById('driveBreadcrumb');
+    if (driveNav.length === 0) {
+        el.innerHTML = '';
+        return;
+    }
+    
+    el.innerHTML = `<div class="breadcrumb">
+        <button class="breadcrumb-item" onclick="loadDrive()">📁 根目录</button>
+        ${driveNav.map((n, i) => `<span class="breadcrumb-sep">›</span><button class="breadcrumb-item" onclick="navDrive(${i})">${n.name}</button>`).join('')}
+    </div>`;
+}
+
+function navDrive(index) {
+    driveNav = driveNav.slice(0, index + 1);
+    loadDrive(driveNav[index].token);
+}
+
+function switchDriveTab(tab, btn) {
+    document.querySelectorAll('#drivePanel .tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    driveNav = [];
+    if (tab === 'shared') {
+        loadDrive('shared');
+    } else {
+        loadDrive();
+    }
+}
+
+// ========== 知识库 ==========
+
+async function loadWikiSpaces() {
+    const list = document.getElementById('wikiList');
+    list.innerHTML = '<div class="loader"></div>';
+    wikiNav = [];
+    
+    try {
+        const res = await fetch(`${API}/wiki/spaces`);
+        const data = await res.json();
+        
+        if (data.code === 0) {
+            const spaces = data.data?.items || [];
+            renderWikiSpaces(spaces);
+            renderWikiBreadcrumb();
+        } else {
+            list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><p>${data.msg || '加载失败'}</p></div>`;
+        }
+    } catch (e) {
+        list.innerHTML = `<div class="empty"><div class="empty-icon">❌</div><p>加载失败</p></div>`;
+    }
+}
+
+function renderWikiSpaces(spaces) {
+    const list = document.getElementById('wikiList');
+    
+    if (spaces.length === 0) {
+        list.innerHTML = '<div class="empty"><div class="empty-icon">📚</div><p>没有知识库</p></div>';
+        return;
+    }
+    
+    list.innerHTML = '<div class="list">' + spaces.map(s => `
+        <div class="list-item" data-space="${s.space_id}" data-name="${s.name || '未命名'}">
+            <input type="checkbox" onchange="updateCount('wikiList')">
+            <div class="list-item-icon icon-green">📖</div>
+            <div class="list-item-content">
+                <div class="list-item-title">${s.name || '未命名'}</div>
+                <div class="list-item-meta">知识库 · ${s.space_id}</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="enterWikiSpace('${s.space_id}', '${(s.name || '').replace(/'/g, "\\'")}')">进入</button>
+        </div>
+    `).join('') + '</div>';
+    
+    updateCount('wikiList');
+}
+
+async function enterWikiSpace(spaceId, name) {
+    currentSpaceId = spaceId;
+    wikiNav = [{ type: 'space', id: spaceId, name }];
+    await loadWikiNodes(spaceId);
+}
+
+async function loadWikiNodes(spaceId, parentToken = null) {
+    const list = document.getElementById('wikiList');
+    list.innerHTML = '<div class="loader"></div>';
+    
+    try {
+        let url = `${API}/wiki/spaces/${spaceId}/nodes`;
+        if (parentToken) url += `?parent_node_token=${parentToken}`;
+        
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if (data.code === 0) {
+            const nodes = data.data?.items || [];
+            renderWikiNodes(nodes, spaceId);
+            renderWikiBreadcrumb();
+        } else {
+            list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><p>${data.msg || '加载失败'}</p></div>`;
+        }
+    } catch (e) {
+        list.innerHTML = `<div class="empty"><div class="empty-icon">❌</div><p>加载失败</p></div>`;
+    }
+}
+
+function renderWikiNodes(nodes, spaceId) {
+    const list = document.getElementById('wikiList');
+    
+    if (nodes.length === 0) {
+        list.innerHTML = '<div class="empty"><div class="empty-icon">📂</div><p>当前目录为空</p></div>';
+        return;
+    }
+    
+    list.innerHTML = '<div class="list">' + nodes.map(n => `
+        <div class="list-item" data-token="${n.node_token}" data-space="${spaceId}" data-type="${n.obj_type || 'doc'}" data-name="${n.title || '未命名'}">
+            <input type="checkbox" onchange="updateCount('wikiList')">
+            <div class="list-item-icon ${getIconClass(n.obj_type)}">${getIcon(n.obj_type || 'doc')}</div>
+            <div class="list-item-content">
+                <div class="list-item-title">${n.title || '未命名'}</div>
+                <div class="list-item-meta">${n.obj_type || 'doc'} · ${(n.node_token || '').substring(0, 12)}...</div>
+            </div>
+            <div class="list-item-actions">
+                ${n.has_child ? `<button class="btn btn-ghost btn-sm" onclick="enterWikiNode('${spaceId}', '${n.node_token}', '${(n.title || '').replace(/'/g, "\\'")}')">进入</button>` : ''}
+            </div>
+        </div>
+    `).join('') + '</div>';
+    
+    updateCount('wikiList');
+}
+
+function enterWikiNode(spaceId, nodeToken, name) {
+    wikiNav.push({ type: 'node', id: nodeToken, name });
+    loadWikiNodes(spaceId, nodeToken);
+}
+
+function renderWikiBreadcrumb() {
+    const el = document.getElementById('wikiBreadcrumb');
+    if (wikiNav.length === 0) {
+        el.innerHTML = '';
+        return;
+    }
+    
+    el.innerHTML = `<div class="breadcrumb">
+        <button class="breadcrumb-item" onclick="loadWikiSpaces()">📚 全部知识库</button>
+        ${wikiNav.map((n, i) => `<span class="breadcrumb-sep">›</span><button class="breadcrumb-item" onclick="navWiki(${i})">${n.name}</button>`).join('')}
+    </div>`;
+}
+
+function navWiki(index) {
+    const item = wikiNav[index];
+    wikiNav = wikiNav.slice(0, index + 1);
+    
+    if (item.type === 'space') {
+        loadWikiNodes(item.id);
+    } else {
+        loadWikiNodes(currentSpaceId, item.id);
+    }
+}
+
+// ========== 妙记 ==========
+
+async function loadMinutes() {
+    const list = document.getElementById('minutesList');
+    list.innerHTML = '<div class="loader"></div>';
+    
+    const start = document.getElementById('minStart').value;
+    const end = document.getElementById('minEnd').value;
+    
+    try {
+        let url = `${API}/minutes`;
+        const params = [];
+        if (start) params.push(`start_time=${new Date(start).getTime()}`);
+        if (end) params.push(`end_time=${new Date(end).getTime()}`);
+        if (params.length) url += '?' + params.join('&');
+        
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if (data.code === 0) {
+            const minutes = data.data?.minutes || [];
+            renderMinutesList(minutes);
+        } else {
+            list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><p>${data.msg || '加载失败'}</p></div>`;
+        }
+    } catch (e) {
+        list.innerHTML = `<div class="empty"><div class="empty-icon">❌</div><p>加载失败: ${e.message}</p></div>`;
+    }
+}
+
+function renderMinutesList(minutes) {
+    const list = document.getElementById('minutesList');
+    
+    if (minutes.length === 0) {
+        list.innerHTML = '<div class="empty"><div class="empty-icon">🎙️</div><p>没有找到妙记</p></div>';
+        return;
+    }
+    
+    list.innerHTML = '<div class="list">' + minutes.map(m => `
+        <div class="list-item" data-token="${m.minute_token}" data-name="${m.title || '未命名'}">
+            <input type="checkbox" onchange="updateCount('minutesList')">
+            <div class="list-item-icon icon-orange">🎙️</div>
+            <div class="list-item-content">
+                <div class="list-item-title">${m.title || '未命名妙记'}</div>
+                <div class="list-item-meta">${m.create_time ? new Date(m.create_time * 1000).toLocaleString() : '未知时间'}</div>
+            </div>
+        </div>
+    `).join('') + '</div>';
+    
+    updateCount('minutesList');
+}
+
+// ========== 搜索 ==========
+
+async function doSearch() {
+    const keyword = document.getElementById('searchInput').value.trim();
+    if (!keyword) { toast('请输入搜索关键词', 'warning'); return; }
+    
+    const list = document.getElementById('searchList');
+    list.innerHTML = '<div class="loader"></div>';
+    
+    const types = Array.from(document.querySelectorAll('#searchPanel .checkbox-item input:checked')).map(c => c.value);
+    
+    try {
+        const res = await fetch(`${API}/search`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: keyword, doc_types: types })
+        });
+        const data = await res.json();
+        
+        if (data.code === 0) {
+            const docs = data.data?.docs || [];
+            renderSearchList(docs);
+        } else {
+            list.innerHTML = `<div class="empty"><div class="empty-icon">⚠️</div><p>${data.msg || '搜索失败'}</p></div>`;
+        }
+    } catch (e) {
+        list.innerHTML = `<div class="empty"><div class="empty-icon">❌</div><p>搜索失败</p></div>`;
+    }
+}
+
+function renderSearchList(docs) {
+    const list = document.getElementById('searchList');
+    
+    if (docs.length === 0) {
+        list.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><p>没有找到相关文档</p></div>';
+        return;
+    }
+    
+    list.innerHTML = `<p style="color:var(--text-muted);margin-bottom:12px">找到 ${docs.length} 个结果</p>
+    <div class="list">${docs.map(d => `
+        <div class="list-item" data-token="${d.token}" data-type="${d.docs_type}" data-name="${d.title || '未命名'}" data-url="${d.url || ''}">
+            <input type="checkbox" onchange="updateCount('searchList')">
+            <div class="list-item-icon icon-pink">${getIcon(d.docs_type)}</div>
+            <div class="list-item-content">
+                <div class="list-item-title">${d.title || '未命名'}</div>
+                <div class="list-item-meta">${d.docs_type} · ${d.owner_name || ''}</div>
+            </div>
+            <button class="btn btn-ghost btn-sm" onclick="window.open('${d.url}','_blank')">打开</button>
+        </div>
+    `).join('')}</div>`;
+    
+    updateCount('searchList');
+}
+
+// ========== 下载 ==========
+
+async function downloadSelected(type) {
+    const listId = type + 'List';
+    const checked = document.querySelectorAll(`#${listId} input[type="checkbox"]:checked`);
+    
+    if (checked.length === 0) {
+        toast('请先选择要下载的项目', 'warning');
+        return;
+    }
+    
+    const items = [];
+    const folders = [];
+    
+    checked.forEach(cb => {
+        const item = cb.closest('.list-item');
+        const token = item.dataset.token;
+        const name = item.dataset.name;
+        const itemType = item.dataset.type;
+        const spaceId = item.dataset.space;
+        
+        if (itemType === 'folder') {
+            folders.push({ token, name });
+        } else {
+            items.push({
+                token: token,
+                name: name,
+                type: itemType || 'docx',
+                space_id: spaceId
+            });
+        }
+    });
+    
+    // 如果有文件夹，递归获取内容
+    if (folders.length > 0) {
+        toast(`正在扫描 ${folders.length} 个文件夹...`, 'info');
+        
+        for (const folder of folders) {
+            try {
+                const res = await fetch(`${API}/drive/folder/all`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder_token: folder.token })
+                });
+                const data = await res.json();
+                
+                if (data.code === 0) {
+                    const files = data.data?.files || [];
+                    files.forEach(f => {
+                        items.push({
+                            token: f.token,
+                            name: f.name || '未命名',
+                            type: f.type || 'docx',
+                            path: folder.name + '/' + (f.path || '')
+                        });
+                    });
+                }
+            } catch (e) {
+                toast(`扫描文件夹失败: ${folder.name}`, 'error');
+            }
+        }
+    }
+    
+    if (items.length === 0) {
+        toast('没有可下载的文档', 'warning');
+        return;
+    }
+    
+    toast(`开始下载 ${items.length} 个文档...`, 'info');
+    
+    try {
+        const res = await fetch(`${API}/drive/download/zip`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items, name: '飞书文档备份' })
+        });
+        
+        if (res.ok) {
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `飞书备份_${new Date().toISOString().slice(0,10)}.zip`;
+            a.click();
+            URL.revokeObjectURL(url);
+            toast(`✅ 下载完成！共 ${items.length} 个文档`, 'success');
+        } else {
+            const err = await res.json();
+            toast(`下载失败: ${err.msg || '未知错误'}`, 'error');
+        }
+    } catch (e) {
+        toast(`下载出错: ${e.message}`, 'error');
+    }
+}
+
+// ========== 初始化 ==========
+
+document.addEventListener('DOMContentLoaded', () => {
+    // 设置默认日期
+    const today = new Date();
+    const yearAgo = new Date(today.getTime() - 365 * 24 * 60 * 60 * 1000);
+    document.getElementById('minEnd').value = today.toISOString().split('T')[0];
+    document.getElementById('minStart').value = yearAgo.toISOString().split('T')[0];
+    
+    // 检查授权
+    checkAuth();
+});
+
+// 定时检查
+setInterval(checkAuth, 60000);
+</script>
+</body>
+</html>
