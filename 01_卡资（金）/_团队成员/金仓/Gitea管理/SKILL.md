@@ -3,7 +3,7 @@ name: Gitea管理
 description: CKB NAS 自建 Gitea 的仓库创建、推送、API、挂载管理。触发词：Gitea、推送到Gitea、创建仓库、Git推送、CKB Git、界面不显示。统一用 HTTPS+API 创建，确保仓库在 Gitea 界面可见。
 triggers: Gitea、Gitea管理、推送到Gitea、创建Gitea仓库、Git推送CKB、CKB_NAS_Git、仓库界面不显示
 owner: 金仓
-version: "1.0"
+version: "1.1"
 updated: "2026-02-15"
 ---
 
@@ -88,13 +88,7 @@ git push -u gitea main
 
 ---
 
-## 七、关联文档
-
-| 文档 | 路径 | 说明 |
-|------|------|------|
-| Gitea 推送手册 | `_共享模块/references/Gitea推送_卡若AI调用手册.md` | 卡若AI 调用流程 |
-| 账号与 API | `_共享模块/工作台/00_账号与API索引.md` § Gitea | 凭证 |
-| CKB NAS Gitea 访问 | `群晖NAS管理/references/CKB_NAS_Gitea_类GitHub访问.md` | 部署与访问 |
+## 七、关联文档（见第十一节）
 
 ---
 
@@ -104,3 +98,41 @@ git push -u gitea main
 2. 新建仓库 → 用 API 创建
 3. 推送 → `git push gitea main`（remote 用 HTTPS URL）
 4. 检查界面 → http://open.quwanzhi.com:3000/fnvtk/
+
+---
+
+## 九、界面功能（工单 / 合并请求 / 百科 / 版本发布 / 项目）
+
+确保仓库在 Gitea 上以下功能可用、有说明可查：
+
+| 功能 | 说明 |
+|:---|:---|
+| **工单** | 模板在 `.gitea/ISSUE_TEMPLATE/`，新建工单可选：功能建议、Bug 反馈、任务报备 |
+| **合并请求** | 模板 `.gitea/pull_request_template.md`，合并时带出说明与自检项 |
+| **百科** | 源在 `_共享模块/wiki_source/`，含 Home、快速开始、五行角色、技能索引、Gitea使用、**代码管理与脚本**；同步脚本 `sync_wiki_to_gitea.sh` |
+| **版本发布** | 脚本 `_共享模块/scripts/create_gitea_release.sh` 可打 tag 并建 Release |
+| **项目** | 在 Gitea 页「项目」新建看板，工单拖入待办/进行中/已完成 |
+| **代码管理** | 每次上传写入 `_共享模块/工作台/代码管理.md`（代码推送+百科同步结果+链接） |
+
+---
+
+## 十、上传时同步的板块（卡若AI 有更新就上传）
+
+执行 `bash _共享模块/auto_sync_gitea.sh` 时会：
+
+1. **代码**：排除 >20MB → 提交 → 推送到 Gitea 主仓
+2. **百科**：自动执行 `sync_wiki_to_gitea.sh`，将 wiki_source 推送到仓库「百科」页
+3. **代码管理**：写入 `gitea_push_log.md` 与 `代码管理.md`（时间、代码/百科结果、提交说明、仓库/百科链接）
+
+若百科尚未初始化（首次为空）：可先到 Gitea 仓库「百科」→「创建第一个页面」标题填 **Home** 保存一次，再执行上传；或运行 `bash _共享模块/scripts/init_wiki_gitea.sh` 尝试 API 初始化。
+
+---
+
+## 十一、关联文档
+
+| 文档 | 路径 | 说明 |
+|------|------|------|
+| Gitea 推送手册 | `_共享模块/references/Gitea推送_卡若AI调用手册.md` | 卡若AI 调用、有更新就上传、代码管理 |
+| 工单/合并请求/Wiki/发布 | `_共享模块/references/Gitea_工单与合并请求使用说明.md` | 各功能使用说明 |
+| 代码管理 | `_共享模块/工作台/代码管理.md` | 每次上传记录 |
+| 账号与 API | `_共享模块/工作台/00_账号与API索引.md` § Gitea | 凭证 |

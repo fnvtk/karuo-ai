@@ -13,7 +13,14 @@ mkdir -p "$(dirname "$WIKI_CLONE")"
 
 if [ ! -d "$WIKI_CLONE/.git" ]; then
   rm -rf "$WIKI_CLONE" 2>/dev/null || true
-  git clone "$WIKI_REMOTE" "$WIKI_CLONE"
+  if ! git clone "$WIKI_REMOTE" "$WIKI_CLONE" 2>/dev/null; then
+    echo "百科尚未初始化，尝试通过 API 初始化..."
+    bash "$REPO_DIR/_共享模块/scripts/init_wiki_gitea.sh" 2>/dev/null || true
+    if ! git clone "$WIKI_REMOTE" "$WIKI_CLONE" 2>/dev/null; then
+      echo "请到 Gitea 仓库「百科」→「创建第一个页面」，标题填 Home 保存一次，再运行本脚本。"
+      exit 1
+    fi
+  fi
 fi
 
 cd "$WIKI_CLONE"
