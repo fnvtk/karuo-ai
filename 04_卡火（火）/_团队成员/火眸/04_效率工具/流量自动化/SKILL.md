@@ -120,23 +120,26 @@ Process.Start("rasdial.exe", "/d");
 
 **功能**: 模拟真实用户行为，自动搜索、点击、浏览
 
+> ⚠️ 浏览器规范：必须使用系统默认浏览器，复用已有会话，禁止新建无痕实例。
+> 详见：`_共享模块/references/浏览器使用规范.md`
+
 ```python
-# Python 实现（使用 Selenium）
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
+# Python 实现 — 优先用系统默认浏览器
+import subprocess
 import time
 import random
 
 class WebAutomation:
     def __init__(self):
-        options = webdriver.ChromeOptions()
-        # 防检测设置
-        options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_experimental_option('excludeSwitches', ['enable-automation'])
-        self.driver = webdriver.Chrome(options=options)
+        """使用系统默认浏览器，不新建隔离实例"""
+        # 优先方案：直接用 open 命令打开 URL（复用已有会话）
+        # 若需要 DOM 自动化，用 CDP 连接已运行的浏览器
+        self.use_cdp = False  # 默认不使用 CDP
+        self.driver = None
+    
+    def open_url(self, url):
+        """用系统默认浏览器打开 URL"""
+        subprocess.run(['open', url])
     
     def baidu_search(self, keyword, target_domain):
         """百度搜索并点击目标网站"""
@@ -209,40 +212,54 @@ class WebAutomation:
 
 **功能**: 清理浏览器缓存、Cookie、历史记录
 
+> ⚠️ 注意：清理浏览器数据会导致已有登录态丢失，谨慎使用
+
 ```python
-# Python 实现（macOS）
+# Python 实现（macOS） — 自动识别默认浏览器并清理
 import subprocess
 import os
 import shutil
+import json
 
-def clear_chrome_data_macos():
-    """清理 Chrome 浏览数据"""
-    chrome_data_path = os.path.expanduser(
-        '~/Library/Application Support/Google/Chrome/Default'
-    )
-    paths_to_clear = [
-        'Cookies',
-        'History',
-        'Cache',
-        'Visited Links'
-    ]
+def get_default_browser_bundle_id():
+    """获取系统默认浏览器 bundle ID"""
+    r = subprocess.run(['plutil', '-convert', 'json', '-o', '-',
+        os.path.expanduser('~/Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist')],
+        capture_output=True, text=True)
+    if r.returncode == 0:
+        data = json.loads(r.stdout)
+        for h in data.get('LSHandlers', []):
+            if h.get('LSHandlerURLScheme') == 'https':
+                return h.get('LSHandlerRoleAll', 'com.apple.Safari')
+    return 'com.apple.Safari'
+
+def clear_browser_data_macos():
+    """清理系统默认浏览器的浏览数据"""
+    bundle_id = get_default_browser_bundle_id()
+    
+    # 不同浏览器的数据路径
+    browser_paths = {
+        'com.google.chrome': '~/Library/Application Support/Google/Chrome/Default',
+        'com.apple.safari': '~/Library/Safari',
+        'com.bot.pc.doubao.browser': '~/Library/Application Support/Doubao Browser/Default',
+        'com.brave.browser': '~/Library/Application Support/BraveSoftware/Brave-Browser/Default',
+        'com.microsoft.edgemac': '~/Library/Application Support/Microsoft Edge/Default',
+    }
+    
+    data_path = os.path.expanduser(browser_paths.get(bundle_id, ''))
+    if not data_path or not os.path.exists(data_path):
+        print(f"未找到浏览器数据目录: {bundle_id}")
+        return
+    
+    paths_to_clear = ['Cache', 'Visited Links']  # 保留 Cookies 和 History 以维持登录态
     for path in paths_to_clear:
-        full_path = os.path.join(chrome_data_path, path)
+        full_path = os.path.join(data_path, path)
         if os.path.exists(full_path):
             if os.path.isdir(full_path):
                 shutil.rmtree(full_path)
             else:
                 os.remove(full_path)
-
-def clear_safari_data_macos():
-    """清理 Safari 浏览数据"""
-    commands = [
-        'rm -rf ~/Library/Safari/LocalStorage/*',
-        'rm -rf ~/Library/Safari/History.db*',
-        'rm -rf ~/Library/Cookies/*',
-    ]
-    for cmd in commands:
-        subprocess.run(cmd, shell=True)
+    print(f"已清理 {bundle_id} 的缓存数据")
 
 # 使用示例
 # clear_chrome_data_macos()
@@ -316,13 +333,11 @@ def full_workflow(keyword, target, loops=10):
 
 ```bash
 # 安装 Python 依赖
-pip install selenium requests
+pip install requests
 
-# 安装 ChromeDriver（macOS）
-brew install chromedriver
-
-# 或下载对应版本
-# https://chromedriver.chromium.org/downloads
+# ⚠️ 不再需要安装 chromedriver 或 selenium
+# 所有浏览器操作使用系统默认浏览器 + open 命令
+# 详见：_共享模块/references/浏览器使用规范.md
 ```
 
 ---

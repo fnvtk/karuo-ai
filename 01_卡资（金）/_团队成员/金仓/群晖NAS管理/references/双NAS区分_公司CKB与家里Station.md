@@ -12,7 +12,7 @@
 | **场景** | 公司局域网、外网访问 | 家庭局域网，**家里优先访问** |
 | **用途** | 存客宝、卡若AI 网关、MongoDB、Qdrant、宝塔中控等 | 家庭存储、DiskStation |
 | **内网 IP** | 192.168.1.201 | **192.168.110.29** |
-| **外网域名** | **open.quwanzhi.com** | （未配置外网域名时需内网） |
+| **外网域名** | **open.quwanzhi.com** | **opennas2.quwanzhi.com** |
 | **DSM 端口** | 5000 | 5000 |
 | **DSM 内网访问** | http://192.168.1.201:5000 | **http://192.168.110.29:5000** |
 | **卡若AI Executor** | 8081（公司/外网） | （家里 NAS 未部署卡若AI 时无） |
@@ -37,19 +37,43 @@
 | **DSM 访问** | http://192.168.110.29:5000 | 登录页截图可见 |
 | **品牌/型号** | Synology DiskStation | 登录界面显示 |
 | **默认账号** | admin | 登录表单预填 |
-| **外网域名** | （待配置） | 若需外网访问可配置 DDNS 或 QuickConnect |
+| **外网域名** | **opennas2.quwanzhi.com** | frpc 内网穿透，经 42.194.245.239 中转 |
 
 > **防选错**：家里在 192.168.**110**.29，公司 CKB 在 192.168.**1**.201；网段不同，留意 110 vs 1。
 
-### 2.1 当前资源告警（需处理）
+### 2.1 当前资源状态（2026-02-14 更新）
 
-| 资源 | 当前状态 | 告警 |
+| 资源 | 当前状态 | 备注 |
 |:-----|:---------|:-----|
-| **CPU** | 99% | ⚠️ 极高，需尽快降负载 |
-| **RAM** | 61% | 正常，可观察 |
-| **磁盘** | 即将不足 | ⚠️ 存储空间 1 告警，需清理或扩容 |
+| **CPU 负载** | 1.6（已修复） | 之前异常 udevd 占 31% 已杀掉 |
+| **RAM** | 67MB/497MB，342MB 可用 | 之前 udevd 吃 295MB 已修复 |
+| **磁盘** | 4.6TB/5.4TB（84%），885GB 可用 | 清理 core dump 后恢复 |
 
-**处理建议**：见 `references/家里Station_NAS资源优化与降负载指南.md`。
+### 2.2 家里 NAS 内网穿透（frpc → opennas2.quwanzhi.com）
+
+| 项目 | 说明 |
+|:-----|:-----|
+| **frps 服务器** | 42.194.245.239:7000 |
+| **frpc 版本** | 0.51.3（ARM） |
+| **frpc 路径** | `/volume1/homes/admin/frpc/` |
+| **配置文件** | `/volume1/homes/admin/frpc/frpc.ini` |
+| **自启方式** | crontab 每 5 分钟检活 |
+
+**端口映射表：**
+
+| 服务 | NAS 本地端口 | 外网端口 | 外网地址 |
+|:-----|:------------|:---------|:---------|
+| **SSH** | 22 | **22202** | `ssh admin@opennas2.quwanzhi.com -p 22202` |
+| **DSM HTTP** | 5000 | **5002** | http://opennas2.quwanzhi.com:5002 |
+| **DSM HTTPS** | 5001 | **5003** | https://opennas2.quwanzhi.com:5003 |
+| **Web HTTP** | 80 | **8002** | http://opennas2.quwanzhi.com:8002 |
+| **Web HTTPS** | 443 | **4432** | https://opennas2.quwanzhi.com:4432 |
+| **FTP** | 21 | **2102** | opennas2.quwanzhi.com:2102 |
+| **SVN** | 3690 | **36902** | opennas2.quwanzhi.com:36902 |
+| **rsync** | 873 | **8732** | opennas2.quwanzhi.com:8732 |
+| **MariaDB** | 3306 | **33062** | opennas2.quwanzhi.com:33062 |
+| **Telnet** | 23 | **2302** | opennas2.quwanzhi.com:2302 |
+| **DSM（HTTP域名）** | 5000 | **80** | http://opennas2.quwanzhi.com |
 
 ---
 
@@ -59,7 +83,7 @@
 |:---------|:---------|:-----|
 | **公司 / 公司局域网** | 公司 CKB NAS（192.168.1.201 / open.quwanzhi.com） | 存客宝、卡若AI 网关、飞书/企微回调、发消息等 |
 | **家里 / 家庭局域网** | 家里 Station NAS（192.168.110.29） | 家庭存储、DSM 管理 |
-| **外网** | 公司 CKB NAS（open.quwanzhi.com） | 公司 NAS 经 frp/隧道对外；家里 NAS 通常不外网暴露 |
+| **外网** | 公司 CKB（open.quwanzhi.com）/ 家里（opennas2.quwanzhi.com） | 两台均经 frp 对外 |
 
 ---
 
@@ -72,7 +96,7 @@
 | 目标 | 命令 / 入口 |
 |:-----|:------------|
 | **公司 CKB** | `./send_message_to_nas.sh "你的指令"`（默认 open.quwanzhi.com）；或 `NAS_TARGET=ckb ./send_message_to_nas.sh "..."` |
-| **家里 Station** | 暂无 AI 网关，无法发消息；仅 DSM 管理（http://192.168.110.29:5000） |
+| **家里 Station** | 暂无 AI 网关；DSM 内网 http://192.168.110.29:5000 / 外网 http://opennas2.quwanzhi.com:5002 |
 
 ### 4.2 DSM 管理
 
@@ -86,7 +110,7 @@
 | 目标 | 示例 |
 |:-----|:-----|
 | **公司 CKB** | `ssh fnvtk@192.168.1.201` 或 `ssh fnvtk@open.quwanzhi.com`（若 22201 等已映射） |
-| **家里 Station** | `ssh admin@192.168.110.29`（用户与端口按你实际配置） |
+| **家里 Station** | `ssh admin@192.168.110.29`（内网）或 `ssh -p 22202 admin@opennas2.quwanzhi.com`（外网） |
 
 ---
 
@@ -98,4 +122,4 @@
 
 ---
 
-*版本：v1.0 | 2026-02-06*
+*版本：v2.0 | 2026-02-14 — 新增家里 NAS 内网穿透（opennas2.quwanzhi.com）*

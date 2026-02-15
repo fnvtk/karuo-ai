@@ -374,28 +374,48 @@ class SDKUser:
     # ... 根据实际返回添加
 ```
 
-### 问题7：Playwright的Headless模式
+### 问题7：浏览器使用规范（⚠️ 重要）
 
-**场景**：服务器环境下运行Playwright
+**规范**：所有需要浏览器的操作，必须使用系统默认浏览器，复用已有登录会话，禁止新建无痕/隔离实例。
 
-**问题**：
-- 服务器无图形界面，必须用headless模式
-- 某些网站检测headless浏览器并拒绝访问
-- 调试时需要看到浏览器界面
+> 详见：`_共享模块/references/浏览器使用规范.md`
 
-**解决方案**：
+**优先级**：
+1. API 调用（curl / requests）— 最优先，完全不需要浏览器
+2. `open "URL"` — 用系统默认浏览器打开（macOS）
+3. AppleScript 控制已打开的浏览器窗口
+4. CDP 连接已运行的浏览器（最后手段）
+
+**打开网页（推荐方式）**：
 ```python
-# conf.py
-import os
+import subprocess
 
-# 根据环境自动切换
-IS_SERVER = os.environ.get("IS_SERVER", "false").lower() == "true"
-LOCAL_CHROME_HEADLESS = IS_SERVER  # 服务器True，本地False
-
-# 使用本地Chrome而非Chromium（更不容易被检测）
-LOCAL_CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"  # macOS
-# LOCAL_CHROME_PATH = "C:/Program Files/Google/Chrome/Application/chrome.exe"  # Windows
+# 用系统默认浏览器打开 URL（自动复用已有会话和登录态）
+subprocess.run(['open', 'https://example.com'])
 ```
+
+**检测默认浏览器**：
+```python
+import subprocess, json, os
+
+def get_default_browser():
+    """获取 macOS 系统默认浏览器"""
+    r = subprocess.run(['plutil', '-convert', 'json', '-o', '-',
+        os.path.expanduser('~/Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist')],
+        capture_output=True, text=True)
+    if r.returncode == 0:
+        data = json.loads(r.stdout)
+        for h in data.get('LSHandlers', []):
+            if h.get('LSHandlerURLScheme') == 'https':
+                return h.get('LSHandlerRoleAll', 'com.apple.Safari')
+    return 'com.apple.Safari'
+```
+
+**禁止行为**：
+- ❌ `playwright.chromium.launch()` — 新建浏览器实例
+- ❌ `playwright.chromium.launch_persistent_context()` — 新建持久化实例
+- ❌ `--incognito` / headless 模式
+- ❌ 硬编码 Chrome/Safari 路径
 
 ---
 
@@ -637,50 +657,39 @@ async def publish_with_auto_cookie_update(account, video, title):
 
 ## 🛡️ 反检测最佳实践
 
-### Playwright Stealth配置（实战优化版）
+### 反检测最佳实践（使用系统默认浏览器）
+
+> ⚠️ 禁止使用 `playwright.launch()` 新建浏览器实例。详见 `_共享模块/references/浏览器使用规范.md`
+
+**推荐方式：用已有浏览器 + CDP 连接（仅在必须自动化 DOM 时）**
 
 ```python
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
 
-async def create_stealth_browser(headless: bool = True):
+async def connect_existing_browser():
+    """连接已运行的浏览器（需浏览器已开启远程调试端口）"""
     p = await async_playwright().start()
     
-    # 使用本地Chrome（更不容易被检测）
-    browser = await p.chromium.launch(
-        headless=headless,
-        executable_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        args=[
-            '--disable-blink-features=AutomationControlled',
-            '--disable-dev-shm-usage',
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-infobars',
-            '--window-size=1920,1080',
-        ]
-    )
-    
-    context = await browser.new_context(
-        viewport={'width': 1920, 'height': 1080},
-        user_agent='Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        locale='zh-CN',
-        timezone_id='Asia/Shanghai',
-    )
-    
-    page = await context.new_page()
-    await stealth_async(page)
+    # 连接已运行的浏览器，不启动新实例
+    browser = await p.chromium.connect_over_cdp("http://localhost:9222")
+    context = browser.contexts[0]  # 复用已有 context（含登录态）
+    page = context.pages[0]        # 复用已有 page
     
     return browser, context, page
 ```
 
+**开启远程调试端口（一次性设置）**：
+```bash
+# 以 Chrome 为例，其它浏览器类似
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222
+```
+
 ### 反检测检查清单
 
-- [x] 使用本地Chrome而非Chromium
-- [x] 禁用AutomationControlled特征
-- [x] 设置真实的User-Agent
+- [x] 使用系统默认浏览器（非 Chromium、非 headless）
+- [x] 复用已有浏览器会话（保留 Cookie/登录态）
 - [x] 设置正确的时区和语言（Asia/Shanghai, zh-CN）
-- [x] 使用1920x1080分辨率
-- [x] 应用playwright-stealth补丁
+- [x] 真实分辨率（跟随用户屏幕）
 - [ ] 添加随机延迟（3-8秒）
 - [ ] 使用高质量代理（住宅IP）
 - [ ] 处理验证码（集成打码服务）

@@ -25,6 +25,7 @@
 | 六 | 飞书 Token |
 | 七 | 小程序 |
 | 八 | **本机与网站账号密码**（浏览器/钥匙串 + 填写表） |
+| 八b | **网络设备**（路由器/AP/交换机） |
 | 九 | 本机其他凭证文件位置 |
 | 十 | 联系方式 |
 
@@ -158,16 +159,19 @@
 | refresh_token | `ur-6Wu3DdR8h4TGJErCFjTarE5lhbzk5kirpO0aiN6000SA` |
 | 说明 | 飞书用户，授权时间 2026-01-29；过期后需重新授权或刷新 |
 
-### 飞书项目（玩值电竞 · 存客宝）
+### 飞书项目（玩值电竞 · 账号金融 · 存客宝）
 
-> 用于玩值电竞任务同步到飞书项目需求管理。**USER_KEY 必填**：飞书项目内双击头像获取。
+> 用于玩值电竞任务同步到飞书项目需求管理。任务安排见：`玩值电竞/水：流程规划/玩值电竞_双月任务安排（飞书项目版）.md`
 
 | 项 | 值 |
 |----|-----|
 | Plugin ID | `MII_698EA68807C08CB2` |
 | Plugin Secret | `63D218CF0E3B0CBC456B09FF4F7F2ED3` |
-| FEISHU_PROJECT_KEY | `玩值电竞`（空间域名） |
-| **FEISHU_PROJECT_USER_KEY** | **必填，飞书项目内双击头像获取** |
+| FEISHU_PROJECT_KEY | `玩值电竞` |
+| FEISHU_PROJECT_USER_KEY | `756877947514450739` |
+| API 基址 | `https://project.feishu.cn` |
+| Token 交换 | `POST /open_api/authen/plugin_token`（需 plugin_id + plugin_secret） |
+| 创建工作项 | `POST /open_api/{project_key}/work_item/create`（需 X-PLUGIN-TOKEN + X-USER-KEY） |
 
 ---
 
@@ -244,7 +248,9 @@
 | 7 | 卡若手机端 kr-phone | https://kr-phone.quwanzhi.com | 18888888888 | （Chrome 查看） | |
 | 8 | 存客宝 mckb | https://mckb.quwanzhi.com | 13800138000 | （Chrome 查看） | |
 | 9 | kr-op 登录页 | http://kr-op.quwanzhi.com/login | 13779954946 | （Chrome 查看） | |
-| 10 | 路由器 192.168.110.1 | http://192.168.110.1 | 82243164@xmcm | （Chrome 查看） | |
+| 10 | 锐捷路由器（管理后台） | http://192.168.110.1 | admin | `Vtk()-1` | 锐捷Reyee EG105GW-E，管理后台用户名固定为 admin |
+| 10a | 锐捷路由器（WiFi） | — | SSID: 卡若-4点起床的男人-2 | `Vtk()-1` | 5GHz WiFi，当前无加密 ⚠️ 需开启 WPA3 |
+| 10b | 锐捷诺客云端运维 | https://cloud.ruijie.com.cn | 82243164@xmcm | （Chrome 查看） | Ruijie Cloud 远程管理 |
 | 11 | 腾讯云 | https://console.cloud.tencent.com | | | |
 | 12 | 阿里云 | https://ram.console.aliyun.com | | | |
 | 13 | 微信公众平台 | https://mp.weixin.qq.com | | | |
@@ -255,6 +261,40 @@
 | 18 | （其他） | | | | |
 
 *密码列请在本机按 8.1 打开 Chrome 或钥匙串查看后填入；填完后本文件即成为「本机 + 网站」账号密码的集中调取文档。*
+
+---
+
+## 八b、网络设备（路由器/AP/交换机）
+
+> 本机局域网核心设备的 IP、登录方式、配置参数。  
+> 最后更新：2026-02-15
+
+### 锐捷 Reyee EG105GW-E（主路由器）
+
+| 项 | 值 |
+|----|-----|
+| 型号 | Ruijie Reyee EG105GW-E（企业级无线网关） |
+| 管理地址 | `http://192.168.110.1` |
+| 管理用户名 | `admin` |
+| 管理密码 | `Vtk()-1` |
+| LAN IP / 子网 | 192.168.110.1 / 255.255.255.0 |
+| WiFi SSID (5GHz) | 卡若-4点起床的男人-2 |
+| WiFi 密码 | `Vtk()-1` |
+| WiFi 安全模式 | 当前无加密 ⚠️（建议改为 WPA3） |
+| WiFi 信道 | 64（5GHz DFS） |
+| WiFi 频宽 | 80MHz |
+| 路由器 MAC | 54:16:51:e0:ba:c8 |
+| 外网 IP | 119.233.229.4 |
+| DNS | 223.5.5.5（阿里 DNS） |
+| 诺客云端运维 | https://cloud.ruijie.com.cn（账号 82243164@xmcm） |
+| 连接方式 | 浏览器访问 `http://192.168.110.1` → 输入密码 `Vtk()-1` → 进入管理后台 |
+
+#### 当前在线设备（2026-02-15 快照）
+
+| 设备 | IP | MAC | 频段 | 信号 | 协商速率 |
+|------|-----|-----|------|------|----------|
+| MacBook Pro（卡若） | 192.168.110.14 | 62:82:b4:c5:51:43 | 5GHz | -66 dBm | 144 Mbps |
+| 未知设备 | 192.168.110.81 | 86:1e:6f:ac:a1:70 | 5GHz | -71 dBm | 216 Mbps |
 
 ---
 

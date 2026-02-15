@@ -24,7 +24,7 @@ CONFIG = {
     'PLUGIN_SECRET': os.environ.get('FEISHU_PROJECT_PLUGIN_SECRET', '63D218CF0E3B0CBC456B09FF4F7F2ED3'),
     'PLUGIN_TOKEN': os.environ.get('FEISHU_PROJECT_PLUGIN_TOKEN', ''),
     'USER_KEY': os.environ.get('FEISHU_PROJECT_USER_KEY', '756877947514450739'),
-    'PROJECT_KEY': os.environ.get('FEISHU_PROJECT_KEY', '玩值电竞'),
+    'PROJECT_KEY': os.environ.get('FEISHU_PROJECT_KEY') or '玩值电竞',
     'BASE_URL': 'https://project.feishu.cn',
     # 飞书知识库（fallback，使用存客宝飞书 token）
     'APP_ID': 'cli_a48818290ef8100d',
@@ -219,7 +219,8 @@ def create_work_item(task: dict, plugin_token: str, dry_run: bool) -> bool:
     if not plugin_token or not CONFIG['PROJECT_KEY']:
         return False
 
-    url = f"{CONFIG['BASE_URL']}/open_api/{CONFIG['PROJECT_KEY']}/work_item/create"
+    # API: POST /open_api/{project_key}/work_item/{work_item_type_key}
+    url = f"{CONFIG['BASE_URL']}/open_api/{CONFIG['PROJECT_KEY']}/work_item/story"
     headers = {
         'Content-Type': 'application/json',
         'X-PLUGIN-TOKEN': plugin_token,
@@ -233,7 +234,6 @@ def create_work_item(task: dict, plugin_token: str, dry_run: bool) -> bool:
         desc += f"\n截止: {task['deadline']}"
     body = {
         'name': task['name'],
-        'work_item_type_key': 'story',
         'field_value_pairs': [
             {'field_key': 'name', 'field_value': task['name']},
             {'field_key': 'description', 'field_value': desc},
@@ -262,6 +262,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--dry-run', action='store_true', help='仅解析不请求')
     ap.add_argument('--wiki', action='store_true', help='强制使用飞书知识库（不请求飞书项目 API）')
+    ap.add_argument('--export-md', action='store_true', help='导出到本地 md 文件')
     args = ap.parse_args()
 
     print('📋 玩值电竞 → 飞书 任务同步')
@@ -279,6 +280,16 @@ def main():
         for t in tasks[:10]:
             print(f"  Day {t['day']} | {t['owner']} | {t['name']}")
         print('...')
+        return
+
+    if args.export_md:
+        out = WANZHI_ROOT / '水：流程规划/玩值电竞_任务清单_可导入飞书.md'
+        lines = [f'# 玩值电竞任务清单（共 {len(tasks)} 条）\n', '> 来源：30天+90天+双月甘特图 | 可复制到飞书项目/知识库\n\n']
+        for t in tasks:
+            d, n, o, dl = t.get('day', 0), t.get('name', ''), t.get('owner', ''), t.get('deliverable', '')
+            lines.append(f"- [ ] **Day {d or '-'}** {n} | 负责人: {o} | 交付: {dl}\n")
+        out.write_text(''.join(lines), encoding='utf-8')
+        print(f'\n✅ 已导出 {len(tasks)} 条到 {out}')
         return
 
     # 模式 1：飞书项目（需 Plugin ID+Secret 或 PLUGIN_TOKEN + PROJECT_KEY + USER_KEY）
