@@ -68,9 +68,10 @@
 | 地址 | http://open.quwanzhi.com:3000 |
 | 账号 | `fnvtk` |
 | 密码 | `Zhiqun1984` |
-| SSH 推送 | `ssh://fnvtk@open.quwanzhi.com:22201/volume1/git/github/fnvtk/{repo}.git` |
-| HTTP 推送 | `http://fnvtk:Zhiqun1984@open.quwanzhi.com:3000/fnvtk/{repo}.git` |
-| 说明 | 卡若AI 下次调用直接读本表推送；新建仓库需 SSH 到 NAS 执行 `mkdir -p /volume1/git/github/fnvtk/xxx.git && cd xxx.git && git init --bare` |
+| **HTTPS 推送** | `http://fnvtk:Zhiqun1984@open.quwanzhi.com:3000/fnvtk/{repo}.git` |
+| HTTPS 访问 | http://open.quwanzhi.com:3000/fnvtk/{repo} |
+| 新建仓库 API | `curl -u fnvtk:Zhiqun1984 -X POST http://open.quwanzhi.com:3000/api/v1/user/repos -H "Content-Type: application/json" -d '{"name":"xxx","description":"","private":false}'` |
+| 说明 | 必须用 API 或 Web 创建仓库才能显示在界面；禁止 SSH mkdir+init；推送统一用 HTTPS |
 
 ---
 
