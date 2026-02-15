@@ -116,7 +116,18 @@ git push -u gitea main
 
 ---
 
-## 十、上传时同步的板块（卡若AI 有更新就上传）
+## 十、本地有更新 → 同步到 Gitea（实时协同）
+
+| 项目 | 脚本 | 说明 |
+|------|------|------|
+| 卡若AI | `bash _共享模块/auto_sync_gitea.sh` | 代码+百科+代码管理 |
+| 分布式算力矩阵 | `bash 01_卡资（金）/_团队成员/金仓/Gitea管理/scripts/auto_sync_suanli_juzhen.sh` | 代码 |
+
+**Webhook 说明**：Webhook 是 Gitea→外部（push 后通知飞书/触发部署），**不能**实现本地→Gitea。本地→Gitea 用上述脚本，可定时执行或对话结束时执行。详见 `references/Webhook与本地协同方案.md`。
+
+---
+
+## 十（续）、卡若AI 上传时同步的板块
 
 执行 `bash _共享模块/auto_sync_gitea.sh` 时会：
 
@@ -132,7 +143,8 @@ git push -u gitea main
 
 | 文档 | 路径 | 说明 |
 |------|------|------|
-| Gitea 推送手册 | `_共享模块/references/Gitea推送_卡若AI调用手册.md` | 卡若AI 调用、有更新就上传、代码管理 |
+| Webhook与本地协同 | `Gitea管理/references/Webhook与本地协同方案.md` | 本地→Gitea、Webhook 用途、定时 sync |
+| Gitea 推送手册 | `_共享模块/references/Gitea推送_卡若AI调用手册.md` | 卡若AI 调用、有更新就上传 |
 | 工单/合并请求/Wiki/发布 | `_共享模块/references/Gitea_工单与合并请求使用说明.md` | 各功能使用说明 |
 | 代码管理 | `_共享模块/工作台/代码管理.md` | 每次上传记录 |
 | 账号与 API | `_共享模块/工作台/00_账号与API索引.md` § Gitea | 凭证 |
