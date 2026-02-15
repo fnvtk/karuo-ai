@@ -23,9 +23,9 @@ try:
 except ImportError:
     REQUESTS_AVAILABLE = False
 
-# 飞书配置
-FEISHU_APP_ID = "cli_a48818290ef8100d"
-FEISHU_APP_SECRET = "dhjU0qWd5AzicGWTf4cTqhCWJOrnuCk4"
+# 飞书配置（优先环境变量）
+FEISHU_APP_ID = os.environ.get("FEISHU_APP_ID", "cli_a48818290ef8100d")
+FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "dhjU0qWd5AzicGWTf4cTqhCWJOrnuCk4")
 
 # 路径配置
 SCRIPT_DIR = Path(__file__).parent

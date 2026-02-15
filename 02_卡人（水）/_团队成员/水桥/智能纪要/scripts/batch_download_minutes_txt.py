@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-飞书妙记批量下载 TXT 文字记录
+飞书妙记批量下载 TXT 文字记录（纯接口+命令行，不打开浏览器）
 
 从「URL 列表文件」批量拉取飞书妙记，将每场的文字记录保存为 TXT。
-适用于：派对、受 等关键字筛选后的 100 场妙记一次性下载。
+凭证：环境变量 FEISHU_APP_ID / FEISHU_APP_SECRET（不设则用脚本内置默认 appid）。
 
 用法：
-  # 从 urls.txt 批量下载（每行一个妙记链接）
+  # 从 urls.txt 批量下载（每行一个妙记链接或 minute_token）
   python3 batch_download_minutes_txt.py --list urls.txt
 
   # 指定输出目录
@@ -18,9 +18,10 @@
   # 仅试跑前 3 条
   python3 batch_download_minutes_txt.py --list urls.txt --limit 3
 
-如何得到 urls.txt：
-  1) 在飞书妙记列表页搜索「派对」「受」或「soul 派对」，逐个打开每条记录，复制地址栏链接到文本，每行一个。
-  2) 或用浏览器自动化在列表页抓取所有卡片的链接（需在已登录飞书的前提下）。
+  # 使用自定义 appid（环境变量）
+  FEISHU_APP_ID=xxx FEISHU_APP_SECRET=yyy python3 batch_download_minutes_txt.py --list urls.txt
+
+urls.txt 需自行整理：每行一个妙记 URL（如 https://xxx.feishu.cn/minutes/xxx）或 minute_token。
 """
 
 import argparse

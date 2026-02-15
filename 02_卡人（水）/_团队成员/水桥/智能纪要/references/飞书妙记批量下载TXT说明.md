@@ -1,11 +1,12 @@
 # 飞书妙记批量下载 TXT 说明
 
-> 场景：飞书妙记里已有多场带「派对」「受」等关键字的视频会议（如 soul 派对 100 场），需要把这批会议的文字记录**全部下载为 TXT**。
+> 场景：飞书妙记里已有多场带「派对」「受」等关键字的视频会议（如 soul 派对 100 场），需要把这批会议的文字记录**全部下载为 TXT**。  
+> **纯接口+命令行，不打开浏览器**。凭证使用飞书应用 APP_ID / APP_SECRET（环境变量或脚本默认）。
 
 ## 一、为什么不能「一键筛 100 场再导出」
 
 - 飞书开放平台**没有**「妙记列表」或「按标题筛选妙记」的 API，只能通过**已知的妙记链接（minute_token）**逐条拉取。
-- 因此流程是：**先拿到这批妙记的 URL 列表 → 再用脚本批量拉取 TXT**。
+- 因此流程是：**先整理好妙记 URL 列表文件 → 用命令行+接口批量拉取 TXT**。
 
 ## 二、如何拿到 URL 列表（urls.txt）
 
@@ -20,9 +21,9 @@
 
 若链接形式是 `https://cunkebao.feishu.cn/minutes/obcnjnsx2mz7vj5q843172p8`，脚本也支持在 `urls.txt` 里只写后半段 token，例如一行写 `obcnjnsx2mz7vj5q843172p8` 即可。
 
-## 三、批量下载命令
+## 三、批量下载命令（纯接口，不打开浏览器）
 
-在智能纪要脚本目录下执行：
+在智能纪要脚本目录下执行。凭证可选：不设则用脚本内置 appid；自定义则用环境变量 `FEISHU_APP_ID` / `FEISHU_APP_SECRET`。
 
 ```bash
 cd /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/智能纪要/scripts
@@ -38,6 +39,9 @@ python3 batch_download_minutes_txt.py --list urls.txt --output ./soul_party_100_
 
 # 先试跑 3 条
 python3 batch_download_minutes_txt.py --list urls.txt --limit 3
+
+# 使用自定义 appid（环境变量）
+FEISHU_APP_ID=你的app_id FEISHU_APP_SECRET=你的app_secret python3 batch_download_minutes_txt.py --list urls.txt --output ./out_txt
 ```
 
 ## 四、输出说明

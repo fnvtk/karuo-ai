@@ -1,0 +1,28 @@
+# 在飞书妙记列表页一次性拿到 100 场链接（复制到 urls_soul_party.txt 后执行下载）
+
+1. 用浏览器打开：https://cunkebao.feishu.cn/minutes/home
+2. 在搜索框输入「派对」或「soul」，等列表加载完，可多滚动几次确保加载全
+3. 按 F12 打开开发者工具，切到「控制台」(Console)
+4. 粘贴下面整段代码并回车，会把当前页已加载的妙记链接复制到剪贴板：
+
+--- 复制下面整段 ---
+(function(){
+  var links = document.querySelectorAll('a[href*="/minutes/"]');
+  var seen = {}, out = [];
+  for (var i = 0; i < links.length; i++) {
+    var h = (links[i].href || '').trim();
+    if (h && !seen[h]) { seen[h] = 1; out.push(h); }
+  }
+  var text = out.join('\n');
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function(){ console.log('已复制 ' + out.length + ' 条链接到剪贴板'); });
+  } else {
+    console.log('链接数: ' + out.length + '\n请手动复制下面内容:\n' + text);
+  }
+  return out.length;
+})();
+--- 复制到此处为止 ---
+
+5. 打开 scripts/urls_soul_party.txt，清空后粘贴（Ctrl+V），保存
+6. 在终端执行：cd scripts && python3 run_soul_minutes_download_all.py
+   即可用 API 把当前列表里的 soul 妙记全部下载为 TXT

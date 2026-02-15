@@ -39,9 +39,9 @@ try:
 except ImportError:
     REQUESTS_AVAILABLE = False
 
-# 飞书开放平台配置
-FEISHU_APP_ID = "cli_a48818290ef8100d"
-FEISHU_APP_SECRET = "dhjU0qWd5AzicGWTf4cTqhCWJOrnuCk4"
+# 飞书开放平台配置（优先读环境变量，便于命令行传入 appid）
+FEISHU_APP_ID = os.environ.get("FEISHU_APP_ID", "cli_a48818290ef8100d")
+FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "dhjU0qWd5AzicGWTf4cTqhCWJOrnuCk4")
 
 # 输出目录
 SCRIPT_DIR = Path(__file__).parent
