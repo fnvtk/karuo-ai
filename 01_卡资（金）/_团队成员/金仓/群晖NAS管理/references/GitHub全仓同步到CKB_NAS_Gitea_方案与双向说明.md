@@ -93,6 +93,7 @@ ssh fnvtk@192.168.1.201 "/bin/bash /volume1/docker/gitea/sync_github_to_gitea.sh
 | `references/CKB_NAS_Gitea_类GitHub访问.md` | Gitea 部署与访问 |
 | `scripts/sync_github_to_gitea.sh` | 全仓/单仓同步（固定推送到存客宝 NAS Gitea） |
 | `scripts/deploy_github_to_gitea_on_nas.sh` | 一键部署到 NAS，从账号索引读 Token，接通 GitHub ↔ Gitea |
+| `references/GitHub与Gitea同步_脚本与钩子规则.md` | 脚本与钩子是否冲突、最佳方案、Gitea 钩子设置与规则 |
 
 ---
 

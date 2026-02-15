@@ -44,6 +44,19 @@ if [ -z "$GITEA_TOKEN" ]; then
   exit 1
 fi
 
+# 全局锁：避免与 cron、Web 钩子同时触发时并发写同一仓库（二选一：flock 或 mkdir 原子锁）
+LOCK_DIR="${WORK_DIR}.lock"
+LOCK_WAIT="${SYNC_LOCK_WAIT:-300}"
+acquire_lock() {
+  local waited=0
+  while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+    [ $waited -ge "$LOCK_WAIT" ] && { echo "获取锁超时，跳过本次"; exit 0; }
+    sleep 5; waited=$((waited+5))
+  done
+  trap 'rmdir "$LOCK_DIR" 2>/dev/null' EXIT
+}
+acquire_lock
+
 # 列出要同步的仓库名（不依赖 jq，兼容群晖）
 get_repos() {
   if [ -n "$SINGLE_REPO" ]; then
