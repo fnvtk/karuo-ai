@@ -103,18 +103,15 @@ log "提交成功：${CHANGED_COUNT} 个文件变更"
 # ============================================
 # Step 4: 推送到 Gitea
 # ============================================
-# 设置超时 60 秒
-timeout 60 git push "$REMOTE" "$BRANCH" --quiet 2>&1
+git push "$REMOTE" "$BRANCH" --quiet 2>&1
 PUSH_RESULT=$?
 
 if [ $PUSH_RESULT -eq 0 ]; then
     log "推送成功 → $REMOTE/$BRANCH"
-elif [ $PUSH_RESULT -eq 124 ]; then
-    log "警告：推送超时（60秒），下次重试"
 else
     # 如果推送失败（可能远程有差异），尝试 force push
     log "推送失败（code=$PUSH_RESULT），尝试强制推送..."
-    timeout 60 git push "$REMOTE" "$BRANCH" --force --quiet 2>&1
+    git push "$REMOTE" "$BRANCH" --force --quiet 2>&1
     if [ $? -eq 0 ]; then
         log "强制推送成功 → $REMOTE/$BRANCH"
     else

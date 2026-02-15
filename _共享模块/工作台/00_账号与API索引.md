@@ -62,6 +62,16 @@
 |----|-----|
 | API Key | `AIzaSyCPARryq8o6MKptLoT4STAvCsRB7uZuOK8` |
 
+### Gitea（CKB NAS 自建 Git）
+| 项 | 值 |
+|----|-----|
+| 地址 | http://open.quwanzhi.com:3000 |
+| 账号 | `fnvtk` |
+| 密码 | `Zhiqun1984` |
+| SSH 推送 | `ssh://fnvtk@open.quwanzhi.com:22201/volume1/git/github/fnvtk/{repo}.git` |
+| HTTP 推送 | `http://fnvtk:Zhiqun1984@open.quwanzhi.com:3000/fnvtk/{repo}.git` |
+| 说明 | 卡若AI 下次调用直接读本表推送；新建仓库需 SSH 到 NAS 执行 `mkdir -p /volume1/git/github/fnvtk/xxx.git && cd xxx.git && git init --bare` |
+
 ---
 
 ## 二、数据库（明文）
