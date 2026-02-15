@@ -2,7 +2,7 @@
 # ============================================
 # 卡若AI → Gitea 实时同步（open.quwanzhi.com:3000/fnvtk/karuo-ai）
 # 规则：超过 20MB 的文件不上传（与 Skill 目录规则一致）
-# 推送成功后建立记录：_共享模块/工作台/gitea_push_log.md
+# 推送成功后：1) 同步百科  2) 写入 gitea_push_log.md  3) 写入 代码管理.md
 # ============================================
 
 REPO_DIR="/Users/karuo/Documents/个人/卡若AI"
@@ -11,7 +11,10 @@ BRANCH="main"
 MAX_SIZE_MB=20
 LOG_FILE="$REPO_DIR/_共享模块/sync.log"
 PUSH_LOG="$REPO_DIR/_共享模块/工作台/gitea_push_log.md"
+CODE_MGMT="$REPO_DIR/_共享模块/工作台/代码管理.md"
+GITEA_URL="http://open.quwanzhi.com:3000/fnvtk/karuo-ai"
 GITIGNORE="$REPO_DIR/.gitignore"
+WIKI_SCRIPT="$REPO_DIR/_共享模块/scripts/sync_wiki_to_gitea.sh"
 
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >> "$LOG_FILE"; }
 
@@ -89,20 +92,41 @@ PUSH_RESULT=$?
 
 if [ $PUSH_RESULT -eq 0 ]; then
     log "推送成功 → gitea/$BRANCH"
+    WIKI_STATUS="未执行"
+    if [ -x "$WIKI_SCRIPT" ]; then
+        if bash "$WIKI_SCRIPT" >> "$LOG_FILE" 2>&1; then
+            WIKI_STATUS="成功"
+            log "百科同步成功"
+        else
+            WIKI_STATUS="失败(百科未初始化或网络)"
+            log "百科同步失败"
+        fi
+    fi
     # 建立推送记录
     mkdir -p "$(dirname "$PUSH_LOG")"
     if [ ! -f "$PUSH_LOG" ]; then
         echo -e "# Gitea 推送记录\n\n> 卡若AI 有更新即同步到 open.quwanzhi.com:3000/fnvtk/karuo-ai\n\n| 时间 | 提交说明 |\n|:---|:---|" > "$PUSH_LOG"
     fi
     echo "| $(date '+%Y-%m-%d %H:%M:%S') | $COMMIT_MSG |" >> "$PUSH_LOG"
+    # 代码管理：写入本次上传（代码+百科+链接）
+    if [ -f "$CODE_MGMT" ]; then
+        echo "| $(date '+%Y-%m-%d %H:%M:%S') | 成功 | $WIKI_STATUS | $COMMIT_MSG | [仓库]($GITEA_URL) [百科]($GITEA_URL/wiki) |" >> "$CODE_MGMT"
+    fi
 else
     log "推送失败（code=$PUSH_RESULT），尝试强制推送..."
     git push "$REMOTE" "$BRANCH" --force --quiet 2>&1
     if [ $? -eq 0 ]; then
         log "强制推送成功 → gitea/$BRANCH"
+        WIKI_STATUS="未执行"
+        if [ -x "$WIKI_SCRIPT" ]; then
+            if bash "$WIKI_SCRIPT" >> "$LOG_FILE" 2>&1; then WIKI_STATUS="成功"; else WIKI_STATUS="失败"; fi
+        fi
         mkdir -p "$(dirname "$PUSH_LOG")"
         [ ! -f "$PUSH_LOG" ] && echo -e "# Gitea 推送记录\n\n| 时间 | 提交说明 |\n|:---|:---|" > "$PUSH_LOG"
         echo "| $(date '+%Y-%m-%d %H:%M:%S') | [强制] $COMMIT_MSG |" >> "$PUSH_LOG"
+        if [ -f "$CODE_MGMT" ]; then
+            echo "| $(date '+%Y-%m-%d %H:%M:%S') | 成功(强制) | $WIKI_STATUS | $COMMIT_MSG | [仓库]($GITEA_URL) [百科]($GITEA_URL/wiki) |" >> "$CODE_MGMT"
+        fi
     else
         log "错误：强制推送也失败"
         exit 1

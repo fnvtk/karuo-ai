@@ -51,6 +51,7 @@
 - **同步到 Gitea 百科**：执行  
   `bash _共享模块/scripts/sync_wiki_to_gitea.sh`  
   会将上述 Markdown 推送到 Gitea 的「百科」页。
+- **若百科尚未初始化**：请先在 Gitea 仓库页打开「百科」→「创建首页」，保存一次后再运行上述脚本。
 
 ### 操作
 - 改完 `wiki_source/` 后运行上述脚本即可更新线上百科。
