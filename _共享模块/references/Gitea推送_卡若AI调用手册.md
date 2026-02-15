@@ -67,3 +67,16 @@ git push -u gitea main
 3. 取凭证：fnvtk / Zhiqun1984
 4. **新建仓库**：用 API `curl -u fnvtk:Zhiqun1984` 创建
 5. **推送**：`git push gitea main`（remote 用 HTTPS URL）
+
+---
+
+## 五、卡若AI 有更新就上传（实时同步 Gitea）
+
+| 项 | 说明 |
+|:---|:---|
+| **脚本** | `_共享模块/auto_sync_gitea.sh` |
+| **目标** | http://open.quwanzhi.com:3000/fnvtk/karuo-ai |
+| **规则** | 单文件 >20MB 不提交、不推送（与 Skill 目录规则一致） |
+| **建立记录** | 每次推送成功写入 `_共享模块/工作台/gitea_push_log.md` |
+
+**卡若AI 行为**：对话或任务对工作台产生文件变更后，在对话结束前执行一次 `bash _共享模块/auto_sync_gitea.sh`，使 Gitea 仓库保持最新状态。
