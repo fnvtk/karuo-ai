@@ -1,0 +1,209 @@
+"use client"
+
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "@/components/ui/select"
+
+import { useState } from "react"
+import { Card } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from "@/components/ui/table"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
+import { Plus, Pencil, Trash2, Link2 } from "lucide-react"
+import { toast } from "@/components/ui/use-toast"
+
+interface Channel {
+  id: string
+  name: string
+  type: "team" | "other"
+  link?: string
+}
+
+interface TrafficChannelSettingsProps {
+  formData: any
+  onChange: (data: any) => void
+  onNext: () => void
+  onPrev: () => void
+}
+
+function isValidUrl(string: string) {
+  try {
+    new URL(string)
+    return true
+  } catch (_) {
+    return false
+  }
+}
+
+export function TrafficChannelSettings({ formData, onChange, onNext, onPrev }: TrafficChannelSettingsProps) {
+  const [channels, setChannels] = useState<Channel[]>(formData.channels || [])
+  const [isAddChannelOpen, setIsAddChannelOpen] = useState(false)
+  const [editingChannel, setEditingChannel] = useState<Channel | null>(null)
+  const [newChannel, setNewChannel] = useState<Partial<Channel>>({
+    name: "",
+    type: "team",
+    link: "",
+  })
+
+  const handleAddChannel = () => {
+    if (!newChannel.name) return
+    if (newChannel.link && !isValidUrl(newChannel.link)) {
+      toast({
+        title: "错误",
+        description: "请输入有效的URL",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (editingChannel) {
+      setChannels(
+        channels.map((channel) => (channel.id === editingChannel.id ? { ...channel, ...newChannel } : channel)),
+      )
+    } else {
+      setChannels([
+        ...channels,
+        {
+          id: Date.now().toString(),
+          name: newChannel.name,
+          type: newChannel.type || "team",
+          link: newChannel.link,
+        } as Channel,
+      ])
+    }
+
+    setIsAddChannelOpen(false)
+    setNewChannel({ name: "", type: "team", link: "" })
+    setEditingChannel(null)
+    onChange({ ...formData, channels })
+  }
+
+  const handleEditChannel = (channel: Channel) => {
+    setEditingChannel(channel)
+    setNewChannel(channel)
+    setIsAddChannelOpen(true)
+  }
+
+  const handleDeleteChannel = (channelId: string) => {
+    setChannels(channels.filter((channel) => channel.id !== channelId))
+    onChange({ ...formData, channels: channels.filter((channel) => channel.id !== channelId) })
+  }
+
+  return (
+    <Card className="p-6">
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-semibold">流量通道设置</h2>
+          <Button onClick={() => setIsAddChannelOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            添加通道
+          </Button>
+        </div>
+
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>通道名称</TableHead>
+                <TableHead>类型</TableHead>
+                <TableHead>链接</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {channels.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center py-8 text-gray-500">
+                    暂无数据
+                  </TableCell>
+                </TableRow>
+              ) : (
+                channels.map((channel) => (
+                  <TableRow key={channel.id}>
+                    <TableCell>{channel.name}</TableCell>
+                    <TableCell>{channel.type === "team" ? "打粉团队" : "其他"}</TableCell>
+                    <TableCell>
+                      {channel.link && (
+                        <div className="flex items-center space-x-2">
+                          <Link2 className="h-4 w-4" />
+                          <span className="text-blue-600">{channel.link}</span>
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end space-x-2">
+                        <Button variant="ghost" size="sm" onClick={() => handleEditChannel(channel)}>
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" onClick={() => handleDeleteChannel(channel.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="flex justify-between">
+          <Button variant="outline" onClick={onPrev}>
+            上一步
+          </Button>
+          <Button onClick={onNext}>完成</Button>
+        </div>
+      </div>
+
+      <Dialog open={isAddChannelOpen} onOpenChange={setIsAddChannelOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingChannel ? "编辑通道" : "添加通道"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>通道名称</Label>
+              <Input
+                value={newChannel.name}
+                onChange={(e) => setNewChannel({ ...newChannel, name: e.target.value })}
+                placeholder="请输入通道名称"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>通道类型</Label>
+              <Select
+                value={newChannel.type}
+                onValueChange={(value) => setNewChannel({ ...newChannel, type: value as "team" | "other" })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="选择通道类型" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="team">打粉团队</SelectItem>
+                  <SelectItem value="other">其他</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>通道链接（选填）</Label>
+              <Input
+                value={newChannel.link}
+                onChange={(e) => setNewChannel({ ...newChannel, link: e.target.value })}
+                placeholder="请输入通道链接"
+              />
+              {newChannel.link && !isValidUrl(newChannel.link) && (
+                <p className="text-sm text-red-500">请输入有效的URL</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAddChannelOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={handleAddChannel}>{editingChannel ? "保存" : "添加"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  )
+}
