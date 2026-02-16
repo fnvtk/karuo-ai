@@ -18,7 +18,7 @@ from pathlib import Path
 
 # 路径配置
 KARUO_AI_ROOT = Path("/Users/karuo/Documents/个人/卡若AI")
-MEMORY_DIR = KARUO_AI_ROOT / "_共享模块" / "memory" / "structured"
+MEMORY_DIR = KARUO_AI_ROOT / "02_卡人（水）" / "水溪_整理归档" / "记忆系统" / "structured"
 EXPERIENCE_DIR = KARUO_AI_ROOT / "_经验库" / "待沉淀"
 AGENT_TRANSCRIPTS = Path.home() / ".cursor" / "projects"
 

@@ -109,10 +109,10 @@ git push -u gitea main
 |:---|:---|
 | **工单** | 模板在 `.gitea/ISSUE_TEMPLATE/`，新建工单可选：功能建议、Bug 反馈、任务报备 |
 | **合并请求** | 模板 `.gitea/pull_request_template.md`，合并时带出说明与自检项 |
-| **百科** | 源在 `_共享模块/wiki_source/`，含 Home、快速开始、五行角色、技能索引、Gitea使用、**代码管理与脚本**；同步脚本 `sync_wiki_to_gitea.sh` |
-| **版本发布** | 脚本 `_共享模块/scripts/create_gitea_release.sh` 可打 tag 并建 Release |
+| **百科** | 源在 `01_卡资（金）/金仓_存储备份/Gitea管理/百科源文件/`，含 Home、快速开始、五行角色、技能索引、Gitea使用、**代码管理与脚本**；同步脚本 `sync_wiki_to_gitea.sh` |
+| **版本发布** | 脚本 `01_卡资（金）/金仓_存储备份/Gitea管理/脚本/create_gitea_release.sh` 可打 tag 并建 Release |
 | **项目** | 在 Gitea 页「项目」新建看板，工单拖入待办/进行中/已完成 |
-| **代码管理** | 每次上传写入 `_共享模块/工作台/代码管理.md`（代码推送+百科同步结果+链接） |
+| **代码管理** | 每次上传写入 `运营中枢/工作台/代码管理.md`（代码推送+百科同步结果+链接） |
 
 ---
 
@@ -120,7 +120,7 @@ git push -u gitea main
 
 | 项目 | 脚本 | 说明 |
 |------|------|------|
-| 卡若AI | `bash _共享模块/auto_sync_gitea.sh` | 代码+百科+代码管理 |
+| 卡若AI | `bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/自动同步.sh` | 代码+百科+代码管理 |
 | 分布式算力矩阵 | `bash 01_卡资（金）/_团队成员/金仓/Gitea管理/scripts/auto_sync_suanli_juzhen.sh` | 代码 |
 
 **Webhook 说明**：Webhook 是 Gitea→外部（push 后通知飞书/触发部署），**不能**实现本地→Gitea。本地→Gitea 用上述脚本，可定时执行或对话结束时执行。详见 `references/Webhook与本地协同方案.md`。
@@ -129,13 +129,13 @@ git push -u gitea main
 
 ## 十（续）、卡若AI 上传时同步的板块
 
-执行 `bash _共享模块/auto_sync_gitea.sh` 时会：
+执行 `bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/自动同步.sh` 时会：
 
 1. **代码**：排除 >20MB → 提交 → 推送到 Gitea 主仓
 2. **百科**：自动执行 `sync_wiki_to_gitea.sh`，将 wiki_source 推送到仓库「百科」页
 3. **代码管理**：写入 `gitea_push_log.md` 与 `代码管理.md`（时间、代码/百科结果、提交说明、仓库/百科链接）
 
-若百科尚未初始化（首次为空）：可先到 Gitea 仓库「百科」→「创建第一个页面」标题填 **Home** 保存一次，再执行上传；或运行 `bash _共享模块/scripts/init_wiki_gitea.sh` 尝试 API 初始化。
+若百科尚未初始化（首次为空）：可先到 Gitea 仓库「百科」→「创建第一个页面」标题填 **Home** 保存一次，再执行上传；或运行 `bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/init_wiki_gitea.sh` 尝试 API 初始化。
 
 ---
 
@@ -144,7 +144,7 @@ git push -u gitea main
 | 文档 | 路径 | 说明 |
 |------|------|------|
 | Webhook与本地协同 | `Gitea管理/references/Webhook与本地协同方案.md` | 本地→Gitea、Webhook 用途、定时 sync |
-| Gitea 推送手册 | `_共享模块/references/Gitea推送_卡若AI调用手册.md` | 卡若AI 调用、有更新就上传 |
-| 工单/合并请求/Wiki/发布 | `_共享模块/references/Gitea_工单与合并请求使用说明.md` | 各功能使用说明 |
-| 代码管理 | `_共享模块/工作台/代码管理.md` | 每次上传记录 |
-| 账号与 API | `_共享模块/工作台/00_账号与API索引.md` § Gitea | 凭证 |
+| Gitea 推送手册 | `运营中枢/references/Gitea推送_卡若AI调用手册.md` | 卡若AI 调用、有更新就上传 |
+| 工单/合并请求/Wiki/发布 | `运营中枢/references/Gitea_工单与合并请求使用说明.md` | 各功能使用说明 |
+| 代码管理 | `运营中枢/工作台/代码管理.md` | 每次上传记录 |
+| 账号与 API | `运营中枢/工作台/00_账号与API索引.md` § Gitea | 凭证 |

@@ -3,7 +3,7 @@
 # 若 API 不支持或失败，请到 Gitea 仓库「百科」→「创建第一个页面」标题填 Home 保存一次
 
 REPO_DIR="/Users/karuo/Documents/个人/卡若AI"
-WIKI_SRC="$REPO_DIR/_共享模块/wiki_source"
+WIKI_SRC="$REPO_DIR/01_卡资（金）/金仓_存储备份/Gitea管理/百科源文件"
 API="http://open.quwanzhi.com:3000/api/v1"
 AUTH="fnvtk:Zhiqun1984"
 OWNER="fnvtk"
@@ -33,5 +33,5 @@ echo "百科尚未初始化。请到 Gitea 仓库页操作一次："
 echo "  1. 打开 http://open.quwanzhi.com:3000/fnvtk/karuo-ai/wiki"
 echo "  2. 点击「创建第一个页面」"
 echo "  3. 标题填 Home，内容随意，保存"
-echo "  4. 再运行: bash _共享模块/scripts/sync_wiki_to_gitea.sh"
+echo "  4. 再运行: bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/sync_wiki_to_gitea.sh"
 exit 1

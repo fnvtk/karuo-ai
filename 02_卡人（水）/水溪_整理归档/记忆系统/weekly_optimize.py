@@ -19,7 +19,7 @@ from pathlib import Path
 # 路径配置
 KARUO_AI_ROOT = Path("/Users/karuo/Documents/个人/卡若AI")
 EXPERIENCE_DIR = KARUO_AI_ROOT / "_经验库"
-MEMORY_DIR = KARUO_AI_ROOT / "_共享模块" / "memory" / "structured"
+MEMORY_DIR = KARUO_AI_ROOT / "02_卡人（水）" / "水溪_整理归档" / "记忆系统" / "structured"
 SKILL_TEMPLATE_KEYS = ["name", "version", "owner", "triggers"]
 
 def audit_skills():
@@ -158,7 +158,7 @@ def generate_report(issues):
     if warnings:
         content += f"- **改进**：{len(warnings)} 个 SKILL 缺少标准章节，建议按模板补齐\n"
     
-    content += "\n> 模板参考：`_共享模块/references/SKILL模板.md`\n"
+    content += "\n> 模板参考：`运营中枢/参考资料/SKILL模板.md`\n"
     
     report_path.write_text(content, encoding="utf-8")
     print(f"[weekly] 报告已生成: {report_path}")

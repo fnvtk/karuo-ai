@@ -53,7 +53,7 @@ skill-name/
 
 ### 卡若AI 已对齐的部分
 
-- SKILL.md 标准模板已创建（`_共享模块/references/SKILL模板.md`）
+- SKILL.md 标准模板已创建（`运营中枢/参考资料/SKILL模板.md`）
 - frontmatter 规范已统一
 - 路径引用已标准化
 

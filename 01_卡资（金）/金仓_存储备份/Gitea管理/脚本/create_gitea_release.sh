@@ -1,7 +1,7 @@
 #!/bin/bash
 # 在 Gitea 创建版本发布：打 tag 并可选创建 Release 说明
-# 使用：bash _共享模块/scripts/create_gitea_release.sh [版本号] [说明]
-# 例：  bash _共享模块/scripts/create_gitea_release.sh v1.0.0 "首次结构化发布"
+# 使用：bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/create_gitea_release.sh [版本号] [说明]
+# 例：  bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/create_gitea_release.sh v1.0.0 "首次结构化发布"
 
 set -e
 REPO_DIR="/Users/karuo/Documents/个人/卡若AI"

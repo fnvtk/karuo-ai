@@ -3,7 +3,7 @@
 # 当 API/HTTPS 无法初始化时用此脚本。需能 SSH 到 Gitea 所在主机。
 
 REPO_DIR="/Users/karuo/Documents/个人/卡若AI"
-WIKI_SRC="$REPO_DIR/_共享模块/wiki_source"
+WIKI_SRC="$REPO_DIR/01_卡资（金）/金仓_存储备份/Gitea管理/百科源文件"
 SSH_HOST="open.quwanzhi.com"
 SSH_PORT="22201"
 SSH_USER="fnvtk"

@@ -5,15 +5,15 @@
 
 使用方法：
     # 方式1：直接导入
-    from _共享模块.local_llm import summarize, classify, generate_questions
+    from 运营中枢.local_llm import summarize, classify, generate_questions
     
     # 方式2：添加路径后导入
     import sys
     sys.path.append("/Users/karuo/Documents/个人/卡若AI")
-    from _共享模块.local_llm import *
+    from 运营中枢.local_llm import *
 
 快速检查：
-    from _共享模块.local_llm import check_service
+    from 运营中枢.local_llm import check_service
     print(check_service())
 
 作者: 卡火（火）

@@ -7,7 +7,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # 卡若AI 根目录（脚本在 01_卡资/.../scripts/ 下）
 ROOT="${ROOT:-$(cd "$SCRIPT_DIR/../../../../.." && pwd)}"
-INDEX="${1:-$ROOT/_共享模块/工作台/00_账号与API索引.md}"
+INDEX="${1:-$ROOT/运营中枢/工作台/00_账号与API索引.md}"
 NAS_USER="${NAS_USER:-fnvtk}"
 NAS_HOST="${NAS_HOST:-192.168.1.201}"
 NAS_DIR="/volume1/docker/gitea"

@@ -9,10 +9,10 @@
 | 原则 | 说明 |
 |:---|:---|
 | **命令行 + API + TOKEN 优先** | 有飞书 API、有 TOKEN 的任务，一律先用命令行处理，不额外打开网页操作 |
-| **先查已有经验** | 执行前查 `_共享模块/references/飞书任务_命令行与API优先_经验总结.md` 与 `_共享模块/工作台/00_账号与API索引.md`（飞书 Token） |
+| **先查已有经验** | 执行前查 `运营中枢/参考资料/飞书任务_命令行与API优先_经验总结.md` 与 `运营中枢/工作台/00_账号与API索引.md`（飞书 Token） |
 | **统一用命令行** | 妙记拉取、批量下载、产研日报等均提供一键命令，复用已完成过的 TOKEN/会议流程 |
 
-飞书 TOKEN 与妙记/会议已完成流程见：`_共享模块/references/飞书任务_命令行与API优先_经验总结.md`
+飞书 TOKEN 与妙记/会议已完成流程见：`运营中枢/参考资料/飞书任务_命令行与API优先_经验总结.md`
 
 ---
 
@@ -386,7 +386,7 @@ playwright install chromium
 # 导入本地模型SDK
 import sys
 sys.path.append("/Users/karuo/Documents/个人/卡若AI")
-from _共享模块.local_llm import summarize, extract_info, check_service
+from 运营中枢.local_llm import summarize, extract_info, check_service
 
 # 检查本地模型服务
 status = check_service()
@@ -419,7 +419,7 @@ highlights = extract_info(meeting_text, "核心观点和金句")
 
 ```python
 # parse_chatlog.py 中添加
-from _共享模块.local_llm import summarize, extract_info, check_service
+from 运营中枢.local_llm import summarize, extract_info, check_service
 
 def smart_extract(text):
     """智能提取：本地优先"""

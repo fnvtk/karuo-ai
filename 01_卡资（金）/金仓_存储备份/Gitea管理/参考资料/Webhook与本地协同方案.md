@@ -20,17 +20,17 @@
 
 | 项目 | 脚本 | 说明 |
 |------|------|------|
-| 卡若AI | `_共享模块/auto_sync_gitea.sh` | 代码+百科+代码管理 |
+| 卡若AI | `01_卡资（金）/金仓_存储备份/Gitea管理/脚本/自动同步.sh` | 代码+百科+代码管理；launchd：`com.karuo.ai.sync-gitea.plist` 每5分钟 |
 | 分布式算力矩阵 | `Gitea管理/scripts/auto_sync_suanli_juzhen.sh` | 代码 |
 
 ### 2.2 定时执行（可选）
 
 ```bash
-# 每 5 分钟同步 卡若AI
-*/5 * * * * /bin/bash /Users/karuo/Documents/个人/卡若AI/_共享模块/auto_sync_gitea.sh
+# 每 5 分钟同步 卡若AI（推荐用 launchd：com.karuo.ai.sync-gitea.plist）
+*/5 * * * * /bin/bash "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/Gitea管理/脚本/自动同步.sh"
 
 # 每 10 分钟同步 分布式算力矩阵
-*/10 * * * * /bin/bash "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金仓/Gitea管理/scripts/auto_sync_suanli_juzhen.sh"
+*/10 * * * * /bin/bash "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/Gitea管理/脚本/auto_sync_suanli_juzhen.sh"
 ```
 
 `crontab -e` 添加上述行，或使用 macOS launchd。

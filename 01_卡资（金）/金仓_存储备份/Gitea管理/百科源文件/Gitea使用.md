@@ -17,8 +17,8 @@
 ## 版本发布（Releases）
 
 - 在「版本发布」页创建 Tag，可附说明与附件。
-- 脚本：`_共享模块/scripts/create_gitea_release.sh`（可选，用于打 tag + 创建 Release）。  
-  例：`bash _共享模块/scripts/create_gitea_release.sh v1.0.0 "首次结构化发布"`
+- 脚本：`01_卡资（金）/金仓_存储备份/Gitea管理/脚本/create_gitea_release.sh`（可选，用于打 tag + 创建 Release）。  
+  例：`bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/create_gitea_release.sh v1.0.0 "首次结构化发布"`
 
 ## 项目（Projects）
 

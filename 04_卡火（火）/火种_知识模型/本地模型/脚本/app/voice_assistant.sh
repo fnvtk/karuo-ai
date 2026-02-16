@@ -21,7 +21,7 @@ echo -e "${NC}"
 # 确保服务运行
 if ! curl -s "$API_URL/api/status" > /dev/null 2>&1; then
     echo -e "${YELLOW}正在启动卡若AI服务...${NC}"
-    cd "/Users/karuo/Documents/个人/卡若AI/_共享模块/local_llm/app"
+    cd "/Users/karuo/Documents/个人/卡若AI/04_卡火（火）/火种_知识模型/本地模型/脚本/app"
     python3 server.py &
     sleep 3
 fi

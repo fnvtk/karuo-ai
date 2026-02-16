@@ -2,7 +2,7 @@
 """
 卡若AI 每日对话收集（每天仅执行一次）
 - 扫描 ~/.cursor/projects/*/agent-transcripts/*.txt
-- 用首条 user_query 生成中文名称，复制到 _共享模块/对话文档库/YYYY-MM-DD/ 按工作台归类
+- 用首条 user_query 生成中文名称，复制到 02_卡人（水）/水溪_整理归档/对话归档/YYYY-MM-DD/ 按工作台归类
 - 按关键词复制到对应 Skill 的 对话记录/
 - 本日汇总：中文名称 | 所属工作台 | 对话文件（供记忆与内容规划）
 - 用 last_chat_collect_date.txt 记录日期，同一天不重复执行

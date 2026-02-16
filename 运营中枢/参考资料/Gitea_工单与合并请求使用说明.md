@@ -1,7 +1,7 @@
 # Gitea 工单、合并请求、百科、版本发布、项目 — 使用说明
 
 > 仓库：http://open.quwanzhi.com:3000/fnvtk/karuo-ai  
-> 本文路径：`_共享模块/references/Gitea_工单与合并请求使用说明.md`
+> 本文路径：`运营中枢/references/Gitea_工单与合并请求使用说明.md`
 
 ---
 
@@ -47,9 +47,9 @@
 - 仓库的说明文档，独立于代码目录，便于在 Gitea 页直接阅读。
 
 ### 内容来源与同步
-- **源目录**：`_共享模块/wiki_source/`（Home.md、快速开始、五行角色、技能索引、Gitea使用 等）
+- **源目录**：`01_卡资（金）/金仓_存储备份/Gitea管理/百科源文件/`（Home.md、快速开始、五行角色、技能索引、Gitea使用 等）
 - **同步到 Gitea 百科**：执行  
-  `bash _共享模块/scripts/sync_wiki_to_gitea.sh`  
+  `bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/sync_wiki_to_gitea.sh`  
   会将上述 Markdown 推送到 Gitea 的「百科」页。
 - **若百科尚未初始化**：请先在 Gitea 仓库页打开「百科」→「创建首页」，保存一次后再运行上述脚本。
 
@@ -67,8 +67,8 @@
 
 ### 脚本（可选）
 ```bash
-bash _共享模块/scripts/create_gitea_release.sh [版本号] [说明]
-# 例：bash _共享模块/scripts/create_gitea_release.sh v1.0.0 "首次结构化发布"
+bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/create_gitea_release.sh [版本号] [说明]
+# 例：bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/create_gitea_release.sh v1.0.0 "首次结构化发布"
 ```
 - 会在当前仓库打 tag 并推送到 Gitea，并调用 API 创建/更新 Release。
 - 也可在 Gitea 页「版本发布」中手动新建发布。

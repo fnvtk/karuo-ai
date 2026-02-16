@@ -4,7 +4,7 @@
 所有助手都可以通过此模块调用记忆管理功能
 
 使用方法：
-    from _共享模块.memory import MemoryManager
+    from 运营中枢.memory import MemoryManager
     
     mm = MemoryManager()
     mm.save_content("完成了本地模型集成", category="项目")

@@ -3,7 +3,7 @@
 智能任务路由模块 - 根据任务难度自动选择本地模型或高级模型
 
 用法：
-    from _共享模块.task_router import evaluate_task, should_use_local_model
+    # 本模块为任务路由实现，其他模块可通过 运营中枢.task_router 导入
     
     # 评估任务难度
     score, reason = evaluate_task("帮我总结这段文字")

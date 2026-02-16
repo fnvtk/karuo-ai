@@ -1,11 +1,11 @@
 #!/bin/bash
-# 将 _共享模块/wiki_source/ 同步到 Gitea 百科（karuo-ai.wiki）
+# 将 01_卡资（金）/金仓_存储备份/Gitea管理/百科源文件/ 同步到 Gitea 百科（karuo-ai.wiki）
 # HTTPS 失败时自动用 SSH 初始化并同步。
 
 set -e
 REPO_DIR="/Users/karuo/Documents/个人/卡若AI"
-WIKI_SRC="$REPO_DIR/_共享模块/wiki_source"
-WIKI_CLONE="$REPO_DIR/_共享模块/.wiki_clone"
+WIKI_SRC="$REPO_DIR/01_卡资（金）/金仓_存储备份/Gitea管理/百科源文件"
+WIKI_CLONE="$REPO_DIR/01_卡资（金）/金仓_存储备份/Gitea管理/.wiki_clone"
 WIKI_HTTPS="http://fnvtk:Zhiqun1984@open.quwanzhi.com:3000/fnvtk/karuo-ai.wiki.git"
 WIKI_SSH="ssh://fnvtk@open.quwanzhi.com:22201/volume1/git/github/fnvtk/karuo-ai.wiki.git"
 
@@ -16,7 +16,7 @@ if [ ! -d "$WIKI_CLONE/.git" ]; then
   rm -rf "$WIKI_CLONE" 2>/dev/null || true
   if ! git clone "$WIKI_HTTPS" "$WIKI_CLONE" 2>/dev/null; then
     echo "HTTPS 克隆失败，尝试 SSH 初始化百科..."
-    bash "$REPO_DIR/_共享模块/scripts/wiki_init_ssh.sh" 2>/dev/null || true
+    bash "$REPO_DIR/01_卡资（金）/金仓_存储备份/Gitea管理/脚本/wiki_init_ssh.sh" 2>/dev/null || true
     if ! git clone "$WIKI_SSH" "$WIKI_CLONE" 2>/dev/null; then
       if ! git clone "$WIKI_HTTPS" "$WIKI_CLONE" 2>/dev/null; then
         echo "请到 Gitea 仓库「百科」→「创建第一个页面」保存一次，或检查 SSH：ssh -p 22201 fnvtk@open.quwanzhi.com"

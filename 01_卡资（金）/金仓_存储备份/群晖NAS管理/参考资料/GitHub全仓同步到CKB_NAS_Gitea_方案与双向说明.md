@@ -34,7 +34,7 @@ bash "01_卡资（金）/_团队成员/金仓/群晖NAS管理/scripts/deploy_git
 ## 三、前置条件
 
 - **CKB NAS 上 Gitea 已部署**：见 `references/CKB_NAS_Gitea_类GitHub访问.md`，地址固定 `http://open.quwanzhi.com:3000`。
-- **Token**：使用一键部署时，从 `_共享模块/工作台/00_账号与API索引.md` 自动读取 GitHub Token 与 Gitea 密码，无需单独配置。
+- **Token**：使用一键部署时，从 `运营中枢/工作台/00_账号与API索引.md` 自动读取 GitHub Token 与 Gitea 密码，无需单独配置。
 
 ---
 

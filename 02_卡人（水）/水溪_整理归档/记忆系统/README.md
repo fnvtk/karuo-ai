@@ -10,7 +10,7 @@
 |:---|:---|:---|
 | **短期记忆（STM）** | Cursor 对话上下文 | 由 Cursor 自动管理，单次对话有效 |
 | **长期记忆（LTM）** | `/Users/karuo/Documents/个人/记忆.md` + `记忆/` | 卡若的长期偏好、规则、日期记录、人脉、原则、方法论 |
-| **结构化记忆** | `_共享模块/memory/structured/` | 技能注册表、Agent 成果追踪、每日摘要 |
+| **结构化记忆** | `02_卡人（水）/水溪_整理归档/记忆系统/structured/` | 技能注册表、Agent 成果追踪、每日摘要 |
 
 ---
 
@@ -36,7 +36,7 @@
 
 ```bash
 # 每日收集
-cd /Users/karuo/Documents/个人/卡若AI/_共享模块/memory
+cd /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水溪_整理归档/记忆系统
 python collect_daily.py
 
 # 每周优化

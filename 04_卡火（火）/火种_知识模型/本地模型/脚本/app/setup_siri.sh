@@ -8,7 +8,7 @@ echo ""
 
 # 创建快捷指令目录
 SHORTCUT_NAME="问卡若"
-APP_PATH="/Users/karuo/Documents/个人/卡若AI/_共享模块/local_llm/app"
+APP_PATH="/Users/karuo/Documents/个人/卡若AI/04_卡火（火）/火种_知识模型/本地模型/脚本/app"
 
 # 方法1：创建可被Siri调用的命令行别名
 echo "1️⃣  创建命令行工具..."
@@ -28,7 +28,7 @@ echo "    步骤5: 命名为「问卡若」并添加到Siri"
 echo ""
 
 # 复制脚本到剪贴板
-SCRIPT_CONTENT='/Users/karuo/Documents/个人/卡若AI/_共享模块/local_llm/app/ask_karuo.sh "$1"'
+SCRIPT_CONTENT='/Users/karuo/Documents/个人/卡若AI/04_卡火（火）/火种_知识模型/本地模型/脚本/app/ask_karuo.sh "$1"'
 echo "$SCRIPT_CONTENT" | pbcopy
 
 echo "📋 脚本已复制到剪贴板！"

@@ -6,7 +6,7 @@ owner: 金盾
 group: 金
 ---
 
-> **执行规则**：见 `_共享模块/skill_router/SKILL_RULES.md`。执行前必须：思考→拆解→读取本 Skill 与 references→按步执行→校验 v0 项目正确→**执行完成后将结果反馈给卡若**。
+> **执行规则**：见 `运营中枢/技能路由/SKILL_RULES.md`。执行前必须：思考→拆解→读取本 Skill 与 references→按步执行→校验 v0 项目正确→**执行完成后将结果反馈给卡若**。
 
 ## 一、技能概述
 
