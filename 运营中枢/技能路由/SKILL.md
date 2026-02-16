@@ -3,6 +3,7 @@ name: 卡若AI技能与路由
 description: 五人负责人人设、分配路由、技能路由表。人设与分配写在本 SKILL 内，卡若AI 按此分配任务。
 triggers: 卡若AI/技能/路由/分配/谁来做
 owner: 卡若
+group: 总管
 version: "4.0"
 updated: "2026-02-16"
 ---

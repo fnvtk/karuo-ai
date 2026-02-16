@@ -1,3 +1,13 @@
+---
+name: 网站逆向分析
+description: 网站API逆向分析与SDK自动生成
+triggers: 逆向分析、模拟登录、API抓取、SDK生成
+owner: 木根
+group: 木
+version: "3.0"
+updated: "2026-02-16"
+---
+
 # 网站逆向分析技能 v3.0
 
 > 📅 创建日期：2026-01-21

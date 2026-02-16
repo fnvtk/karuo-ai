@@ -1,3 +1,13 @@
+---
+name: iPhone管理
+description: iPhone连接、网络共享与自动备份
+triggers: iPhone备份、iPhone连接、USB共享、热点
+owner: 金仓
+group: 金
+version: "1.0"
+updated: "2026-02-16"
+---
+
 # iPhone 管理
 
 ## 功能概述

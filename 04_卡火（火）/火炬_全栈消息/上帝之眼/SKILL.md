@@ -2,6 +2,7 @@
 name: 上帝之眼
 version: "2.0"
 owner: 火眸
+group: 火
 triggers: [量化, 港股, 数据采集, 东方财富, eastmoney, emtl, BigQuant, 量化交易, 股票数据]
 updated: "2026-02-13"
 ---

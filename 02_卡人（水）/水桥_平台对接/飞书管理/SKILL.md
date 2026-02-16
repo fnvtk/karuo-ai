@@ -1,3 +1,13 @@
+---
+name: 飞书管理
+description: 飞书日志/文档自动写入与知识库管理
+triggers: 飞书日志、写入飞书、飞书知识库
+owner: 水桥
+group: 水
+version: "1.0"
+updated: "2026-02-16"
+---
+
 # 飞书日志写入 Skill
 
 > 搞定了，清清爽爽。 —— 卡人

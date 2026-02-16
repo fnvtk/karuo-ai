@@ -3,6 +3,7 @@ name: 卡木（木）负责人管理技能
 description: 卡木的人设、角色总览、所管成员与技能分配。本目录与下属成员 SKILL 结构一致，负责人也以 SKILL 管理角色。
 triggers: 卡木/木组/产品内容/视频/逆向/项目/模板
 owner: 卡若
+group: 木
 version: "4.0"
 updated: "2026-02-16"
 ---

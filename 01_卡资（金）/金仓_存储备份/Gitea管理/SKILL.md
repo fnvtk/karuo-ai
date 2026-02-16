@@ -3,6 +3,7 @@ name: Gitea管理
 description: CKB NAS 自建 Gitea 的仓库创建、推送、API、挂载管理。触发词：Gitea、推送到Gitea、创建仓库、Git推送、CKB Git、界面不显示。统一用 HTTPS+API 创建，确保仓库在 Gitea 界面可见。
 triggers: Gitea、Gitea管理、推送到Gitea、创建Gitea仓库、Git推送CKB、CKB_NAS_Git、仓库界面不显示
 owner: 金仓
+group: 金
 version: "1.1"
 updated: "2026-02-15"
 ---

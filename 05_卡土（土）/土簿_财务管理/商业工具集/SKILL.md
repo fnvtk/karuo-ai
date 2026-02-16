@@ -2,6 +2,7 @@
 name: 商业工具集
 version: "1.0"
 owner: 土簿
+group: 土
 triggers: [商业分析, 竞品分析, MCP商业, 商业工具, ROI分析, 市场调研]
 updated: "2026-02-13"
 ---

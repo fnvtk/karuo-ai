@@ -1,6 +1,11 @@
 ---
 name: 局域网控制
-description: 局域网Android设备管理与控制。触发词：手机控制、设备投屏、ADB连接、应用安装、设备扫描、屏幕镜像、远程控制、应用管理、系统诊断、手机投屏。基于ADB和scrcpy实现设备连接、屏幕镜像、应用管理、文件传输、系统诊断等功能。
+description: 局域网设备发现与Android远程管理
+triggers: 设备管理、局域网扫描、ADB、投屏、远程控制
+owner: 金仓
+group: 金
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 局域网控制

@@ -2,6 +2,7 @@
 name: 手机流量自动操作
 version: "1.0"
 owner: 土簿
+group: 土
 triggers: [手机自动化, AutoGLM, 手机刷量, 手机流量, 自动操作手机]
 updated: "2026-02-13"
 ---

@@ -1,6 +1,11 @@
 ---
 name: 群晖NAS管理
-description: 群晖NAS矩阵运维与宝塔中控管理。触发词：NAS管理、群晖管理、Synology、NAS状态、Docker容器、宝塔中控、MongoDB连接、QuickConnect、虚拟机、Windows VM、macOS VM、远程桌面。涵盖DSM管理、Docker容器、虚拟机管理、数据库运维、文件同步、宝塔中控等全栈能力。
+description: 群晖NAS矩阵运维与Docker容器管理
+triggers: NAS、群晖、Docker、Synology、QuickConnect
+owner: 金仓
+group: 金
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 群晖NAS管理

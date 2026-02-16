@@ -1,6 +1,11 @@
 ---
 name: 服务器管理
-description: 宝塔服务器统一管理与自动化部署。触发词：服务器、宝塔、部署、上线、发布、Node项目、SSL证书、HTTPS、DNS解析、域名配置、端口、PM2、Nginx、MySQL数据库、服务器状态。涵盖多服务器资产管理、Node.js项目一键部署、SSL证书管理、DNS配置、系统诊断等运维能力。
+description: 宝塔服务器统一管理与自动化部署
+triggers: 服务器、宝塔、部署、SSL、HTTPS、Nginx、PM2
+owner: 金仓
+group: 金
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 服务器管理

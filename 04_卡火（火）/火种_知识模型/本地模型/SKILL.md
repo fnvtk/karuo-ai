@@ -1,3 +1,13 @@
+---
+name: 本地模型
+description: Ollama/Qwen本地AI模型部署与调用
+triggers: ollama、qwen、本地AI、本地模型
+owner: 火种
+group: 火
+version: "1.0"
+updated: "2026-02-16"
+---
+
 # 本地模型管理
 
 > **管理员**：卡火（火）  

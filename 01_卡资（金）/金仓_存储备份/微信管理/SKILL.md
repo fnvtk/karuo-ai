@@ -1,8 +1,11 @@
 ---
 name: 微信管理
-description: macOS 微信数据分析与自动化管理。触发词：微信分析、聊天记录、好友分析、社群分析、朋友圈、微信报告、RFM分析、微信自动化。提供聊天记录导出、好友RFM价值评估、社群内容分析、朋友圈互动等功能。
-version: 1.0
-updated: 2026-01-22
+description: macOS微信数据分析与RFM价值评估
+triggers: 微信分析、聊天记录、好友分析、RFM、社群分析
+owner: 金仓
+group: 金
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 微信管理 v1.0

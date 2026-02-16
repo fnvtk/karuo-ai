@@ -3,6 +3,7 @@ name: 智能追问
 description: Human 3.0 + 苏格拉底式需求澄清。触发词：追问模式、需求澄清、TDD、测试驱动、superpowers、明确需求、需求分析、CRITIC。开启多轮结构化追问，挖掘本质需求，生成TDD方案。
 version: 2.0
 updated: 2026-01-20
+group: 火
 ---
 
 # 智能追问 v2.0

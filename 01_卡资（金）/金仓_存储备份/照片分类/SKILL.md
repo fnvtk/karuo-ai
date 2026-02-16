@@ -1,6 +1,11 @@
 ---
 name: 照片分类
-description: 照片整理与相册分类。触发词：照片整理、相册分类、照片归档、整理照片、照片库。基于 macOS 照片 App 与 Python 脚本，支持自动分类、创建相册、批量导入导出。
+description: 照片去重、按时间地点自动分类
+triggers: 照片整理、相册分类、照片归档、照片库
+owner: 金仓
+group: 金
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 照片分类

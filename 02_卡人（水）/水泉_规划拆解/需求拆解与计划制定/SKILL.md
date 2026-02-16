@@ -3,6 +3,7 @@ name: 需求拆解与计划制定
 description: 深度思考需求，拆解成可执行计划，直接执行不生成文档。触发词：需求拆解、拆解计划、深度思考、制定计划、需求分析、task breakdown、planning、thinking first、执行计划。结合CRITIC思考、任务规划，快速思考后在对话中展示计划，立即开始执行，不生成MD文档，不提问确认，持续执行直到完成。
 version: 2.1
 updated: 2026-01-27
+group: 水
 ---
 
 # 需求拆解与计划制定

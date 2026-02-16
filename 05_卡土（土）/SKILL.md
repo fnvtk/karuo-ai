@@ -3,6 +3,7 @@ name: 卡土（土）负责人管理技能
 description: 卡土的人设、角色总览、所管成员与技能分配。本目录与下属成员 SKILL 结构一致，负责人也以 SKILL 管理角色。
 triggers: 卡土/土组/商业/技能工厂/流量/招商/财务
 owner: 卡若
+group: 土
 version: "4.0"
 updated: "2026-02-16"
 ---

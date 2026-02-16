@@ -1,6 +1,7 @@
 ---
 name: iCloud管理
 description: iCloud 同步优化和问题修复。触发词：iCloud优化、排除同步、恢复iCloud、同步卡住、iCloud占用、排除node_modules、iCloud下载、nosync。包含排除开发目录、恢复同步、实时监控、批量管理。
+group: 金
 ---
 
 # iCloud 管理

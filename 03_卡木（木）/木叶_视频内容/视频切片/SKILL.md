@@ -1,6 +1,7 @@
 ---
 name: 视频切片
 description: Soul派对视频切片处理。触发词：视频切片、Soul切片、派对切片、处理视频。
+group: 木
 ---
 
 # 视频切片
