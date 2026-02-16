@@ -9,17 +9,19 @@ AUTH="fnvtk:Zhiqun1984"
 OWNER="fnvtk"
 REPO="karuo-ai"
 
-# 若已有 Home 内容则用其 base64，否则用简单占位（macOS 兼容）
-if [ -f "$WIKI_SRC/Home.md" ]; then
-  CONTENT_B64=$(base64 < "$WIKI_SRC/Home.md" | tr -d '\n')
-else
-  CONTENT_B64=$(echo -n "# Home" | base64 | tr -d '\n')
-fi
+# Gitea wiki 创建第一页：POST /repos/{owner}/{repo}/wiki/new（请求体 title + content）
+CONTENT_JSON=$(python3 -c "
+import json
+path = '''$WIKI_SRC/Home.md'''
+try:
+    with open(path) as f: raw = f.read()
+except Exception: raw = '# 卡若AI 百科'
+print(json.dumps({'title':'Home','content':raw}))
+" 2>/dev/null) || CONTENT_JSON='{"title":"Home","content":"# 卡若AI 百科"}'
 
-# 尝试 Gitea 1.19+ Wiki API（部分版本支持）
-HTTP=$(curl -s -o /dev/null -w "%{http_code}" -u "$AUTH" -X POST "$API/repos/$OWNER/$REPO/wiki/page" \
+HTTP=$(curl -s -o /dev/null -w "%{http_code}" -u "$AUTH" -X POST "$API/repos/$OWNER/$REPO/wiki/new" \
   -H "Content-Type: application/json" \
-  -d "{\"title\":\"Home\",\"content_base64\":\"$CONTENT_B64\",\"message\":\"init\"}" 2>/dev/null)
+  -d "$CONTENT_JSON" 2>/dev/null)
 
 if [ "$HTTP" = "201" ] || [ "$HTTP" = "200" ]; then
   echo "百科已通过 API 初始化。"
