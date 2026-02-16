@@ -40,5 +40,6 @@ if git diff --cached --quiet; then
 fi
 git commit -m "百科同步: $(date '+%Y-%m-%d %H:%M')"
 git push origin HEAD 2>/dev/null || git remote set-url origin "$WIKI_SSH" && git push origin HEAD
+git push origin HEAD:master 2>/dev/null || true
 
 echo "百科已同步 → http://open.quwanzhi.com:3000/fnvtk/karuo-ai/wiki"
