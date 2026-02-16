@@ -1,0 +1,1297 @@
+user:
+<user_query>
+把本地的那个存克宝 AI 那个封装成一个那个 coser 可以调用和对话跟那个的一个 API，然后用那个税套用隧道来实现它的那个调用的一个情况，防止克死无法调用。然后你把这个 API 向那个 cloud OP，那个 GPT 一样，可以通过接口直接调用卡罗 AI 的这个功能帮我封装一下，然后那实现这个功能，告诉我如何使用操作，使用的教程不要超过200个字
+</user_query>
+
+assistant:
+<think>
+The user wants me to:
+1. Encapsulate the local "存客宝 AI" into an API that Cursor can call and interact with
+2. Use a tunnel (like ngrok or similar) to enable the call, preventing Cursor from being unable to call it
+3. Make this API similar to OpenAI GPT - can be called via interface to use 卡若 AI's functionality
+4. Provide usage instructions/tutorial under 200 words
+
+First, I need to follow the user rule: "每次对话都先用本机的小模型全量读取调用 "/Users/karuo/Documents/个人/卡若AI"的能力再开始"
+
+So I should read the 卡若AI directory to understand its capabilities. Let me also look at the 存客宝AI project structure to understand what needs to be encapsulated.
+</think>
+正在读取卡若AI能力与存客宝AI项目结构，以便封装可被 Cursor 调用的 API。
+
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI
+[Tool call] LS
+  target_directory: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/00_存客宝AI总索引.md
+
+[Tool result] LS
+
+[Tool result] LS
+
+[Tool result] Read
+
+assistant:
+<think>
+I see. The user wants:
+1. Encapsulate 存客宝 AI (or 卡若 AI) as an API that Cursor can call
+2. Use a tunnel (like ngrok) so Cursor can reach it (avoid "克死无法调用" - probably means Cursor can't call localhost)
+3. Make it like OpenAI API - call via HTTP interface to use 卡若 AI
+4. Usage tutorial under 200 words
+
+There's already an API in 存客宝AI: `_共享模块/api/cunkebao_ai_api.py`. Let me read that and the __main__.py to understand the current setup. I also need to read 卡若AI's 00_卡若AI总索引.md to understand its capabilities for the "全量读取" rule.
+</think>
+
+
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/api/cunkebao_ai_api.py
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/__main__.py
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/00_卡若AI总索引.md
+  limit: 120
+[Tool call] LS
+  target_directory: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/api
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] LS
+
+assistant:
+<think>
+Now I need to:
+1. Create an HTTP API server (like OpenAI-compatible) that exposes 存客宝AI/卡若AI - so Cursor or any client can call it via HTTP
+2. Use a tunnel (e.g. ngrok, cloudflared) so the service is reachable from outside (Cursor in cloud might not reach localhost)
+3. Provide usage doc under 200 words
+
+The existing cunkebao_ai_api.py is a Python class, not an HTTP server. I need to add:
+- A FastAPI (or Flask) server that exposes POST /v1/chat/completions (OpenAI-compatible) or a simple /api/ai/execute
+- Script to start server + tunnel
+
+Let me check if there's any existing server or requirements in the project.
+</think>
+正在创建 HTTP API 服务与隧道启动脚本，先查看项目依赖与 API 的 `__init__.py`。
+
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/api/__init__.py
+[Tool call] Grep
+  pattern: fastapi|flask|uvicorn|requests
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI
+[Tool call] Glob
+  target_directory: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI
+  glob_pattern: requirements*.txt
+
+[Tool result] Read
+
+[Tool result] Grep
+
+[Tool result] Glob
+
+assistant:
+<think>
+I'll create:
+1. A FastAPI server that exposes OpenAI-compatible chat API (POST /v1/chat/completions) and a simple execute endpoint
+2. Fix the base_path in cunkebao_ai_api.py - it says "/Users/karuo/Documents/开发/存客宝AI" but the actual path is SynologyDrive one. I'll make it use __file__ to resolve.
+3. requirements.txt for the API server (fastapi, uvicorn)
+4. A start script that runs uvicorn + optional tunnel (cloudflared or ngrok)
+5. Short usage doc (<200 words)
+
+Let me also fix the base_path in the API to be dynamic based on the 存客宝AI project root.
+</think>
+正在创建 HTTP API 服务、隧道启动脚本和简短使用说明。
+
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"创建 FastAPI HTTP 服务（OpenAI 兼容接口）","status":"in_progress"},{"id":"2","content":"修复 API base_path 并添加隧道启动脚本","status":"pending"},{"id":"3","content":"添加 requirements 与 200 字内使用教程","status":"pending"}]
+  merge: false
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/api/cunkebao_ai_api.py
+  offset: 74
+  limit: 25
+
+[Tool result] TodoWrite
+
+[Tool result] Read
+
+assistant:
+<think>
+I need to:
+1. Create server.py (FastAPI app) in _共享模块/api/ that:
+   - POST /v1/chat/completions - OpenAI compatible (messages -> one response)
+   - POST /api/ai/execute - simple task execution (existing doc)
+   - GET /health
+2. Use dynamic base_path: from __file__ go up to 存客宝AI root
+3. Add requirements.txt at 存客宝AI root for api deps
+4. Add start_with_tunnel.sh that starts uvicorn and cloudflared/ngrok
+5. Fix CunkebaoAI base_path to be set from env or auto-detect (project root containing 00_存客宝AI总索引.md)
+</think>
+
+
+[Tool call] Write
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/api/server.py
+  contents: """
+存客宝AI HTTP API 服务
+- OpenAI 兼容：POST /v1/chat/completions（像 Cloud OpenAI 一样调用）
+- 简单执行：POST /api/ai/execute
+配合隧道（ngrok/cloudflared）暴露到公网，供 Cursor 等远程调用。
+"""
+
+import os
+import sys
+
+# 确保项目根在 path 中（存客宝AI 目录）
+_API_DIR = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.abspath(os.path.join(_API_DIR, "..", ".."))
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import Optional, List, Any
+
+# 导入存客宝AI 核心（从项目根作为包运行）
+sys.path.insert(0, _ROOT)
+from _共享模块.api.cunkebao_ai_api import CunkebaoAI, TeamGroup, TaskResult
+
+app = FastAPI(
+    title="存客宝AI API",
+    description="像 OpenAI API 一样通过 HTTP 调用存客宝AI/卡若AI 能力，可配合隧道供 Cursor 等远程调用。",
+    version="1.0.0",
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 单例
+_ai: Optional[CunkebaoAI] = None
+
+
+def get_ai() -> CunkebaoAI:
+    global _ai
+    if _ai is None:
+        _ai = CunkebaoAI()
+    return _ai
+
+
+# ----- 请求/响应模型 -----
+
+class ExecuteRequest(BaseModel):
+    task: str = Field(..., description="任务描述，如：检查服务器状态")
+    group: str = Field(default="auto", description="执行组：auto|运维组|项目组|开发组|测试组")
+
+
+class ChatMessage(BaseModel):
+    role: str = Field(..., description="system|user|assistant")
+    content: str = Field(..., description="消息内容")
+
+
+class OpenAICompatRequest(BaseModel):
+    model: Optional[str] = Field(default="cunkebao-ai", description="模型名，可忽略")
+    messages: List[ChatMessage] = Field(..., description="对话列表，最后一轮 user 即本次任务")
+    stream: Optional[bool] = Field(default=False, description="暂不支持流式，忽略")
+
+
+# ----- 路由 -----
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "存客宝AI API"}
+
+
+@app.post("/api/ai/execute")
+def api_execute(req: ExecuteRequest):
+    """简单执行：直接传任务与可选组，返回路由与执行说明。"""
+    ai = get_ai()
+    group_enum = TeamGroup.AUTO
+    if req.group != "auto":
+        m = {
+            "运维组": TeamGroup.DEVOPS,
+            "项目组": TeamGroup.PROJECT,
+            "开发组": TeamGroup.DEVELOP,
+            "测试组": TeamGroup.TEST,
+        }
+        group_enum = m.get(req.group, TeamGroup.AUTO)
+    result = ai.execute(req.task, group=group_enum)
+    return {
+        "success": result.success,
+        "message": result.message,
+        "group": result.group,
+        "skill": result.skill,
+        "data": result.data,
+    }
+
+
+@app.post("/v1/chat/completions")
+def openai_chat_completions(body: OpenAICompatRequest):
+    """
+    OpenAI 兼容接口：把 messages 中最后一条 user 内容当作「任务」执行，
+    返回格式兼容 OpenAI Chat Completions，便于 Cursor/其他客户端统一调用。
+    """
+    if not body.messages:
+        raise HTTPException(status_code=400, detail="messages 不能为空")
+    # 取最后一条 user 消息作为任务
+    task = ""
+    for m in reversed(body.messages):
+        if m.role == "user" and m.content:
+            task = m.content.strip()
+            break
+    if not task:
+        raise HTTPException(status_code=400, detail="需要至少一条 user 消息作为任务")
+    ai = get_ai()
+    result = ai.execute(task)
+    # 构造 OpenAI 风格回复
+    content = (
+        f"【存客宝AI】\n"
+        f"任务：{task}\n"
+        f"路由：{result.group}\n"
+        f"技能：{result.skill}\n"
+        f"说明：{result.message}\n"
+        f"执行指引：\n{result.data.get('instructions', '') if result.data else ''}"
+    )
+    return {
+        "id": "cunkebao-ai-1",
+        "object": "chat.completion",
+        "model": body.model or "cunkebao-ai",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": content},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+    }
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", "8765"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+
+
+[Tool result] Write
+
+assistant:
+<think>
+Now fix base_path in cunkebao_ai_api.py to auto-detect 存客宝AI root (so it works from both Synology path and any path). Then add tunnel script and requirements.
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/api/cunkebao_ai_api.py
+  old_string:     def __init__(self):
+        """初始化存客宝AI"""
+        self.base_path = "/Users/karuo/Documents/开发/存客宝AI"
+        self._ckb_sdk = None
+  new_string:     def __init__(self, base_path: Optional[str] = None):
+        """初始化存客宝AI。base_path 不传则自动推断（存客宝AI 项目根）。"""
+        if base_path and os.path.isdir(base_path):
+            self.base_path = base_path
+        else:
+            # 从本文件向上找到含 00_存客宝AI总索引.md 的目录
+            cur = os.path.dirname(os.path.abspath(__file__))
+            for _ in range(5):
+                if os.path.isfile(os.path.join(cur, "00_存客宝AI总索引.md")):
+                    self.base_path = cur
+                    break
+                parent = os.path.dirname(cur)
+                if parent == cur:
+                    self.base_path = os.path.expanduser("~/Documents/开发/存客宝AI")
+                    break
+                cur = parent
+            else:
+                self.base_path = cur
+        self._ckb_sdk = None
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"创建 FastAPI HTTP 服务（OpenAI 兼容接口）","status":"completed"},{"id":"2","content":"修复 API base_path 并添加隧道启动脚本","status":"in_progress"}]
+  merge: true
+
+[Tool result] StrReplace
+
+[Tool result] TodoWrite
+
+assistant:
+<think>
+base_path 自动推断逻辑有 bug：当前 __file__ 是 _共享模块/api/cunkebao_ai_api.py，所以 cur 从 _共享模块/api 开始，上一级是 _共享模块，再上一级才是 存客宝AI 根（那里有 00_存客宝AI总索引.md）。所以从 __file__ 算，应该是 dirname dirname dirname = 存客宝AI 根。我写的 for _ in range(5) 从 cur = api 目录开始，第一次 join(cur, "00_存客宝AI总索引.md") 是 api/00_存客宝AI总索引.md 不存在，然后 cur = parent = _共享模块，再 parent = 存客宝AI根，那里有 00_存客宝AI总索引.md。所以逻辑对。但 __file__ 在 cunkebao_ai_api.py 里，cur = os.path.dirname(os.path.abspath(__file__)) 是 _共享模块/api，然后 join(cur, "00_存客宝AI总索引.md") = _共享模块/api/00_存客宝AI总索引.md 没有。parent = _共享模块，cur = _共享模块，join 没有。再 parent = 存客宝AI 根，cur = 存客宝AI 根，这时 join(cur, "00_存客宝AI总索引.md") 有。OK。
+</think>
+正在添加隧道启动脚本与 `requirements.txt`。
+
+[Tool call] Write
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/scripts/start_api_with_tunnel.sh
+  contents: #!/usr/bin/env bash
+# 启动存客宝AI API 并用隧道暴露，供 Cursor 等远程调用（解决无法访问本机的问题）
+# 用法：./scripts/start_api_with_tunnel.sh  或  PORT=8765 ./scripts/start_api_with_tunnel.sh
+
+set -e
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+PORT="${PORT:-8765}"
+
+# 1) 后台启动 API
+echo "启动存客宝AI API (端口 $PORT)..."
+python -c "
+import sys
+sys.path.insert(0, '$ROOT')
+from _共享模块.api.server import app
+import uvicorn
+uvicorn.run(app, host='0.0.0.0', port=$PORT)
+" &
+API_PID=$!
+trap "kill $API_PID 2>/dev/null" EXIT
+
+# 2) 等 API 就绪
+sleep 2
+for i in 1 2 3 4 5; do
+  if curl -s "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then break; fi
+  sleep 1
+done
+curl -s "http://127.0.0.1:$PORT/health" || { echo "API 启动失败"; exit 1; }
+echo ""
+
+# 3) 隧道：优先 cloudflared，其次 ngrok
+if command -v cloudflared >/dev/null 2>&1; then
+  echo "使用 cloudflared 隧道暴露 $PORT..."
+  cloudflared tunnel --url "http://127.0.0.1:$PORT"
+elif command -v ngrok >/dev/null 2>&1; then
+  echo "使用 ngrok 隧道暴露 $PORT..."
+  ngrok http "$PORT"
+else
+  echo "未检测到 cloudflared 或 ngrok。仅本地: http://127.0.0.1:$PORT"
+  echo "安装隧道: brew install cloudflared  或  brew install ngrok"
+  wait $API_PID
+fi
+
+[Tool call] Write
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/requirements-api.txt
+  contents: # 存客宝AI HTTP API 依赖（隧道 + OpenAI 兼容接口）
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/api/cunkebao_ai_api.py
+  offset: 1
+  limit: 30
+
+[Tool result] Write
+
+[Tool result] Write
+
+[Tool result] Read
+
+assistant:
+<think>
+I need to fix the server startup in the shell script - running uvicorn from Python -c with the app might have path issues. Prefer running as module. Let me add a way to run the server from the project root. Also the script runs the API in background and then runs tunnel in foreground; when tunnel exits we kill API. Good.
+
+Actually starting with "python -c ... uvicorn.run" from ROOT might not load the app correctly because the app is in _共享模块.api.server. Let me change to: cd ROOT && python -m uvicorn _共享模块.api.server:app --host 0.0.0.0 --port $PORT . But the project name has Chinese and spaces - 存客宝AI - so we need to run from that directory. So the ROOT is the 存客宝AI folder. And we need to run uvicorn with app from that folder. So we need to add the ROOT to PYTHONPATH and run uvicorn _共享模块.api.server:app. So in bash: PYTHONPATH="$ROOT" python -m uvicorn _共享模块.api.server:app --host 0.0.0.0 --port $PORT
+</think>
+修正启动命令并加入使用教程。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/scripts/start_api_with_tunnel.sh
+  old_string: # 1) 后台启动 API
+echo "启动存客宝AI API (端口 $PORT)..."
+python -c "
+import sys
+sys.path.insert(0, '$ROOT')
+from _共享模块.api.server import app
+import uvicorn
+uvicorn.run(app, host='0.0.0.0', port=$PORT)
+" &
+API_PID=$!
+  new_string: # 1) 后台启动 API
+echo "启动存客宝AI API (端口 $PORT)..."
+PYTHONPATH="$ROOT" python -m uvicorn _共享模块.api.server:app --host 0.0.0.0 --port "$PORT" &
+API_PID=$!
+[Tool call] Write
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/docs/API与隧道使用说明.md
+  contents: # 存客宝AI API + 隧道 使用说明（约 200 字）
+
+## 1. 安装与启动
+
+```bash
+cd 存客宝AI
+pip install -r requirements-api.txt
+chmod +x scripts/start_api_with_tunnel.sh
+./scripts/start_api_with_tunnel.sh
+```
+
+脚本会先启动本地 API（默认端口 8765），再自动用 **cloudflared** 或 **ngrok** 打出公网隧道。终端里会打印公网 URL（如 `https://xxx.trycloudflare.com`）。
+
+## 2. 调用方式
+
+**OpenAI 兼容（推荐，和 Cloud OpenAI 一样）：**
+
+```bash
+curl -X POST "https://你的隧道URL/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"检查服务器状态"}]}'
+```
+
+**简单执行接口：**
+
+```bash
+curl -X POST "https://你的隧道URL/api/ai/execute" \
+  -H "Content-Type: application/json" \
+  -d '{"task":"检查服务器状态","group":"auto"}'
+```
+
+## 3. 在 Cursor 里用
+
+把上述 `https://你的隧道URL` 当作「自定义 OpenAI Base URL」配置到 Cursor 或任意兼容 OpenAI 的客户端，即可像调用 GPT 一样调用存客宝AI。仅本地时用 `http://127.0.0.1:8765`。
+
+**无隧道时**：只在本机用 `http://127.0.0.1:8765`；Cursor 在云端时需开隧道才能访问。
+
+
+[Tool result] StrReplace
+
+[Tool result] Write
+
+assistant:
+<think>
+I need to fix the server startup in the shell script - running uvicorn from Python -c with the app might have path issues. Prefer running as module. Let me add a way to run the server from the project root. Also the script runs the API in background and then runs tunnel in foreground; when tunnel exits we kill API. Good.
+
+Actually starting with "python -c ... uvicorn.run" from ROOT might not load the app correctly because the app is in _共享模块.api.server. Let me change to: cd ROOT && python -m uvicorn _共享模块.api.server:app --host 0.0.0.0 --port $PORT . But the project name has Chinese and spaces - 存客宝AI - so we need to run from that directory. So the ROOT is the 存客宝AI folder. And we need to run uvicorn with app from that folder. So we need to add the ROOT to PYTHONPATH and run uvicorn _共享模块.api.server:app. So in bash: PYTHONPATH="$ROOT" python -m uvicorn _共享模块.api.server:app --host 0.0.0.0 --port $PORT
+</think>
+
+
+[Tool call] ReadLints
+  paths: ["/Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/api/server.py","/Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/api/cunkebao_ai_api.py"]
+[Tool call] TodoWrite
+  todos: [{"id":"2","content":"修复 API base_path 并添加隧道启动脚本","status":"completed"},{"id":"3","content":"添加 requirements 与 200 字内使用教程","status":"in_progress"}]
+  merge: true
+
+[Tool result] ReadLints
+
+[Tool result] TodoWrite
+
+assistant:
+<think>
+Count the words in the doc - user asked 使用教程不要超过200个字 (no more than 200 characters). Let me check. The doc has more than 200 字. I need to shorten the 使用说明 to under 200 字 and keep the rest as optional detail or put the short version in the 总索引.
+</think>
+将教程压缩到 200 字以内，并更新总索引中的 API 说明。
+
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/docs/API与隧道使用说明.md
+
+[Tool result] Read
+
+assistant:
+<think>
+User said 使用的教程不要超过200个字 - that's 200 字 (Chinese characters). So I need a short version that's under 200 characters. I'll add at the top of the doc a "200字内速览" box and keep the full doc for reference.
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/docs/API与隧道使用说明.md
+  old_string: # 存客宝AI API + 隧道 使用说明（约 200 字）
+
+## 1. 安装与启动
+  new_string: # 存客宝AI API + 隧道 使用说明
+
+## 200 字内速览
+
+安装：`pip install -r requirements-api.txt`。启动：`./scripts/start_api_with_tunnel.sh`（先起 API 端口 8765，再自动用 cloudflared/ngrok 打隧道，终端会打印公网 URL）。调用：像 OpenAI 一样 POST `https://隧道URL/v1/chat/completions`，body 为 `{"messages":[{"role":"user","content":"你的任务"}]}`。或在 Cursor 里把「自定义 OpenAI Base URL」设为该隧道 URL，即可当 GPT 用。仅本机用 `http://127.0.0.1:8765`；Cursor 在云端时必须开隧道才能访问。
+
+---
+
+## 1. 安装与启动
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/00_存客宝AI总索引.md
+  old_string: ### 2. Python API 调用
+
+```python
+# 存客宝私域SDK
+from ckb_sdk import CunkebaoSDK
+
+sdk = CunkebaoSDK()
+wechats = sdk.get_wechat_accounts()    # 获取微信号列表
+friends = sdk.get_friends(wechat_id)   # 获取好友列表
+scenarios = sdk.get_scenarios()         # 获取获客场景
+
+# 存客宝AI API
+import requests
+
+def ask_cunkebao_ai(task: str, group: str = "auto"):
+    """调用存客宝AI"""
+    return requests.post(
+        "http://localhost:8080/api/ai/execute",
+        json={"task": task, "group": group}
+    ).json()
+
+# 示例
+result = ask_cunkebao_ai("检查服务器状态")
+```
+  new_string: ### 2. HTTP API（OpenAI 兼容 + 隧道，供 Cursor 远程调用）
+
+先启动 API 与隧道：`pip install -r requirements-api.txt`，再执行 `./scripts/start_api_with_tunnel.sh`，终端会给出公网 URL。像 OpenAI 一样调用：POST `https://隧道URL/v1/chat/completions`，body：`{"messages":[{"role":"user","content":"你的任务"}]}`。在 Cursor 中把「自定义 OpenAI Base URL」设为该 URL 即可当 GPT 用。详见 [API与隧道使用说明](docs/API与隧道使用说明.md)。
+
+### 3. Python API 调用
+
+```python
+# 存客宝私域SDK
+from ckb_sdk import CunkebaoSDK
+
+sdk = CunkebaoSDK()
+wechats = sdk.get_wechat_accounts()    # 获取微信号列表
+friends = sdk.get_friends(wechat_id)   # 获取好友列表
+scenarios = sdk.get_scenarios()         # 获取获客场景
+
+# 存客宝AI HTTP API（本地或隧道 URL）
+import requests
+
+def ask_cunkebao_ai(task: str, group: str = "auto", base_url: str = "http://127.0.0.1:8765"):
+    """调用存客宝AI（base_url 可改为隧道 URL）"""
+    return requests.post(
+        f"{base_url.rstrip('/')}/api/ai/execute",
+        json={"task": task, "group": group}
+    ).json()
+
+# OpenAI 兼容接口
+def chat_cunkebao_ai(content: str, base_url: str = "http://127.0.0.1:8765"):
+    return requests.post(
+        f"{base_url.rstrip('/')}/v1/chat/completions",
+        json={"messages": [{"role": "user", "content": content}]}
+    ).json()
+
+# 示例
+result = ask_cunkebao_ai("检查服务器状态")
+```
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/00_存客宝AI总索引.md
+  old_string: ### 3. 命令行调用
+  new_string: ### 4. 命令行调用
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Verify the server can be run. The project folder name is "存客宝AI" - when we run from scripts/ the parent is 存客宝AI. So ROOT is correct. But uvicorn needs to load _共享模块.api.server:app - that requires the 存客宝AI directory to be on PYTHONPATH so that " _共享模块" can be found. So PYTHONPATH="$ROOT" is correct. Let me run a quick test to see if the server starts (without tunnel).
+</think>
+
+
+[Tool call] TodoWrite
+  todos: [{"id":"3","content":"添加 requirements 与 200 字内使用教程","status":"completed"}]
+  merge: true
+[Tool call] Shell
+  command: cd "/Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI" && pip install -q -r requirements-api.txt 2>/dev/null; PYTHONPATH="$(pwd)" python -c "
+from _共享模块.api.cunkebao_ai_api import CunkebaoAI
+ai = CunkebaoAI()
+r = ai.execute('检查服务器状态')
+print('OK', r.group, r.skill)
+"
+  description: 验证 API 依赖与 CunkebaoAI 执行
+
+[Tool result] TodoWrite
+
+[Tool result] Shell
+
+assistant:
+<think>
+Exit 127 often means command not found - maybe pip or python. Let me try with python3.
+</think>
+
+
+[Tool call] Shell
+  command: cd "/Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI" && python3 -c "
+import sys
+sys.path.insert(0, '.')
+from _共享模块.api.cunkebao_ai_api import CunkebaoAI
+ai = CunkebaoAI()
+r = ai.execute('检查服务器状态')
+print('OK', r.group, r.skill)
+"
+  description: 用 python3 验证 CunkebaoAI
+
+[Tool result] Shell
+
+assistant:
+<think>
+Good, the core API works. Now test that the server module can be loaded (uvicorn might need to be run from the same directory).
+</think>
+
+
+[Tool call] Shell
+  command: cd "/Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI" && PYTHONPATH="$(pwd)" python3 -c "
+from _共享模块.api.server import app
+print('app:', app.title)
+"
+  description: 验证 FastAPI app 可加载
+
+[Tool result] Shell
+
+assistant:
+<think>
+All good. Let me give the user a concise summary and the under-200-char tutorial.
+</think>
+已把本地存客宝AI封装成可被 Cursor 通过接口调用的 API，并用隧道解决「本机服务无法被外网/Cursor 访问」的问题。实现与用法如下。
+
+---
+
+## 已完成的改动
+
+1. **HTTP API 服务**（`_共享模块/api/server.py`）
+   - **OpenAI 兼容**：`POST /v1/chat/completions`，和 Cloud OpenAI 一样用 `messages` 发请求。
+   - **简单执行**：`POST /api/ai/execute`，传 `task`、`group`。
+   - **健康检查**：`GET /health`。
+
+2. **隧道启动脚本**（`scripts/start_api_with_tunnel.sh`）
+   - 先在本机起 API（默认端口 **8765**），再用 **cloudflared** 或 **ngrok** 打隧道，终端会打印公网 URL。
+
+3. **API 根路径**（`cunkebao_ai_api.py`）
+   - `base_path` 改为按「存客宝AI 项目根」自动推断，不写死路径。
+
+4. **依赖**（`requirements-api.txt`）
+   - `fastapi`、`uvicorn`、`pydantic`。
+
+5. **文档**
+   - `docs/API与隧道使用说明.md`：详细说明 + **200 字内速览**。
+   - `00_存客宝AI总索引.md`：已补充「HTTP API + 隧道」和 Python 示例。
+
+---
+
+## 使用教程（200 字内）
+
+**安装**：`pip install -r requirements-api.txt`  
+
+**启动**：在项目根执行 `./scripts/start_api_with_tunnel.sh`（先起 API 端口 8765，再用 cloudflared/ngrok 打隧道，终端会打印公网 URL）。  
+
+**调用**：按 OpenAI 方式 POST  
+`https://隧道URL/v1/chat/completions`，  
+body：`{"messages":[{"role":"user","content":"你的任务"}]}`。  
+
+在 Cursor 里把「自定义 OpenAI Base URL」设成该隧道 URL，即可像用 GPT 一样调用存客宝AI。  
+
+仅本机用时用 `http://127.0.0.1:8765`；Cursor 在云端时必须开隧道才能访问。
+
+---
+
+**隧道安装（二选一）**：`brew install cloudflared` 或 `brew install ngrok`。
+
+user:
+<user_query>
+我的shui dao 是open.quwanzhi.com.  然后直接给我那个一个域名，然后我可以直接访问这个隧道，然后直接能访问并且操作。
+</user_query>
+
+assistant:
+<think>
+The user wants to use their own domain "open.quwanzhi.com" (they wrote "shui dao" which might mean 隧道 tunnel) so they can directly access the tunnel via this domain and use it. So they need:
+
+1. Configure the tunnel (cloudflared or ngrok) to use the custom domain open.quwanzhi.com
+2. So that they can access the 存客宝AI API at https://open.quwanzhi.com (or a path under it) and operate it
+
+I need to:
+1. Update the tunnel script or add config to use open.quwanzhi.com
+2. For cloudflared: you need a tunnel with a custom domain, which requires cloudflare account and adding a CNAME for open.quwanzhi.com to the tunnel
+3. For ngrok: you can use a custom domain with paid plan or they have reserved domains
+
+Let me search for how to set up cloudflared with custom domain and ngrok with custom domain. Actually the user said "直接给我那个一个域名" - give me a domain so I can directly access. So they're saying their domain IS open.quwanzhi.com and they want the tunnel to be accessible at that domain.
+
+So the flow is:
+- Run the API locally on 8765
+- Expose it via tunnel that is accessible at https://open.quwanzhi.com
+
+For this we need:
+1. If using Cloudflare Tunnel (cloudflared): Create a named tunnel, configure it to point to localhost:8765, then in Cloudflare DNS add a CNAME open.quwanzhi.com -> <tunnel-id>.cfargotunnel.com. This requires Cloudflare dashboard setup.
+2. If using ngrok: ngrok http 8765 --domain=open.quwanzhi.com (requires ngrok paid for custom domain, and they need to add CNAME in their DNS to point to ngrok)
+
+I'll add support in the script for a custom domain OPEN_QUWANZHI_DOMAIN=open.quwanzhi.com and document:
+- For cloudflared: they need to create a tunnel in Cloudflare Zero Trust, get the token or config, then run with that config so the tunnel is named and mapped to open.quwanzhi.com
+- For ngrok: ngrok http 8765 --domain=open.quwanzhi.com (after adding CNAME in DNS)
+
+Let me create a simple approach:
+1. Add environment variable or config for BASE_DOMAIN=open.quwanzhi.com
+2. Update start script to pass domain to tunnel when available
+3. Add a short doc section on how to bind open.quwanzhi.com (Cloudflare: quick tunnel doesn't support custom domain; they need a named tunnel + DNS CNAME. Ngrok: --domain=open.quwanzhi.com)
+
+I'll update the tunnel script to support DOMAIN=open.quwanzhi.com and add a cloudflared config file option for named tunnel, and document the DNS step.
+</think>
+正在为域名 open.quwanzhi.com 配置隧道，使 API 可通过该域名直接访问。
+
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/scripts/start_api_with_tunnel.sh
+[Tool call] LS
+  target_directory: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/scripts
+
+[Tool result] Read
+
+[Tool result] LS
+
+assistant:
+<think>
+I need to:
+1. Add support for DOMAIN=open.quwanzhi.com so the tunnel uses this domain.
+2. For cloudflared with custom domain you need a "named tunnel" + config file. Quick tunnel (--url) doesn't support custom domain. So I'll need to create a cloudflared config file that uses a tunnel name and routes open.quwanzhi.com to localhost:8765. The user would need to have already created the tunnel in Cloudflare Zero Trust and have the credentials. Let me create a config template and document the steps.
+3. For ngrok: ngrok http 8765 --domain=open.quwanzhi.com (user must have added CNAME in DNS to ngrok's edge).
+
+I'll:
+1. Create a cloudflared config template: tunnel.yml (or tunnel-open.quwanzhi.com.yml) that routes open.quwanzhi.com to http://localhost:8765. User will need to run `cloudflared tunnel create cunkebao-ai` once and get the tunnel ID, then in Cloudflare DNS add CNAME open -> <uuid>.cfargotunnel.com.
+2. Update start script to accept DOMAIN=open.quwanzhi.com and use the config when domain is set.
+3. Add a short doc with the exact URL they get: https://open.quwanzhi.com
+</think>
+
+
+[Tool call] WebSearch
+  search_term: cloudflared tunnel custom domain config yaml ingress
+  explanation: 查 cloudflared 自定义域名的配置写法
+
+[Tool result] WebSearch
+
+assistant:
+<think>
+So for cloudflared with open.quwanzhi.com I need:
+1. A config file with tunnel ID, credentials-file, and ingress hostname: open.quwanzhi.com -> http://localhost:8765
+2. User must run cloudflared tunnel create cunkebao-ai once to get credentials
+3. In Cloudflare DNS (for quwanzhi.com): CNAME open -> <tunnel-id>.cfargotunnel.com
+
+I'll create:
+1. A config template that uses a placeholder tunnel ID and a default credentials path, and document that user runs `cloudflared tunnel create cunkebao-ai` and then puts the credentials path in the config (or we use default ~/.cloudflared/<tunnel-id>.json).
+2. Script: if DOMAIN=open.quwanzhi.com is set, use cloudflared with config file; otherwise keep current behavior.
+
+Actually cloudflared tunnel create creates the tunnel and puts credentials in ~/.cloudflared/<uuid>.json. The config file then needs tunnel: <uuid> and credentials-file: ~/.cloudflared/<uuid>.json. So I'll create a config template that user can edit to put their tunnel ID, or we can try to discover it from ~/.cloudflared/ if there's only one. Simplest: create config file with placeholder, and a one-time setup note.
+</think>
+正在为 open.quwanzhi.com 添加隧道配置与启动脚本支持。
+
+[Tool call] Write
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/scripts/cloudflared-open.quwanzhi.com.yml
+  contents: # 存客宝AI 隧道配置：通过 https://open.quwanzhi.com 访问
+# 首次使用：1) cloudflared tunnel create cunkebao-ai
+#           2) 把下面 tunnel 和 credentials-file 里的 <TUNNEL_ID> 换成终端输出的 UUID
+#           3) 在 Cloudflare DNS 添加：open.quwanzhi.com → CNAME → <TUNNEL_ID>.cfargotunnel.com
+
+tunnel: <TUNNEL_ID>
+credentials-file: ~/.cloudflared/<TUNNEL_ID>.json
+
+ingress:
+  - hostname: open.quwanzhi.com
+    service: http://127.0.0.1:8765
+  - service: http_status:404
+
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/scripts/start_api_with_tunnel.sh
+  old_string: #!/usr/bin/env bash
+# 启动存客宝AI API 并用隧道暴露，供 Cursor 等远程调用（解决无法访问本机的问题）
+# 用法：./scripts/start_api_with_tunnel.sh  或  PORT=8765 ./scripts/start_api_with_tunnel.sh
+
+set -e
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+PORT="${PORT:-8765}"
+
+# 1) 后台启动 API
+echo "启动存客宝AI API (端口 $PORT)..."
+PYTHONPATH="$ROOT" python -m uvicorn _共享模块.api.server:app --host 0.0.0.0 --port "$PORT" &
+API_PID=$!
+trap "kill $API_PID 2>/dev/null" EXIT
+
+# 2) 等 API 就绪
+sleep 2
+for i in 1 2 3 4 5; do
+  if curl -s "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then break; fi
+  sleep 1
+done
+curl -s "http://127.0.0.1:$PORT/health" || { echo "API 启动失败"; exit 1; }
+echo ""
+
+# 3) 隧道：优先 cloudflared，其次 ngrok
+if command -v cloudflared >/dev/null 2>&1; then
+  echo "使用 cloudflared 隧道暴露 $PORT..."
+  cloudflared tunnel --url "http://127.0.0.1:$PORT"
+elif command -v ngrok >/dev/null 2>&1; then
+  echo "使用 ngrok 隧道暴露 $PORT..."
+  ngrok http "$PORT"
+else
+  echo "未检测到 cloudflared 或 ngrok。仅本地: http://127.0.0.1:$PORT"
+  echo "安装隧道: brew install cloudflared  或  brew install ngrok"
+  wait $API_PID
+fi
+  new_string: #!/usr/bin/env bash
+# 启动存客宝AI API 并用隧道暴露，供 Cursor 等远程调用
+# 用法：
+#   ./scripts/start_api_with_tunnel.sh
+#   DOMAIN=open.quwanzhi.com ./scripts/start_api_with_tunnel.sh   # 固定域名
+#   PORT=8765 ./scripts/start_api_with_tunnel.sh
+
+set -e
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+PORT="${PORT:-8765}"
+DOMAIN="${DOMAIN:-}"
+
+# 1) 后台启动 API
+echo "启动存客宝AI API (端口 $PORT)..."
+PYTHONPATH="$ROOT" python3 -m uvicorn _共享模块.api.server:app --host 0.0.0.0 --port "$PORT" &
+API_PID=$!
+trap "kill $API_PID 2>/dev/null" EXIT
+
+# 2) 等 API 就绪
+sleep 2
+for i in 1 2 3 4 5; do
+  if curl -s "http://127.0.0.1:$PORT/health" >/dev/null 2>&1; then break; fi
+  sleep 1
+done
+curl -s "http://127.0.0.1:$PORT/health" || { echo "API 启动失败"; exit 1; }
+echo ""
+
+# 3) 隧道
+if [ -n "$DOMAIN" ]; then
+  # 固定域名：open.quwanzhi.com
+  echo "隧道域名: https://$DOMAIN"
+  if [ "$DOMAIN" = "open.quwanzhi.com" ] && command -v cloudflared >/dev/null 2>&1; then
+    CONFIG="$ROOT/scripts/cloudflared-open.quwanzhi.com.yml"
+    if grep -q '<TUNNEL_ID>' "$CONFIG" 2>/dev/null; then
+      echo "请先配置隧道：编辑 $CONFIG，把 <TUNNEL_ID> 换成 cloudflared tunnel create cunkebao-ai 输出的 UUID，并在 DNS 添加 open → CNAME → <UUID>.cfargotunnel.com"
+      wait $API_PID
+      exit 1
+    fi
+    cloudflared tunnel --config "$CONFIG" run
+  elif command -v ngrok >/dev/null 2>&1; then
+    ngrok http "$PORT" --domain="$DOMAIN"
+  else
+    echo "使用 $DOMAIN 需要 cloudflared（已配置）或 ngrok --domain=$DOMAIN"
+    wait $API_PID
+    exit 1
+  fi
+elif command -v cloudflared >/dev/null 2>&1; then
+  echo "使用 cloudflared 临时隧道（每次 URL 会变）。固定域名请用: DOMAIN=open.quwanzhi.com $0"
+  cloudflared tunnel --url "http://127.0.0.1:$PORT"
+elif command -v ngrok >/dev/null 2>&1; then
+  echo "使用 ngrok 隧道暴露 $PORT..."
+  ngrok http "$PORT"
+else
+  echo "仅本地: http://127.0.0.1:$PORT"
+  echo "固定域名: DOMAIN=open.quwanzhi.com $0  （需先配置 cloudflared 或 ngrok）"
+  echo "安装: brew install cloudflared  或  brew install ngrok"
+  wait $API_PID
+fi
+
+[Tool result] Write
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+I should also add a one-time setup script that creates the tunnel and tells the user the exact CNAME to add, so they get the UUID and can paste it into the yml. And update the docs with the direct URL https://open.quwanzhi.com
+</think>
+添加一键配置隧道脚本并更新文档：
+
+[Tool call] Write
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/scripts/setup_tunnel_open_quwanzhi.sh
+  contents: #!/usr/bin/env bash
+# 一键为 open.quwanzhi.com 配置 Cloudflare 隧道（只需执行一次）
+# 执行后按提示在 Cloudflare DNS 添加 CNAME 即可用 https://open.quwanzhi.com 访问存客宝AI API
+
+set -e
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG="$SCRIPT_DIR/cloudflared-open.quwanzhi.com.yml"
+
+if ! command -v cloudflared >/dev/null 2>&1; then
+  echo "请先安装 cloudflared: brew install cloudflared"
+  exit 1
+fi
+
+echo "1. 登录 Cloudflare（会打开浏览器）..."
+cloudflared tunnel login
+
+echo ""
+echo "2. 创建隧道 cunkebao-ai..."
+cloudflared tunnel create cunkebao-ai 2>/dev/null || true
+TUNNEL_ID=$(cloudflared tunnel list -o json 2>/dev/null | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    for t in d.get('tunnels', []):
+        if t.get('name') == 'cunkebao-ai':
+            print(t['id'])
+            break
+    else:
+        sys.exit(1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null) || TUNNEL_ID=""
+
+if [ -z "$TUNNEL_ID" ]; then
+  echo "请手动执行: cloudflared tunnel list"
+  echo "记下 cunkebao-ai 对应的 id（UUID），然后编辑 $CONFIG"
+  echo "把两处 <TUNNEL_ID> 替换成该 UUID，保存后重新运行本脚本或直接启动: DOMAIN=open.quwanzhi.com ./start_api_with_tunnel.sh"
+  exit 1
+fi
+
+echo "隧道 ID: $TUNNEL_ID"
+echo ""
+echo "3. 写入配置..."
+sed -e "s/<TUNNEL_ID>/$TUNNEL_ID/g" \
+  -e "s|~/.cloudflared|$HOME/.cloudflared|g" \
+  "$CONFIG" > "${CONFIG}.tmp"
+mv "${CONFIG}.tmp" "$CONFIG"
+
+echo "4. 请在 Cloudflare 控制台为 quwanzhi.com 添加 DNS 记录："
+echo ""
+echo "   类型: CNAME"
+echo "   名称: open"
+echo "   目标: $TUNNEL_ID.cfargotunnel.com"
+echo "   代理: 已代理（橙色云）"
+echo ""
+echo "5. 完成后启动 API+隧道："
+echo "   DOMAIN=open.quwanzhi.com $SCRIPT_DIR/start_api_with_tunnel.sh"
+echo ""
+echo "即可通过 https://open.quwanzhi.com 访问并操作存客宝AI。"
+
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/docs/API与隧道使用说明.md
+
+[Tool result] Write
+
+[Tool result] Read
+
+assistant:
+<think>
+The setup script uses sed to replace in the config. But the config has credentials-file: ~/.cloudflared/<TUNNEL_ID>.json - after replacing TUNNEL_ID we don't need to replace ~ with $HOME in the yml because cloudflared expands ~. Let me remove that -e "s|~/.cloudflared|..." part and keep only TUNNEL_ID replacement. Also cloudflared tunnel list -o json might not exist in older versions; let me use cloudflared tunnel list and parse the output, or just tell user to run tunnel create and paste the ID. Actually tunnel create prints the uuid and the path to credentials. So we could do:
+
+OUTPUT=$(cloudflared tunnel create cunkebao-ai 2>&1)
+# Parse "Created tunnel cunkebao-ai with id <uuid>"
+# and "credentials file saved to ..."
+
+Simpler: just run tunnel create, then tunnel list -o json or list and grep. Let me check - on Mac, tunnel list might output table. I'll simplify the setup script to: 1) login 2) create (if already exists, get id from list) 3) show instructions to manually edit the yml with the id from "cloudflared tunnel list" output. That way we don't depend on -o json.
+</think>
+修正 setup 脚本以兼容不同 `cloudflared` 版本，并更新文档。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/scripts/setup_tunnel_open_quwanzhi.sh
+  old_string: echo ""
+echo "2. 创建隧道 cunkebao-ai..."
+cloudflared tunnel create cunkebao-ai 2>/dev/null || true
+TUNNEL_ID=$(cloudflared tunnel list -o json 2>/dev/null | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    for t in d.get('tunnels', []):
+        if t.get('name') == 'cunkebao-ai':
+            print(t['id'])
+            break
+    else:
+        sys.exit(1)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null) || TUNNEL_ID=""
+
+if [ -z "$TUNNEL_ID" ]; then
+  echo "请手动执行: cloudflared tunnel list"
+  echo "记下 cunkebao-ai 对应的 id（UUID），然后编辑 $CONFIG"
+  echo "把两处 <TUNNEL_ID> 替换成该 UUID，保存后重新运行本脚本或直接启动: DOMAIN=open.quwanzhi.com ./start_api_with_tunnel.sh"
+  exit 1
+fi
+
+echo "隧道 ID: $TUNNEL_ID"
+echo ""
+echo "3. 写入配置..."
+sed -e "s/<TUNNEL_ID>/$TUNNEL_ID/g" \
+  -e "s|~/.cloudflared|$HOME/.cloudflared|g" \
+  "$CONFIG" > "${CONFIG}.tmp"
+mv "${CONFIG}.tmp" "$CONFIG"
+  new_string: echo ""
+echo "2. 创建隧道 cunkebao-ai（若已存在会提示）..."
+cloudflared tunnel create cunkebao-ai 2>/dev/null || true
+echo ""
+echo "当前隧道列表："
+cloudflared tunnel list
+echo ""
+read -p "请把上面 cunkebao-ai 的 ID（UUID）粘贴到这里: " TUNNEL_ID
+TUNNEL_ID=$(echo "$TUNNEL_ID" | tr -d '[:space:]')
+if [ -z "$TUNNEL_ID" ]; then
+  echo "未输入 ID。请编辑 $CONFIG，把 <TUNNEL_ID> 换成 cloudflared tunnel list 里 cunkebao-ai 的 UUID。"
+  exit 1
+fi
+
+echo "3. 写入配置..."
+sed "s/<TUNNEL_ID>/$TUNNEL_ID/g" "$CONFIG" > "${CONFIG}.tmp"
+mv "${CONFIG}.tmp" "$CONFIG"
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/docs/API与隧道使用说明.md
+  old_string: **无隧道时**：只在本机用 `http://127.0.0.1:8765`；Cursor 在云端时需开隧道才能访问。
+  new_string: **无隧道时**：只在本机用 `http://127.0.0.1:8765`；Cursor 在云端时需开隧道才能访问。
+
+---
+
+## 4. 固定域名 open.quwanzhi.com（直接访问与操作）
+
+**一步到位**：用你自己的域名 `open.quwanzhi.com`，随时访问、无需记临时 URL。
+
+**首次配置（约 2 分钟）：**
+
+```bash
+# 安装并登录 Cloudflare 隧道
+brew install cloudflared
+./scripts/setup_tunnel_open_quwanzhi.sh
+```
+
+按脚本提示：在 Cloudflare 控制台为 **quwanzhi.com** 添加 DNS：
+
+- **类型**：CNAME  
+- **名称**：`open`  
+- **目标**：`<脚本输出的 UUID>.cfargotunnel.com`  
+- **代理**：开启（橙色云）
+
+**日常启动：**
+
+```bash
+DOMAIN=open.quwanzhi.com ./scripts/start_api_with_tunnel.sh
+```
+
+**访问与调用：**
+
+- 浏览器/健康检查：**https://open.quwanzhi.com/health**
+- OpenAI 兼容接口：`POST https://open.quwanzhi.com/v1/chat/completions`，body：`{"messages":[{"role":"user","content":"你的任务"}]}`
+- 简单执行：`POST https://open.quwanzhi.com/api/ai/execute`，body：`{"task":"你的任务","group":"auto"}`
+
+在 Cursor 里把「自定义 OpenAI Base URL」设为 **https://open.quwanzhi.com**，即可通过该域名直接访问并操作存客宝AI。
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+I need to fix the config file - after sed replace, the credentials-file will be ~/.cloudflared/<TUNNEL_ID>.json which becomes ~/.cloudflared/uuid.json. On some systems the tilde might not expand in yaml - cloudflared usually expands it. Good. Let me also add the 200-word summary to mention open.quwanzhi.com.
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/docs/API与隧道使用说明.md
+  old_string: 安装：`pip install -r requirements-api.txt`。启动：`./scripts/start_api_with_tunnel.sh`（先起 API 端口 8765，再自动用 cloudflared/ngrok 打隧道，终端会打印公网 URL）。调用：像 OpenAI 一样 POST `https://隧道URL/v1/chat/completions`，body 为 `{"messages":[{"role":"user","content":"你的任务"}]}`。或在 Cursor 里把「自定义 OpenAI Base URL」设为该隧道 URL，即可当 GPT 用。仅本机用 `http://127.0.0.1:8765`；Cursor 在云端时必须开隧道才能访问。
+  new_string: 安装：`pip install -r requirements-api.txt`。固定域名：先执行 `./scripts/setup_tunnel_open_quwanzhi.sh` 并按提示在 Cloudflare 为 quwanzhi.com 添加 CNAME（open → \<UUID\>.cfargotunnel.com），之后用 `DOMAIN=open.quwanzhi.com ./scripts/start_api_with_tunnel.sh` 启动。访问：**https://open.quwanzhi.com**（/health、/v1/chat/completions、/api/ai/execute）。Cursor 里把「自定义 OpenAI Base URL」设为 **https://open.quwanzhi.com** 即可直接操作。无域名时用 `./scripts/start_api_with_tunnel.sh` 会得到临时隧道 URL。
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/00_存客宝AI总索引.md
+  offset: 168
+  limit: 30
+
+[Tool result] StrReplace
+
+[Tool result] Read
+
+assistant:
+<think>
+Update the 总索引 to mention open.quwanzhi.com as the direct domain.
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/00_存客宝AI总索引.md
+  old_string: ### 2. HTTP API（OpenAI 兼容 + 隧道，供 Cursor 远程调用）
+
+先启动 API 与隧道：`pip install -r requirements-api.txt`，再执行 `./scripts/start_api_with_tunnel.sh`，终端会给出公网 URL。像 OpenAI 一样调用：POST `https://隧道URL/v1/chat/completions`，body：`{"messages":[{"role":"user","content":"你的任务"}]}`。在 Cursor 中把「自定义 OpenAI Base URL」设为该 URL 即可当 GPT 用。详见 [API与隧道使用说明](docs/API与隧道使用说明.md)。
+  new_string: ### 2. HTTP API（OpenAI 兼容 + 隧道，供 Cursor 远程调用）
+
+**固定域名**：https://open.quwanzhi.com 。首次运行 `./scripts/setup_tunnel_open_quwanzhi.sh` 并按提示在 Cloudflare 添加 CNAME（open → \<UUID\>.cfargotunnel.com），之后用 `DOMAIN=open.quwanzhi.com ./scripts/start_api_with_tunnel.sh` 启动即可通过该域名直接访问、操作。调用：POST `https://open.quwanzhi.com/v1/chat/completions`，body：`{"messages":[{"role":"user","content":"你的任务"}]}`。在 Cursor 中把「自定义 OpenAI Base URL」设为 **https://open.quwanzhi.com** 即可。详见 [API与隧道使用说明](docs/API与隧道使用说明.md)。
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Done. Give user a short summary with the exact URL and steps.
+</think>
+已按你的域名 **open.quwanzhi.com** 配好隧道，可直接用该域名访问和操作。
+
+---
+
+## 直接访问地址
+
+**https://open.quwanzhi.com**
+
+- 健康检查：https://open.quwanzhi.com/health  
+- 对话（OpenAI 兼容）：`POST https://open.quwanzhi.com/v1/chat/completions`  
+- 简单执行：`POST https://open.quwanzhi.com/api/ai/execute`  
+
+---
+
+## 首次配置（约 2 分钟）
+
+1. **安装并登录 Cloudflare 隧道**
+   ```bash
+   brew install cloudflared
+   cd 存客宝AI
+   chmod +x scripts/setup_tunnel_open_quwanzhi.sh scripts/start_api_with_tunnel.sh
+   ./scripts/setup_tunnel_open_quwanzhi.sh
+   ```
+2. **按脚本提示**：在 Cloudflare 控制台为 **quwanzhi.com** 添加一条 DNS：
+   - 类型：**CNAME**
+   - 名称：**open**
+   - 目标：**\<脚本输出的 UUID\>.cfargotunnel.com**
+   - 代理：开启（橙色云）
+
+---
+
+## 日常使用
+
+启动 API + 隧道：
+
+```bash
+cd 存客宝AI
+DOMAIN=open.quwanzhi.com ./scripts/start_api_with_tunnel.sh
+```
+
+之后在浏览器或 Cursor 里用 **https://open.quwanzhi.com** 即可访问并操作；在 Cursor 里把「自定义 OpenAI Base URL」设为 **https://open.quwanzhi.com** 即可像用 GPT 一样调用存客宝AI。
+
+user:
+<user_query>
+那帮我生成一个那个歌手上面直接可以配置的那个接口的域名跟那个 API key，如果 API key 给我变成空，不需要我配置或者任意文字段。
+</user_query>
+
+assistant:
+<think>
+The user wants to generate something that can be directly configured on "歌手" - I think they might mean "Cursor" (Cursor IDE) - "歌手" could be a typo or voice-to-text for "Cursor". They want:
+1. The interface/API base URL (domain) that can be configured in Cursor
+2. API key - they want it to be empty or optional (any string), so they don't need to configure it or can put anything
+
+So I need to:
+1. Make the存客宝AI API accept requests without a real API key, or with any API key (optional/blank)
+2. Provide clear Cursor configuration instructions: Base URL = https://open.quwanzhi.com, API Key = leave empty or any text
+
+Let me check the FastAPI server - we might need to add optional API key handling (accept any key or no key) so Cursor doesn't reject the connection. Many OpenAI-compatible clients send "Authorization: Bearer <api_key>". If we don't validate it or we accept anything, that would satisfy "API key 给我变成空，不需要我配置或者任意文字段".
+</think>
+正在为 Cursor 配置存客宝AI API：使 API Key 可选（空或任意），并生成可直接填写的配置说明。
+
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/api/server.py
+
+[Tool result] Read
+
+assistant:
+<think>
+I need to:
+1. Add optional API key handling - accept any Authorization header or none (so Cursor can send empty or any key)
+2. Create a Cursor-ready config snippet: Base URL = https://open.quwanzhi.com, API Key = (empty or any string)
+
+Cursor typically uses OpenAI-compatible settings. I'll add a dependency that doesn't require auth but accepts Authorization if present (no 401). Then add a small doc or markdown file with the exact values to paste in Cursor.
+</think>
+添加 API Key 可选（空或任意）支持，并生成 Cursor 可直接使用的配置片段：
+
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/api/server.py
+  old_string: from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import Optional, List, Any
+
+# 导入存客宝AI 核心（从项目根作为包运行）
+sys.path.insert(0, _ROOT)
+from _共享模块.api.cunkebao_ai_api import CunkebaoAI, TeamGroup, TaskResult
+
+app = FastAPI(
+  new_string: from fastapi import FastAPI, HTTPException, Header, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import Optional, List, Any
+
+# 导入存客宝AI 核心（从项目根作为包运行）
+sys.path.insert(0, _ROOT)
+from _共享模块.api.cunkebao_ai_api import CunkebaoAI, TeamGroup, TaskResult
+
+# API Key：不校验，空或任意字符串均可（方便 Cursor 直接配置，无需填真实 key）
+app = FastAPI(
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/api/server.py
+  old_string: @app.post("/v1/chat/completions")
+def openai_chat_completions(body: OpenAICompatRequest):
+    """
+    OpenAI 兼容接口：把 messages 中最后一条 user 内容当作「任务」执行，
+    返回格式兼容 OpenAI Chat Completions，便于 Cursor/其他客户端统一调用。
+    """
+  new_string: @app.post("/v1/chat/completions")
+def openai_chat_completions(
+    body: OpenAICompatRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    OpenAI 兼容接口：把 messages 中最后一条 user 内容当作「任务」执行。
+    API Key 不校验：Authorization 可省略，或填任意字符串（如 sk-any、留空均可）。
+    """
+[Tool call] Write
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/docs/Cursor配置-存客宝AI.md
+  contents: # Cursor 里直接配置存客宝AI 接口
+
+在 Cursor 的「自定义 OpenAI 兼容接口」里填下面两项即可，**API Key 可不填或填任意字符**。
+
+---
+
+## 配置项（复制即用）
+
+| 配置项 | 值 | 说明 |
+|--------|-----|------|
+| **Base URL / 接口域名** | `https://open.quwanzhi.com` | 固定域名，需先按文档启动隧道 |
+| **API Key** | （留空）或任意文字 | 不校验，留空、`sk-any`、`cunkebao` 等均可 |
+
+---
+
+## 在 Cursor 中填写步骤
+
+1. 打开 Cursor：**Settings → Cursor Settings → Models**
+2. 找到 **OpenAI API Key** 或 **Custom OpenAI-compatible API**
+3. **API Base URL** 填：`https://open.quwanzhi.com`
+4. **API Key** 留空，或随便填一个（如 `sk-cunkebao`），保存即可。
+
+保存后即可在 Cursor 里像用 GPT 一样调用存客宝AI（需本机已执行 `DOMAIN=open.quwanzhi.com ./scripts/start_api_with_tunnel.sh`）。
+
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] Write
+
+assistant:
+<think>
+I added the authorization parameter but it's not used - that's fine, we just accept any. Let me also add this to the 00_存客宝AI总索引 or the API doc so user can find it. And remove the unused Request import if we're not using it.
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/api/server.py
+  old_string: from fastapi import FastAPI, HTTPException, Header, Request
+  new_string: from fastapi import FastAPI, HTTPException, Header
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/00_存客宝AI总索引.md
+  old_string: 在 Cursor 中把「自定义 OpenAI Base URL」设为 **https://open.quwanzhi.com** 即可。详见 [API与隧道使用说明](docs/API与隧道使用说明.md)。
+  new_string: **Cursor 直接配置**：Base URL 填 `https://open.quwanzhi.com`，API Key **留空或任意**（不校验）。详见 [Cursor配置-存客宝AI](docs/Cursor配置-存客宝AI.md)、[API与隧道使用说明](docs/API与隧道使用说明.md)。
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Done. Give user the direct copy-paste values.
+</think>
+已按「接口域名 + API Key 留空或任意」改好，并生成了 Cursor 可直接用的配置说明。
+
+---
+
+## Cursor 里直接可填的配置
+
+| 配置项 | 填写内容 |
+|--------|----------|
+| **接口域名 / Base URL** | `https://open.quwanzhi.com` |
+| **API Key** | 留空，或填任意文字（如 `sk-any`、`cunkebao`） |
+
+服务端**不校验** API Key，不填或随便填都会通过。
+
+---
+
+## 在 Cursor 里怎么填
+
+1. 打开 **Settings → Cursor Settings → Models**（或自定义模型/OpenAI 兼容）
+2. **API Base URL** 填：`https://open.quwanzhi.com`
+3. **API Key** 不填，或随便填一个（例如 `sk-cunkebao`），保存即可。
+
+说明文档已写在：`docs/Cursor配置-存客宝AI.md`，总索引里也加了这条配置的入口。

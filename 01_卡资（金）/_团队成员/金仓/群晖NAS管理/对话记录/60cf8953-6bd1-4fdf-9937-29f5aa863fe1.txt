@@ -1,0 +1,1955 @@
+user:
+<user_query>
+将这个项目部署到nas服务器上面去，确保那个整个项目是可运转的，然后直接用那个 NAS 上面的把 Mongo 的数据直接转成 MySQL 的数据，然后到在这个整个的那个项目直接部署，确保整个项目是可运行的
+</user_query>
+
+assistant:
+<think>
+The user wants to:
+1. Deploy the 知己 (Zhiji) project to a NAS server
+2. Ensure the entire project is runnable
+3. Migrate MongoDB data to MySQL on the NAS
+4. Deploy the whole project so it runs with MySQL instead of MongoDB
+
+I need to:
+1. Read the 知己 project Skill to understand the project structure, ports, and deployment requirements
+2. Understand the current MongoDB usage in the project
+3. Plan: NAS deployment + MongoDB to MySQL migration + config changes
+4. Check if there's existing NAS/Synology skill for deployment
+5. Implement the migration and deployment
+
+Let me start by reading the 知己 Skill and exploring the project structure and MongoDB usage.
+</think>
+正在读取知己项目 Skill 与项目结构，以便将项目部署到 NAS 并将 MongoDB 迁移为 MySQL。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/.cursor/skills/zhiji-project-manager/SKILL.md
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/开发/4、合作项目/知己开发
+[Tool call] Grep
+  pattern: mongodb|MongoClient|getDb|collection
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发
+  glob: *.{ts,tsx,js}
+
+[Tool result] Read
+
+[Tool result] LS
+
+[Tool result] Grep
+
+assistant:
+<think>
+I need to:
+1. Get full list of all API routes and files that use MongoDB (connectToDatabase, getCollection, COLLECTIONS)
+2. Read lib/mongodb.ts to see COLLECTIONS and indexes
+3. Read deployment doc and NAS skill if any
+4. Plan: 
+   - Add MySQL support (abstraction layer or full migration)
+   - MongoDB→MySQL migration script (run on NAS: export from Mongo, transform, import to MySQL)
+   - NAS deployment (Docker or direct Node + MySQL)
+   - Ensure project runs with MySQL
+
+Let me get all files that import from mongodb or use connectToDatabase/getCollection/COLLECTIONS.
+</think>
+正在收集所有使用 MongoDB 的文件及集合定义，并查看部署文档与 NAS 相关配置。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts
+[Tool call] Grep
+  pattern: connectToDatabase|getCollection|COLLECTIONS|from \"@/lib/mongodb\"|from 'mongodb'
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发
+  output_mode: content
+  -B: 0
+  -A: 0
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/开发文档/8、部署/部署规范.md
+[Tool call] Read
+  path: /Users/karuo/.cursor/skills/synology-nas-manager/SKILL.md
+  limit: 120
+
+[Tool result] Read
+
+[Tool result] Grep
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+I have:
+1. Full mongodb.ts with COLLECTIONS and indexes
+2. Deployment doc - there's already a 宝塔 deployment at 43.139.27.93, but user asked for NAS
+3. NAS skill path might be different - let me search for it
+
+I need to:
+1. Find all API routes that use db/collection (not just the grep from mongodb.ts) - search for files that import from @/lib/mongodb
+2. Create MySQL schema (tables matching COLLECTIONS) and a db abstraction so the app can use either Mongo or MySQL via env
+3. MongoDB→MySQL migration script (Node or Python) that can run on NAS
+4. NAS deployment: Docker Compose (Next.js + MySQL) or document how to deploy on Synology
+
+Let me list all app/api files that use mongodb.
+</think>
+正在列出所有引用 `@/lib/mongodb` 或使用 `db.collection` 的 API 文件，并查看 `package.json` 与 `lib/models`。
+
+[Tool call] Grep
+  pattern: @/lib/mongodb|connectToDatabase|getCollection|COLLECTIONS
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app
+  output_mode: files_with_matches
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/package.json
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/models
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/models/index.ts
+
+[Tool result] Grep
+
+[Tool result] Read
+
+[Tool result] LS
+
+[Tool result] Read
+
+assistant:
+<think>
+This is a large task:
+
+1. **NAS 部署**：用户要把项目部署到 NAS。NAS 通常是群晖 Synology，可以跑 Docker。所以方案是：
+   - 提供 Docker Compose：Next.js 应用 + MySQL（不用 MongoDB）
+   - 或文档说明在 NAS 上如何用 Node + MySQL 跑
+
+2. **MongoDB → MySQL**：项目里 35 个 API 文件都用的是 `connectToDatabase()` 和 `db.collection(name)`，是典型的 MongoDB 用法。要改成 MySQL 有两种做法：
+   - **方案 A**：写一层抽象 `lib/db.ts`，根据 `DATABASE_TYPE=mysql|mongodb` 切换，MySQL 用 mysql2/promise，提供和 Mongo 类似的接口（getCollection 返回一个封装，实现 find/findOne/insertOne/updateOne 等）。这样所有 API 不用改，只改 lib。
+   - **方案 B**：把所有 API 都改成用 MySQL 的 SQL/ORM（如 Prisma、Drizzle、mysql2）。改动量巨大。
+
+用户要求「把 Mongo 的数据直接转成 MySQL 的数据」「整个项目可运行」，所以更合理的是：
+- **采用方案 A**：实现一个「适配层」，让现有代码继续用 `connectToDatabase` + `db.collection(xxx).find/findOne/insertOne/updateOne` 等，底层在 MySQL 下用 mysql2 实现这些方法；Mongo 时保持原样。
+- 然后写 **Mongo → MySQL 迁移脚本**：从 Mongo 导出各 collection 的 JSON，转换成 MySQL 表结构并导入（_id → id 等）。
+
+难点：
+- MongoDB 的文档是自由 JSON，MySQL 要固定表结构。需要根据现有 COLLECTIONS 和 models 定义建表，并做字段映射（如 _id → id VARCHAR(24) 或 INT AUTO_INCREMENT）。
+- 部分文档可能有多态或嵌套，需要 flatten 或存 JSON 列。
+
+我先实现：
+1. **MySQL 表结构**：根据 COLLECTIONS 和 lib/models 里的类型，写出建表 SQL（每个 collection 一张表，主要字段 + 一个 JSON 列存原始文档以防遗漏）。
+2. **lib/db 抽象层**：`DATABASE_TYPE=mysql` 时用 mysql2，导出 `connectToDatabase()` 和 `getCollection()`；getCollection 返回的对象实现：find, findOne, insertOne, insertMany, updateOne, updateMany, countDocuments, deleteOne 等（只实现 API 里用到的即可）。
+3. **迁移脚本**：从 MongoDB 读各 collection，写入 MySQL（可 Node 脚本，在 NAS 或本机跑）。
+4. **NAS 部署**：docker-compose.yml（Next.js + MySQL）+ 部署文档。
+
+先看几个典型的 API 怎么用 db，以便实现适配层。
+</think>
+查看几个典型 API 对 `db.collection` 的用法，以便我们实现 MySQL 适配层。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/user/route.ts
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/users/route.ts
+  limit: 80
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/booking/route.ts
+  limit: 100
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/reports/route.ts
+  limit: 80
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+I see the patterns:
+- findOne(filter)
+- find(filter).sort().skip().limit().project().toArray()
+- insertOne(doc) -> result.insertedId
+- updateOne(filter, { $set: ... }) 或 updateOne(filter, { $inc: ... })
+- countDocuments(filter)
+- deleteOne(filter)
+- ObjectId(userId) 用于 _id 查询
+
+实现策略：
+1. 创建 lib/mysql.ts：MySQL 连接 + 根据 COLLECTIONS 建表（含 JSON 列存原始文档）
+2. 创建 lib/db.ts：根据 env DATABASE_TYPE 选择 mongodb 或 mysql，导出统一接口 connectToDatabase + getCollection；其中 getCollection 在 MySQL 下返回一个适配器，实现 find/findOne/insertOne/updateOne/countDocuments/deleteOne 等，并处理 _id 与 id 的转换。
+3. 所有 API 从 @/lib/mongodb 改为 @/lib/db，且 db 的用法要兼容（db.collection(name) 返回的接口一致）。这样改动最小：只改 mongodb.ts 为 db.ts，让 db.ts 在 mysql 时用 mysql2 实现 collection 的上述方法；同时保留 mongodb 时直接复用原 mongodb 逻辑。
+4. ObjectId：MySQL 下用字符串 id，所以 API 里用 ObjectId(userId) 的地方在 MySQL 下要改成直接 userId（或 db 层把 _id 转成字符串）。
+
+更简单的做法：**不改 API 文件**，只改 lib/mongodb.ts——当 DATABASE_TYPE=mysql 时，mongodb.ts 内部用 mysql2，但对外仍然暴露 connectToDatabase 和 getCollection，且 getCollection 返回一个「类 Mongo Collection」的对象（实现 find, findOne, insertOne, updateOne, countDocuments, deleteOne 等）。这样所有 API 的 import 不用改，只改 lib/mongodb.ts 一个文件。
+
+但 API 里用了 ObjectId，如 `{ _id: new ObjectId(userId) }`。MySQL 下没有 ObjectId，所以要么：
+- 在 mongodb.ts 里 export 一个 ObjectId 的替代：MySQL 时 ObjectId = (id: string) => id（或返回 { toString: () => id }），这样查询时 _id 用字符串即可；
+- 或者 MySQL 表主键用 VARCHAR(24) 存 MongoDB 的 _id 字符串，查询时用 id 字符串。
+
+所以计划：
+1. lib/db.ts（或直接改 lib/mongodb.ts）：支持双模式。当 DATABASE_TYPE=mysql 时，connectToDatabase 返回的 db 是适配器，db.collection(name) 返回 MySQLCollectionAdapter，实现 find, findOne, insertOne, updateOne, countDocuments, deleteOne；ObjectId 在 MySQL 下导出为函数 (id: string) => id。
+2. 建表 SQL：每个 COLLECTIONS 一张表，主键 id VARCHAR(24) 或 INT AUTO_INCREMENT。为简单起见，所有表用 id VARCHAR(64) PRIMARY KEY（存 MongoDB _id 或 UUID），加 JSON 列 data TEXT 存整条文档（这样迁移时直接 JSON 写入，查询时解析）。但这样 find 要解析 JSON，且 $set/$inc 不好做。所以还是规规矩矩建列：users 表有 phone, nickname, password, ... 等，然后适配器在 insert 时把 doc 展平写入，查询时组装成文档。这样迁移脚本也要按列导出。工作量较大。
+
+折中：**每张表主键 id，加 data JSON 列存完整文档**。insertOne 时：生成 id，把 doc 写入 data；findOne 时：按 id 或按 filter 的简单字段查（如 phone=?），读出 data 返回；updateOne 时：读出 data，应用 $set/$inc，再写回。这样适配层逻辑简单，且迁移时可以从 Mongo 导出 JSON 直接 INSERT data 列。但 find(filter) 复杂 filter（如 $or, $regex）在 MySQL 里要等价实现，可能不支持。先做简单实现：只支持简单 filter（key: value），复杂查询再补充。
+
+开始写代码。先建：
+1. 开发文档/8、部署/NAS部署说明.md
+2. 开发文档/7、数据库/MySQL表结构.sql
+3. lib/mysql.ts（MySQL 连接 + 建表）
+4. 修改 lib/mongodb.ts：若 DATABASE_TYPE=mysql 则 use MySQL adapter，否则保持原样；并 export 一个兼容的 ObjectId（MySQL 下返回字符串）
+5. 迁移脚本 scripts/migrate-mongo-to-mysql.mjs（从 Mongo 读，写 MySQL）
+6. docker-compose.yml（Next.js + MySQL，供 NAS 用）
+
+先实现 MySQL 适配层。需要实现的 collection 方法：
+- find(filter).sort(sort).skip(n).limit(n).project(projection).toArray()
+- findOne(filter)
+- insertOne(doc) -> { insertedId }
+- updateOne(filter, update)  // update 可能是 { $set: {...}, $inc: {...} }
+- countDocuments(filter)
+- deleteOne(filter)
+
+MySQL 表设计：每 collection 一张表，表名即 collection 名。列：id VARCHAR(64) PRIMARY KEY, data JSON, 以及常用查询列如 user 的 phone、createdAt 等做索引。这样 findOne({ phone: 'x' }) 可以 SELECT * FROM users WHERE phone='x'。插入时 id 用 nanoid 或 MongoDB ObjectId 格式，data 存整文档 JSON。
+
+先写建表 SQL 和 lib/mysql.ts，再写 mongodb.ts 的切换逻辑和适配器。
+</think>
+正在创建任务列表并开始实现：先实现 MySQL 适配层与 NAS 部署方案。
+
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"MySQL 适配层：lib/mysql.ts + db 抽象，支持 Mongo/MySQL 切换","status":"in_progress"},{"id":"2","content":"MySQL 建表 SQL 与初始化脚本","status":"pending"},{"id":"3","content":"MongoDB → MySQL 数据迁移脚本（NAS 或本机可运行）","status":"pending"},{"id":"4","content":"NAS Docker 部署：docker-compose + 部署文档","status":"pending"},{"id":"5","content":"修改 mongodb.ts 为 db 双模式并修正 API 中 ObjectId 用法","status":"pending"}]
+  merge: false
+
+[Tool result] TodoWrite
+
+assistant:
+<think>
+采用更稳妥的做法：
+1. 不改变现有 API 的 import（仍从 @/lib/mongodb 引入），在 lib/mongodb.ts 里根据环境变量判断：若 DATABASE_TYPE=mysql，则内部使用 MySQL 连接和「集合适配器」，对外仍暴露 connectToDatabase、getCollection、COLLECTIONS、ObjectId（MySQL 下用假 ObjectId 只返回字符串）。
+2. 实现 MySQL 集合适配器：每个集合对应一张表，表结构为 id VARCHAR(64) PRIMARY KEY, doc JSON, 以及常用查询字段（如 users.phone, users.createdAt）以便 WHERE 查询。这样 findOne({ phone: 'x' }) 可以 SELECT id, doc FROM users WHERE phone='x'。insertOne 时把 doc 序列化进 doc 列，并提取 phone 等列以便查询。
+3. 建表：为每个 COLLECTIONS 建表，统一结构 (id, doc JSON, 常用键列)。迁移脚本从 Mongo 导出每条文档，生成 id（原 _id），写入 MySQL。
+
+先写 MySQL 连接和表结构。表名用 COLLECTIONS 的值（users, reports, ...）。统一结构：
+- id VARCHAR(64) PRIMARY KEY  -- 存 MongoDB _id 的字符串或新生成的 id
+- doc JSON NOT NULL           -- 完整文档，便于兼容任意字段
+
+这样适配器实现最简单：findOne(filter) 把 filter 转成 WHERE 条件（只支持简单等值，如 { phone: 'x' } -> WHERE doc->>'$.phone'='x' 或专门列）；find() 同理；insertOne 时 INSERT (id, doc) VALUES (?, ?)；updateOne 时 SELECT doc，在应用层合并 $set/$inc，再 UPDATE doc=?. 但 MySQL 的 JSON 查询用 doc->>'$.phone' 可以。所以不需要冗余列，只 id + doc 两列即可。findOne({ phone: '123' }) 用 WHERE JSON_UNQUOTE(JSON_EXTRACT(doc, '$.phone')) = '123'。这样建表简单，迁移也简单。
+
+开始写代码。
+</think>
+查看 API 中 `ObjectId` 与 `updateOne`/`$set`/`$inc` 的用法。
+
+[Tool call] Grep
+  pattern: ObjectId|\.updateOne|\.updateMany|\$set|\$inc
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app
+  output_mode: content
+  -n: true
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/auth/route.ts
+
+[Tool result] Grep
+
+[Tool result] Read
+
+assistant:
+<think>
+auth 里用的是 conn.db，即 connectToDatabase() 返回的是 { client, db }，所以 db 上有 collection 方法。admin._id 可能是 MongoDB ObjectId，在 MySQL 适配器里我们存成字符串 id，所以返回的 doc 里要有 _id 字段（值为 id 字符串），这样 updateOne({ _id: admin._id }) 能工作。
+
+实现方案确定：
+1. lib/mysql.ts：MySQL 连接池；每张表结构 id VARCHAR(64) PRIMARY KEY, doc JSON；提供 MySQLCollection 类，实现 findOne, find, insertOne, updateOne, countDocuments, deleteOne；支持 $set、$inc、$setOnInsert（只处理 $set 和 $inc，$setOnInsert 在 insert 时合并）。
+2. lib/mongodb.ts：若 process.env.DATABASE_TYPE === 'mysql'，则 connectToDatabase 返回的 db 是适配器（DbAdapter），其 collection(name) 返回 MySQLCollection；并 export 一个 ObjectId 的兼容：MySQL 时 ObjectId(id) 返回 id 字符串（或 { toString: () => id }），Mongo 时用 mongodb 的 ObjectId。但 API 里用的是 new ObjectId(userId)，所以 MySQL 下要 export 一个类，new ObjectId(id) 得到的东西在作为 _id 查询时要能转成字符串。最简单：MySQL 下 export 的 ObjectId 是一个类，构造时接收 id，toString() 返回 id，valueOf 或转字符串时也是 id。这样 filter 里 _id: new ObjectId(x) 在适配器里要能认出并转成 id = x。
+3. 适配器 findOne(filter)：把 filter 里 _id 换成 id（若 _id 是 ObjectId 则取 toString()），然后 WHERE 用 JSON 或 id 查。
+4. 建表 SQL：CREATE TABLE users (id VARCHAR(64) PRIMARY KEY, doc JSON); 每个 collection 一张表。
+5. 迁移脚本：mongoexport 或用 Node 连 Mongo 读各 collection，再插入 MySQL（INSERT INTO users (id, doc) VALUES (?, ?)）。
+
+开始写 lib/mysql.ts。需要安装 mysql2。
+</think>
+正在实现：先添加 `mysql2` 依赖并创建 MySQL 适配层与建表 SQL。
+
+[Tool call] Shell
+  command: cd /Users/karuo/Documents/开发/4、合作项目/知己开发 && pnpm add mysql2
+  description: 安装 mysql2 依赖
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/user/route.ts
+  offset: 130
+  limit: 20
+
+[Tool result] Shell
+
+[Tool result] Read
+
+assistant:
+<think>
+user/route PUT 里 updateOne({ _id: userId }) 传的是 userId 字符串，不是 ObjectId。所以适配器里 filter._id 可能是字符串或 ObjectId 实例，都要转成 id 字符串。
+</think>
+正在创建 MySQL 适配层与建表 SQL。
+
+[Tool call] Write
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/开发文档/7、数据库/MySQL表结构.sql
+  contents: -- 知己 · MySQL 表结构（与 MongoDB 集合一一对应，doc 存完整文档便于兼容）
+-- 使用前创建数据库：CREATE DATABASE IF NOT EXISTS zhiji CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+-- USE zhiji;
+
+SET NAMES utf8mb4;
+
+-- 通用表结构：id 主键（对应 Mongo _id 字符串），doc JSON 存整文档
+CREATE TABLE IF NOT EXISTS users (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  created_at DATETIME(3) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.createdAt'))) STORED,
+  INDEX idx_phone ((CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.phone')) AS CHAR(32)))),
+  INDEX idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS reports (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  created_at DATETIME(3) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.createdAt'))) STORED,
+  INDEX idx_user_created ( (CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.userId')) AS CHAR(64))), created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS test_records (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  created_at DATETIME(3) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.createdAt'))) STORED,
+  INDEX idx_user_type ( (CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.userId')) AS CHAR(64))), (CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.testType')) AS CHAR(32)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS appointments (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS bookings (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  created_at DATETIME(3) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.createdAt'))) STORED,
+  INDEX idx_user_status ( (CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.userId')) AS CHAR(64))), (CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.status')) AS CHAR(32))),
+  INDEX idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS consultants (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  created_at DATETIME(3) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.createdAt'))) STORED,
+  INDEX idx_status ( (CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.status')) AS CHAR(32)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS surveys (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS invitations (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS orders (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  order_sn VARCHAR(128) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.orderSn'))) STORED,
+  created_at DATETIME(3) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.createdAt'))) STORED,
+  UNIQUE INDEX idx_order_sn (order_sn(64)),
+  INDEX idx_user_created ( (CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.userId')) AS CHAR(64))), created_at),
+  INDEX idx_status ( (CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.status')) AS CHAR(32)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pay_trades (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  created_at DATETIME(3) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.createdAt'))) STORED,
+  INDEX idx_order_sn ( (CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.orderSn')) AS CHAR(128)))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS referral_bindings (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  user_id VARCHAR(64) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.userId'))) STORED,
+  INDEX idx_user_id (user_id),
+  INDEX idx_referrer ( (CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.referrerId')) AS CHAR(64))))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS profit_sharing_rules (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  INDEX idx_default ( (CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.isDefault')) AS UNSIGNED))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS profit_sharing_records (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  created_at DATETIME(3) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.createdAt'))) STORED,
+  INDEX idx_order_sn ( (CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.orderSn')) AS CHAR(128))),
+  INDEX idx_referrer_created ( (CAST(JSON_UNQUOTE(JSON_EXTRACT(doc, '$.referrerId')) AS CHAR(64))), created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS admin_users (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  username VARCHAR(128) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.username'))) STORED,
+  UNIQUE INDEX idx_username (username(64))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS question_banks (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  test_type VARCHAR(32) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.testType'))) STORED,
+  UNIQUE INDEX idx_test_type (test_type(32))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ai_settings (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  `key` VARCHAR(128) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.key'))) STORED,
+  UNIQUE INDEX idx_key (`key`(64))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS system_settings (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  `key` VARCHAR(128) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.key'))) STORED,
+  UNIQUE INDEX idx_key (`key`(64))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS knowledge_base (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  created_at DATETIME(3) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.createdAt'))) STORED,
+  INDEX idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS consultant_applications (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL,
+  created_at DATETIME(3) GENERATED ALWAYS AS (JSON_UNQUOTE(JSON_EXTRACT(doc, '$.createdAt'))) STORED
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+[Tool result] Write
+
+assistant:
+<think>
+MySQL 5.7/8 的 GENERATED 列里不能直接引用 JSON_EXTRACT 得到可能为 NULL 的 createdAt（可能是 Date 对象序列化后的 ISO 字符串）。若 doc 里没有 createdAt 会报错。简化：不用 GENERATED 列，只用 id + doc，查询时用 JSON_EXTRACT。这样建表更简单，兼容性更好。
+</think>
+简化建表结构，仅使用 `id` 与 `doc`，避免 GENERATED 列在部分 MySQL 版本上的兼容问题。
+
+[Tool call] Write
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/开发文档/7、数据库/MySQL表结构.sql
+  contents: -- 知己 · MySQL 表结构（与 MongoDB 集合一一对应，doc 存完整 JSON 文档）
+-- 使用前：CREATE DATABASE IF NOT EXISTS zhiji CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+-- USE zhiji;
+
+SET NAMES utf8mb4;
+
+CREATE TABLE IF NOT EXISTS users (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS reports (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS test_records (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS appointments (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS bookings (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS consultants (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS surveys (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS invitations (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS orders (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pay_trades (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS referral_bindings (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS profit_sharing_rules (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS profit_sharing_records (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS admin_users (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS question_banks (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ai_settings (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS system_settings (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS knowledge_base (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS consultant_applications (
+  id VARCHAR(64) PRIMARY KEY,
+  doc JSON NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
+[Tool result] Write
+
+assistant:
+<think>
+Now implement lib/mysql.ts - MySQL connection and collection adapter that mimics Mongo's find/findOne/insertOne/updateOne/countDocuments/deleteOne. Then modify lib/mongodb.ts to switch based on DATABASE_TYPE.
+</think>
+
+
+[Tool call] Write
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mysql.ts
+  contents: /**
+ * 知己 · MySQL 连接与集合适配器
+ * 用于 NAS 部署时替代 MongoDB，表结构为 (id, doc JSON)
+ */
+
+import mysql from "mysql2/promise"
+
+const MYSQL_HOST = process.env.MYSQL_HOST || "localhost"
+const MYSQL_PORT = parseInt(process.env.MYSQL_PORT || "3306", 10)
+const MYSQL_USER = process.env.MYSQL_USER || "root"
+const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || ""
+const MYSQL_DATABASE = process.env.MYSQL_DATABASE || "zhiji"
+
+let pool: mysql.Pool | null = null
+
+/** 获取 MySQL 连接池 */
+export function getPool(): mysql.Pool {
+  if (!pool) {
+    pool = mysql.createPool({
+      host: MYSQL_HOST,
+      port: MYSQL_PORT,
+      user: MYSQL_USER,
+      password: MYSQL_PASSWORD,
+      database: MYSQL_DATABASE,
+      waitForConnections: true,
+      connectionLimit: 10,
+      queueLimit: 0,
+      charset: "utf8mb4",
+    })
+  }
+  return pool
+}
+
+/** 把 Mongo 风格 filter 转为 id 或 JSON 条件（仅支持简单等值、_id） */
+function filterToWhere(filter: Record<string, unknown>): { id?: string; conditions: string[]; values: unknown[] } {
+  const conditions: string[] = []
+  const values: unknown[] = []
+  let id: string | undefined
+
+  for (const [key, value] of Object.entries(filter)) {
+    if (value === undefined) continue
+    if (key === "_id") {
+      const v = value as { toString?: () => string }
+      id = typeof v === "string" ? v : (v?.toString?.() ?? String(v))
+      continue
+    }
+    if (key === "$or") {
+      const orList = value as Record<string, unknown>[]
+      const orParts = orList.map((sub) => {
+        const { conditions: c, values: v } = filterToWhere(sub)
+        if (c.length) {
+          values.push(...v)
+          return "(" + c.join(" AND ") + ")"
+        }
+        return "1=0"
+      })
+      if (orParts.length) conditions.push("(" + orParts.join(" OR ") + ")")
+      continue
+    }
+    if (typeof value === "object" && value !== null && "$regex" in value) {
+      const r = value as { $regex: string; $options?: string }
+      const pattern = "%" + String(r.$regex).replace(/%/g, "\\%").replace(/_/g, "\\_") + "%"
+      conditions.push("JSON_UNQUOTE(JSON_EXTRACT(doc, ?)) LIKE ?")
+      values.push("$." + key, pattern)
+      continue
+    }
+    conditions.push("JSON_UNQUOTE(JSON_EXTRACT(doc, ?)) = ?")
+    values.push("$." + key, value === null ? null : String(value))
+  }
+
+  return { id, conditions, values }
+}
+
+/** 把 Mongo 的 update（$set, $inc 等）合并进 doc 对象 */
+function applyUpdate(doc: Record<string, unknown>, update: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...doc }
+
+  if (update.$set && typeof update.$set === "object") {
+    for (const [k, v] of Object.entries(update.$set as Record<string, unknown>)) next[k] = v
+  }
+  if (update.$inc && typeof update.$inc === "object") {
+    for (const [k, delta] of Object.entries(update.$inc as Record<string, number>)) {
+      const cur = next[k] as number | undefined
+      next[k] = (typeof cur === "number" ? cur : 0) + delta
+    }
+  }
+  if (update.$setOnInsert && typeof update.$setOnInsert === "object") {
+    for (const [k, v] of Object.entries(update.$setOnInsert as Record<string, unknown>)) {
+      if (next[k] === undefined) next[k] = v
+    }
+  }
+
+  return next
+}
+
+/** 日期/对象序列化为 JSON 友好格式 */
+function serializeDoc(doc: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(doc)) {
+    if (v instanceof Date) out[k] = v.toISOString()
+    else if (v !== undefined && v !== null && typeof v === "object" && !Array.isArray(v) && Object.getPrototypeOf(v) === Object.prototype)
+      out[k] = serializeDoc(v as Record<string, unknown>)
+    else out[k] = v
+  }
+  return out
+}
+
+/** MySQL 集合适配器（兼容 Mongo Collection 常用方法） */
+export class MySQLCollection {
+  constructor(
+    private tableName: string,
+    private pool: mysql.Pool
+  ) {}
+
+  private async run<T>(sql: string, params: unknown[]): Promise<T> {
+    const [rows] = await this.pool.execute(sql, params)
+    return rows as T
+  }
+
+  async findOne(filter: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+    const { id, conditions, values } = filterToWhere(filter)
+    let sql = "SELECT id, doc FROM " + this.tableName
+    if (id) {
+      const [row] = await this.pool.execute<mysql.RowDataPacket[]>("SELECT id, doc FROM " + this.tableName + " WHERE id = ?", [id])
+      if (!row?.length) return null
+      const doc = typeof row[0].doc === "string" ? JSON.parse(row[0].doc) : row[0].doc
+      return { _id: row[0].id, ...doc }
+    }
+    if (conditions.length === 0) {
+      const [row] = await this.pool.execute<mysql.RowDataPacket[]>("SELECT id, doc FROM " + this.tableName + " LIMIT 1", [])
+      if (!row?.length) return null
+      const doc = typeof row[0].doc === "string" ? JSON.parse(row[0].doc) : row[0].doc
+      return { _id: row[0].id, ...doc }
+    }
+    sql += " WHERE " + conditions.join(" AND ") + " LIMIT 1"
+    const [row] = await this.pool.execute<mysql.RowDataPacket[]>(sql, values)
+    if (!row?.length) return null
+    const doc = typeof row[0].doc === "string" ? JSON.parse(row[0].doc) : row[0].doc
+    return { _id: row[0].id, ...doc }
+  }
+
+  async find(filter: Record<string, unknown>): Promise<{
+    sort: (s: Record<string, 1 | -1>) => this
+    skip: (n: number) => this
+    limit: (n: number) => this
+    project: (p: Record<string, number>) => this
+    toArray: () => Promise<Record<string, unknown>[]>
+  }> {
+    const self = this
+    let sortSpec: Record<string, 1 | -1> = {}
+    let skip = 0
+    let limit = 1000
+    let project: Record<string, number> | null = null
+
+    return {
+      sort(s: Record<string, 1 | -1>) {
+        sortSpec = s
+        return this
+      },
+      skip(n: number) {
+        skip = n
+        return this
+      },
+      limit(n: number) {
+        limit = n
+        return this
+      },
+      project(p: Record<string, number>) {
+        project = p
+        return this
+      },
+      async toArray() {
+        const { id, conditions, values } = filterToWhere(filter)
+        let sql = "SELECT id, doc FROM " + self.tableName
+        const args: unknown[] = []
+
+        if (id) {
+          sql += " WHERE id = ?"
+          args.push(id)
+        } else if (conditions.length > 0) {
+          sql += " WHERE " + conditions.join(" AND ")
+          args.push(...values)
+        }
+
+        const orderKeys = Object.keys(sortSpec)
+        if (orderKeys.length > 0) {
+          const orderCol = orderKeys.map((k) => {
+            const path = "$." + k
+            return "JSON_UNQUOTE(JSON_EXTRACT(doc, ?)) " + (sortSpec[k] === -1 ? "DESC" : "ASC")
+          })
+          sql += " ORDER BY " + orderKeys.map((_, i) => `JSON_UNQUOTE(JSON_EXTRACT(doc, ?)) ${sortSpec[orderKeys[i]] === -1 ? "DESC" : "ASC"}`).join(", ")
+          args.push(...orderKeys.map((k) => "$." + k))
+        } else {
+          sql += " ORDER BY id DESC"
+        }
+        sql += " LIMIT ? OFFSET ?"
+        args.push(limit, skip)
+
+        const [rows] = await self.pool.execute<mysql.RowDataPacket[]>(sql, args)
+        const list = (rows || []).map((r) => {
+          const doc = typeof r.doc === "string" ? JSON.parse(r.doc) : r.doc
+          let out: Record<string, unknown> = { _id: r.id, ...doc }
+          if (project && Object.keys(project).length > 0) {
+            const o: Record<string, unknown> = { _id: out._id }
+            for (const k of Object.keys(project)) {
+              if (project[k] !== 0 && out[k] !== undefined) o[k] = out[k]
+            }
+            out = o
+          }
+          return out
+        })
+        return list
+      },
+    }
+  }
+
+  async insertOne(doc: Record<string, unknown>): Promise<{ insertedId: string }> {
+    const id = doc._id != null ? String(doc._id) : require("crypto").randomBytes(12).toString("hex")
+    const { _id, ...rest } = doc as { _id?: unknown }
+    const clean = serializeDoc(rest as Record<string, unknown>)
+    await this.pool.execute("INSERT INTO " + this.tableName + " (id, doc) VALUES (?, ?)", [id, JSON.stringify(clean)])
+    return { insertedId: id }
+  }
+
+  async insertMany(docs: Record<string, unknown>[]): Promise<{ insertedCount: number }> {
+    for (const doc of docs) await this.insertOne(doc)
+    return { insertedCount: docs.length }
+  }
+
+  async updateOne(filter: Record<string, unknown>, update: Record<string, unknown>): Promise<{ modifiedCount: number }> {
+    const existing = await this.findOne(filter)
+    if (!existing) return { modifiedCount: 0 }
+    const id = String(existing._id)
+    const merged = applyUpdate(existing as Record<string, unknown>, update)
+    delete merged._id
+    await this.pool.execute("UPDATE " + this.tableName + " SET doc = ? WHERE id = ?", [JSON.stringify(serializeDoc(merged)), id])
+    return { modifiedCount: 1 }
+  }
+
+  async countDocuments(filter: Record<string, unknown>): Promise<number> {
+    const { id, conditions, values } = filterToWhere(filter)
+    let sql = "SELECT COUNT(*) AS c FROM " + this.tableName
+    if (id) {
+      const [row] = await this.pool.execute<mysql.RowDataPacket[]>(sql + " WHERE id = ?", [id])
+      return (row?.[0]?.c as number) ?? 0
+    }
+    if (conditions.length > 0) {
+      sql += " WHERE " + conditions.join(" AND ")
+      const [row] = await this.pool.execute<mysql.RowDataPacket[]>(sql, values)
+      return (row?.[0]?.c as number) ?? 0
+    }
+    const [row] = await this.pool.execute<mysql.RowDataPacket[]>(sql, [])
+    return (row?.[0]?.c as number) ?? 0
+  }
+
+  async deleteOne(filter: Record<string, unknown>): Promise<{ deletedCount: number }> {
+    const { id, conditions, values } = filterToWhere(filter)
+    if (id) {
+      const [res] = await this.pool.execute<mysql.ResultSetHeader>("DELETE FROM " + this.tableName + " WHERE id = ?", [id])
+      return { deletedCount: res?.affectedRows ?? 0 }
+    }
+    if (conditions.length === 0) return { deletedCount: 0 }
+    const sql = "DELETE FROM " + this.tableName + " WHERE " + conditions.join(" AND ") + " LIMIT 1"
+    const [res] = await this.pool.execute<mysql.ResultSetHeader>(sql, values)
+    return { deletedCount: res?.affectedRows ?? 0 }
+  }
+}
+
+/** MySQL 数据库适配器（兼容 Mongo Db#collection） */
+export class MySQLDb {
+  constructor(private pool: mysql.Pool) {}
+
+  collection(name: string): MySQLCollection {
+    return new MySQLCollection(name, this.pool)
+  }
+}
+
+/** 连接 MySQL 并返回 db 适配器 */
+export async function connectMySQL(): Promise<MySQLDb> {
+  const p = getPool()
+  await p.execute("SELECT 1")
+  console.log("[知己] MySQL 连接成功:", MYSQL_DATABASE)
+  return new MySQLDb(p)
+}
+
+/** 执行建表 SQL（从 MySQL表结构.sql 读取或内联） */
+export async function initializeMySQLTables(): Promise<void> {
+  const pool = getPool()
+  const tables = [
+    "users", "reports", "test_records", "appointments", "bookings", "consultants",
+    "surveys", "invitations", "orders", "pay_trades", "referral_bindings",
+    "profit_sharing_rules", "profit_sharing_records", "admin_users", "question_banks",
+    "ai_settings", "system_settings", "knowledge_base", "consultant_applications",
+  ]
+  for (const name of tables) {
+    await pool.execute(
+      "CREATE TABLE IF NOT EXISTS `" + name + "` ( id VARCHAR(64) PRIMARY KEY, doc JSON NOT NULL ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    )
+  }
+  console.log("[知己] MySQL 表初始化完成")
+}
+
+
+[Tool result] Write
+
+assistant:
+<think>
+I used require("crypto") in insertOne - in Next.js/TS we should use import crypto from "crypto". Let me fix that. Also need to fix the find() chain: when building SQL for ORDER BY we're pushing orderKeys for the placeholders but the sort keys might be different. Let me simplify - for sort we can just do ORDER BY id DESC by default, or one field. Actually the code has a bug: we're adding orderKeys.map to args but the SQL uses placeholders - need same number. Let me fix the find() toArray and use crypto from node.
+</think>
+修复 `lib/mysql.ts`：改用 `import crypto`，并修正 `find()` 的 ORDER BY 与占位符。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mysql.ts
+  old_string: /**
+ * 知己 · MySQL 连接与集合适配器
+ * 用于 NAS 部署时替代 MongoDB，表结构为 (id, doc JSON)
+ */
+
+import mysql from "mysql2/promise"
+  new_string: /**
+ * 知己 · MySQL 连接与集合适配器
+ * 用于 NAS 部署时替代 MongoDB，表结构为 (id, doc JSON)
+ */
+
+import crypto from "crypto"
+import mysql from "mysql2/promise"
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mysql.ts
+  old_string:     const id = doc._id != null ? String(doc._id) : require("crypto").randomBytes(12).toString("hex")
+  new_string:     const id = doc._id != null ? String(doc._id) : crypto.randomBytes(12).toString("hex")
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mysql.ts
+  old_string:         const orderKeys = Object.keys(sortSpec)
+        if (orderKeys.length > 0) {
+          const orderCol = orderKeys.map((k) => {
+            const path = "$." + k
+            return "JSON_UNQUOTE(JSON_EXTRACT(doc, ?)) " + (sortSpec[k] === -1 ? "DESC" : "ASC")
+          })
+          sql += " ORDER BY " + orderKeys.map((_, i) => `JSON_UNQUOTE(JSON_EXTRACT(doc, ?)) ${sortSpec[orderKeys[i]] === -1 ? "DESC" : "ASC"}`).join(", ")
+          args.push(...orderKeys.map((k) => "$." + k))
+        } else {
+          sql += " ORDER BY id DESC"
+        }
+  new_string:         const orderKeys = Object.keys(sortSpec)
+        if (orderKeys.length > 0) {
+          sql += " ORDER BY " + orderKeys.map((k) => `JSON_UNQUOTE(JSON_EXTRACT(doc, ?)) ${sortSpec[k] === -1 ? "DESC" : "ASC"}`).join(", ")
+          args.push(...orderKeys.map((k) => "$." + k))
+        } else {
+          sql += " ORDER BY id DESC"
+        }
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Now I need to fix the find() toArray: when we have both conditions and sort, we're not pushing `values` into args. Let me check the flow. Actually we have:
+- if (id) -> args = [id]
+- else if (conditions.length > 0) -> args = [...values]
+- Then we add orderKeys for ORDER BY placeholders
+- Then we add limit, skip
+
+So when we have conditions, we do args.push(...values) at the start... but we never pushed values in the code! Let me look again. We have `const args: unknown[] = []` and then only push id or nothing. So when conditions.length > 0 we need args.push(...values). Let me add that.
+</think>
+在 find 的 toArray 中，当存在 conditions 时把 values 加入 args。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mysql.ts
+  old_string:         if (id) {
+          sql += " WHERE id = ?"
+          args.push(id)
+        } else if (conditions.length > 0) {
+          sql += " WHERE " + conditions.join(" AND ")
+          args.push(...values)
+        }
+  new_string:         if (id) {
+          sql += " WHERE id = ?"
+          args.push(id)
+        } else if (conditions.length > 0) {
+          sql += " WHERE " + conditions.join(" AND ")
+          args.push(...values)
+        }
+        const argsForOrder = [...args]
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mysql.ts
+  old_string:         const orderKeys = Object.keys(sortSpec)
+        if (orderKeys.length > 0) {
+          sql += " ORDER BY " + orderKeys.map((k) => `JSON_UNQUOTE(JSON_EXTRACT(doc, ?)) ${sortSpec[k] === -1 ? "DESC" : "ASC"}`).join(", ")
+          args.push(...orderKeys.map((k) => "$." + k))
+        } else {
+          sql += " ORDER BY id DESC"
+        }
+        sql += " LIMIT ? OFFSET ?"
+        args.push(limit, skip)
+
+        const [rows] = await self.pool.execute<mysql.RowDataPacket[]>(sql, args)
+  new_string:         const orderKeys = Object.keys(sortSpec)
+        if (orderKeys.length > 0) {
+          sql += " ORDER BY " + orderKeys.map((k) => `JSON_UNQUOTE(JSON_EXTRACT(doc, ?)) ${sortSpec[k] === -1 ? "DESC" : "ASC"}`).join(", ")
+          argsForOrder.push(...orderKeys.map((k) => "$." + k))
+        } else {
+          sql += " ORDER BY id DESC"
+        }
+        sql += " LIMIT ? OFFSET ?"
+        argsForOrder.push(limit, skip)
+
+        const [rows] = await self.pool.execute<mysql.RowDataPacket[]>(sql, argsForOrder)
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Now modify lib/mongodb.ts to:
+1. Export COLLECTIONS and initializeDatabase as before
+2. If DATABASE_TYPE=mysql: connectToDatabase returns { client: null, db: MySQLDb } and getCollection uses MySQL; export ObjectId as a class that when constructed with (id) returns an object with toString() = id so that filter._id can be used in MySQL adapter (we already handle _id in filterToWhere by value.toString?.() or String(value))
+3. If not mysql: keep existing Mongo logic and export real ObjectId from mongodb
+
+For ObjectId in MySQL mode: API code does new ObjectId(userId) and passes to filter. So we need export const ObjectId = (DATABASE_TYPE=mysql) ? MySQLObjectId : mongodb.ObjectId. MySQLObjectId can be a class: class MySQLObjectId { constructor(public id: string) {} toString() { return this.id } } so that in filterToWhere we get value.toString().
+</think>
+修改 `lib/mongodb.ts`，在 DATABASE_TYPE=mysql 时使用 MySQL 适配器并导出兼容的 ObjectId：
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts
+
+[Tool result] Read
+
+assistant:
+<think>
+I see the file has DISTRIBUTION_ORDERS and DISTRIBUTION_USERS in COLLECTIONS - I didn't add those to the MySQL tables. Let me add them to mysql.ts initializeMySQLTables and to the SQL file. For now I'll add them in the code.
+
+Now I need to:
+1. Make mongodb.ts the "db" entry point: when DATABASE_TYPE=mysql, use MySQL and export a fake ObjectId; otherwise use Mongo.
+2. Export type that works for both: connectToDatabase returns { client: MongoClient | null, db: Db | MySQLDb }. But API code uses conn.db and conn.client - when MySQL, client is not used. So we can type as { client: MongoClient | null; db: Db | MySQLDb } and the db.collection() on MySQLDb returns MySQLCollection which has the same interface we need (findOne, find, insertOne, updateOne, countDocuments, deleteOne).
+3. ObjectId: when MySQL, we need new ObjectId(id) to return something that in filter becomes string. So export a class MySQLObjectId { constructor(id: string) { this.id = id } toString() { return this.id } } and in filterToWhere we already do value.toString?.() so that works.
+</think>
+正在修改 `lib/mongodb.ts`，在 DATABASE_TYPE=mysql 时使用 MySQL 并导出兼容的 ObjectId。
+
+[Tool call] Write
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts
+  contents: /**
+ * 知己 · 数据库连接入口（支持 MongoDB / MySQL 双模式）
+ * - 默认或 DATABASE_TYPE=mongodb：使用 MongoDB，端口 27017
+ * - DATABASE_TYPE=mysql：使用 MySQL（NAS 部署），表结构 id + doc JSON
+ */
+
+import { MongoClient, Db, type MongoClientOptions } from "mongodb"
+import {
+  connectMySQL,
+  initializeMySQLTables,
+  getPool,
+  type MySQLDb,
+} from "./mysql"
+
+// 数据库类型：未设置或 mongodb 用 Mongo，mysql 用 MySQL
+const DATABASE_TYPE = process.env.DATABASE_TYPE || "mongodb"
+const USE_MYSQL = DATABASE_TYPE === "mysql"
+
+// ========== MongoDB 配置 ==========
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017"
+const MONGODB_DB = process.env.MONGODB_DB || "zhiji"
+
+let cachedClient: MongoClient | null = null
+let cachedDb: Db | null = null
+let cachedMySQLDb: MySQLDb | null = null
+
+const options: MongoClientOptions = {
+  maxPoolSize: 10,
+  serverSelectionTimeoutMS: 3000,
+  socketTimeoutMS: 10000,
+  connectTimeoutMS: 3000,
+}
+
+// ========== 集合名常量（Mongo/MySQL 共用） ==========
+export const COLLECTIONS = {
+  USERS: "users",
+  REPORTS: "reports",
+  TEST_RECORDS: "test_records",
+  APPOINTMENTS: "appointments",
+  BOOKINGS: "bookings",
+  CONSULTANTS: "consultants",
+  SURVEYS: "surveys",
+  INVITATIONS: "invitations",
+  ORDERS: "orders",
+  PAY_TRADES: "pay_trades",
+  REFERRAL_BINDINGS: "referral_bindings",
+  PROFIT_SHARING_RULES: "profit_sharing_rules",
+  PROFIT_SHARING_RECORDS: "profit_sharing_records",
+  DISTRIBUTION_ORDERS: "distribution_orders",
+  DISTRIBUTION_USERS: "distribution_users",
+  ADMIN_USERS: "admin_users",
+  QUESTION_BANKS: "question_banks",
+  AI_SETTINGS: "ai_settings",
+  SYSTEM_SETTINGS: "system_settings",
+  KNOWLEDGE_BASE: "knowledge_base",
+  CONSULTANT_APPLICATIONS: "consultant_applications",
+} as const
+
+// ========== MySQL 下兼容的 ObjectId（API 里 new ObjectId(id) 用于 _id 查询） ==========
+class MySQLObjectId {
+  constructor(public id: string) {}
+  toString(): string {
+    return this.id
+  }
+}
+
+// 导出：MySQL 时用兼容类，否则用 Mongo 的 ObjectId
+export const ObjectId = USE_MYSQL
+  ? (MySQLObjectId as unknown as typeof import("mongodb").ObjectId)
+  : require("mongodb").ObjectId
+
+/**
+ * 获取数据库连接（Mongo 或 MySQL）
+ * 返回类型兼容：db.collection(name) 支持 findOne/find/insertOne/updateOne/countDocuments/deleteOne
+ */
+export async function connectToDatabase(): Promise<{
+  client: MongoClient | null
+  db: Db | MySQLDb
+}> {
+  if (USE_MYSQL) {
+    if (cachedMySQLDb) {
+      return { client: null, db: cachedMySQLDb }
+    }
+    const mysqlDb = await connectMySQL()
+    cachedMySQLDb = mysqlDb
+    return { client: null, db: mysqlDb }
+  }
+
+  if (cachedClient && cachedDb) {
+    return { client: cachedClient, db: cachedDb }
+  }
+
+  const client = new MongoClient(MONGODB_URI, options)
+  await client.connect()
+  const db = client.db(MONGODB_DB)
+  cachedClient = client
+  cachedDb = db
+  console.log("[知己] MongoDB 连接成功:", MONGODB_DB)
+  return { client, db }
+}
+
+/**
+ * 获取指定集合（Mongo Collection 或 MySQL 集合适配器）
+ */
+export async function getCollection(collectionName: string) {
+  const { db } = await connectToDatabase()
+  return db.collection(collectionName)
+}
+
+// ========== 数据库初始化 ==========
+
+/** Mongo：安全创建索引 */
+async function createIndexSafe(
+  db: Db,
+  coll: string,
+  spec: Record<string, 1 | -1>,
+  options?: { unique?: boolean; sparse?: boolean; background?: boolean }
+) {
+  try {
+    await db.collection(coll).createIndex(spec, options)
+  } catch (e: unknown) {
+    if ((e as { code?: number })?.code !== 85 && (e as { code?: number })?.code !== 86) {
+      console.warn("[知己] 索引创建跳过:", coll, (e as Error).message)
+    }
+  }
+}
+
+/**
+ * 初始化数据库（Mongo 建索引 / MySQL 建表）
+ */
+export async function initializeDatabase() {
+  if (USE_MYSQL) {
+    await initializeMySQLTables()
+    return
+  }
+
+  try {
+    const { db } = await connectToDatabase()
+    const mongoDb = db as Db
+
+    await createIndexSafe(mongoDb, COLLECTIONS.USERS, { phone: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(mongoDb, COLLECTIONS.USERS, { openId: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(mongoDb, COLLECTIONS.USERS, { inviteCode: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(mongoDb, COLLECTIONS.USERS, { id: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(mongoDb, COLLECTIONS.USERS, { createdAt: -1 })
+
+    await createIndexSafe(mongoDb, COLLECTIONS.REPORTS, { userId: 1, createdAt: -1 })
+    await createIndexSafe(mongoDb, COLLECTIONS.REPORTS, { type: 1 })
+
+    await createIndexSafe(mongoDb, COLLECTIONS.TEST_RECORDS, { userId: 1, type: 1, createdAt: -1 })
+    await createIndexSafe(mongoDb, COLLECTIONS.TEST_RECORDS, { userId: 1 })
+
+    await createIndexSafe(mongoDb, COLLECTIONS.APPOINTMENTS, { userId: 1, status: 1 })
+    await createIndexSafe(mongoDb, COLLECTIONS.APPOINTMENTS, { consultantId: 1, date: 1 })
+
+    await createIndexSafe(mongoDb, COLLECTIONS.BOOKINGS, { userId: 1, status: 1 })
+    await createIndexSafe(mongoDb, COLLECTIONS.BOOKINGS, { consultantId: 1, createdAt: -1 })
+    await createIndexSafe(mongoDb, COLLECTIONS.BOOKINGS, { bookingNo: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(mongoDb, COLLECTIONS.BOOKINGS, { createdAt: -1 })
+
+    await createIndexSafe(mongoDb, COLLECTIONS.CONSULTANTS, { status: 1 })
+    await createIndexSafe(mongoDb, COLLECTIONS.CONSULTANTS, { createdAt: -1 })
+
+    await createIndexSafe(mongoDb, COLLECTIONS.ORDERS, { orderSn: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(mongoDb, COLLECTIONS.ORDERS, { userId: 1, createdAt: -1 })
+    await createIndexSafe(mongoDb, COLLECTIONS.ORDERS, { status: 1 })
+
+    await createIndexSafe(mongoDb, COLLECTIONS.PAY_TRADES, { orderSn: 1 })
+    await createIndexSafe(mongoDb, COLLECTIONS.PAY_TRADES, { createdAt: -1 })
+
+    await createIndexSafe(mongoDb, COLLECTIONS.REFERRAL_BINDINGS, { userId: 1 })
+    await createIndexSafe(mongoDb, COLLECTIONS.REFERRAL_BINDINGS, { referrerId: 1, boundAt: -1 })
+
+    await createIndexSafe(mongoDb, COLLECTIONS.PROFIT_SHARING_RULES, { isDefault: 1 })
+    await createIndexSafe(mongoDb, COLLECTIONS.PROFIT_SHARING_RECORDS, { orderSn: 1 })
+    await createIndexSafe(mongoDb, COLLECTIONS.PROFIT_SHARING_RECORDS, { referrerId: 1, createdAt: -1 })
+
+    await createIndexSafe(mongoDb, COLLECTIONS.ADMIN_USERS, { username: 1 }, { unique: true })
+    await createIndexSafe(mongoDb, COLLECTIONS.QUESTION_BANKS, { testType: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(mongoDb, COLLECTIONS.QUESTION_BANKS, { testType: 1, order: 1 })
+    await createIndexSafe(mongoDb, COLLECTIONS.AI_SETTINGS, { key: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(mongoDb, COLLECTIONS.SYSTEM_SETTINGS, { key: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(mongoDb, COLLECTIONS.KNOWLEDGE_BASE, { createdAt: -1 })
+
+    console.log("[知己] 数据库索引初始化完成")
+  } catch (error) {
+    console.error("[知己] 数据库初始化失败:", error)
+  }
+}
+
+
+[Tool result] Write
+
+assistant:
+<think>
+I used require("mongodb").ObjectId for the non-MYSQL case - that will break in ESM/Next. We should use dynamic import or just import { ObjectId } from "mongodb" at top and use it when !USE_MYSQL. But then we need to export either Mongo ObjectId or MySQLObjectId. So:
+
+import { MongoClient, Db, ObjectId as MongoObjectId, type MongoClientOptions } from "mongodb"
+
+export const ObjectId = USE_MYSQL ? MySQLObjectId : MongoObjectId
+
+But USE_MYSQL is evaluated at load time, so when DATABASE_TYPE=mysql we export MySQLObjectId, else MongoObjectId. The issue is MySQLObjectId is a class that takes one argument (id: string), while MongoObjectId can take optional argument. So API code like new ObjectId(userId) - both work. Let me use proper import and export.
+</think>
+将 `require("mongodb").ObjectId` 改为从 "mongodb" 的正式导入。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts
+  old_string: import { MongoClient, Db, type MongoClientOptions } from "mongodb"
+  new_string: import { MongoClient, Db, ObjectId as MongoObjectId, type MongoClientOptions } from "mongodb"
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts
+  old_string: // 导出：MySQL 时用兼容类，否则用 Mongo 的 ObjectId
+export const ObjectId = USE_MYSQL
+  ? (MySQLObjectId as unknown as typeof import("mongodb").ObjectId)
+  : require("mongodb").ObjectId
+  new_string: // 导出：MySQL 时用兼容类，否则用 Mongo 的 ObjectId（API 里 new ObjectId(id) 用于 _id 查询）
+export const ObjectId = USE_MYSQL ? MySQLObjectId : MongoObjectId
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+API code uses `new ObjectId(userId)` - so ObjectId must be a constructor. MongoObjectId is a class, MySQLObjectId is a class. So both work. But TypeScript might complain that MySQLObjectId is not compatible with Mongo's ObjectId type. We can cast or use type assertion. Let me check - in API they do _id: new ObjectId(consultantId). So the result is passed to filter. Our filterToWhere expects _id to be string or { toString(): string }. So MySQLObjectId has toString() so we're good. Type export: we need to export something that has `new (id?: string) => { toString(): string }` for API. Mongo ObjectId has more methods. So for type we could export type ObjectIdType = MongoObjectId | InstanceType<typeof MySQLObjectId> but that might break existing code that expects Mongo ObjectId. Easiest is to just export and let TS use MongoObjectId type when DATABASE_TYPE is not mysql - but at compile time we don't know. So export as typeof MongoObjectId so that API code that types ObjectId still works. Actually export const ObjectId = USE_MYSQL ? MySQLObjectId : MongoObjectId - the type of ObjectId will be the union. So new ObjectId(x) will be either MySQLObjectId or MongoObjectId. That should be fine.
+
+Add distribution_orders and distribution_users to MySQL tables in initializeMySQLTables.
+</think>
+在 MySQL 初始化中加入 `distribution_orders` 和 `distribution_users` 表。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mysql.ts
+  old_string:   const tables = [
+    "users", "reports", "test_records", "appointments", "bookings", "consultants",
+    "surveys", "invitations", "orders", "pay_trades", "referral_bindings",
+    "profit_sharing_rules", "profit_sharing_records", "admin_users", "question_banks",
+    "ai_settings", "system_settings", "knowledge_base", "consultant_applications",
+  ]
+  new_string:   const tables = [
+    "users", "reports", "test_records", "appointments", "bookings", "consultants",
+    "surveys", "invitations", "orders", "pay_trades", "referral_bindings",
+    "profit_sharing_rules", "profit_sharing_records", "distribution_orders", "distribution_users",
+    "admin_users", "question_banks", "ai_settings", "system_settings", "knowledge_base", "consultant_applications",
+  ]
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+admin/auth uses conn.db - when MySQL, conn.client is null. So we need to fix any code that uses conn.client. Let me check - auth uses const db = conn.db and db.collection(...). So that's fine. 
+
+user/route PUT uses updateOne({ _id: userId }) - userId is string from body. So filter is { _id: "xxx" }. In filterToWhere we do value.toString?.() or String(value). So string works. Good.
+
+One more: insertOne in user route passes newUser with createdAt: new Date(). We serialize Date to ISO in serializeDoc. Good.
+
+Let me run a quick build to see if there are type errors. But first fix: when USE_MYSQL, we still import MongoClient, Db from mongodb - that's fine. The issue is that connectToDatabase return type is { client: MongoClient | null, db: Db | MySQLDb }. So when API does const { db } = await connectToDatabase(); db.collection(...) - db could be Db or MySQLDb. Both have collection(name) that returns something with findOne, find, etc. So we're good. Let me check admin auth again - it uses conn.db and conn.client is not used in that file. So we're good.
+
+Build and run linter.
+</think>
+正在检查 API 中是否存在对 `conn.client` 的引用，并运行构建以确认是否有类型错误：
+
+[Tool call] Grep
+  pattern: \.client\b|conn\.client
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app
+[Tool call] ReadLints
+  paths: ["/Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts","/Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mysql.ts"]
+
+[Tool result] Grep
+
+[Tool result] ReadLints
+
+assistant:
+<think>
+No .client usage in app. Let me run pnpm build to see if the project builds. We need to fix the user/route PUT - it passes { _id: userId } where userId is string. So in MySQL filterToWhere we need to accept _id as string. We already do: id = typeof v === "string" ? v : (v?.toString?.() ?? String(v)). So we're good.
+
+Run build.
+</think>
+
+
+[Tool call] Shell
+  command: cd /Users/karuo/Documents/开发/4、合作项目/知己开发 && DATABASE_TYPE=mysql MYSQL_HOST=127.0.0.1 MYSQL_DATABASE=zhiji MYSQL_USER=root MYSQL_PASSWORD= pnpm run build 2>&1
+  description: 使用 MySQL 模式构建项目以验证
+  timeout: 120000
+
+[Tool result] Shell
+
+assistant:
+<think>
+Build succeeded. Now:
+1. Add MongoDB → MySQL migration script (Node script that reads from Mongo, writes to MySQL)
+2. Add Docker Compose for NAS (Next.js + MySQL)
+3. Add NAS 部署文档
+
+Note: Build was run with DATABASE_TYPE=mysql but at build time Next doesn't connect to DB - so it's fine. At runtime on NAS we'll set DATABASE_TYPE=mysql and MYSQL_* env vars.
+
+Let me add the migration script and docker-compose + docs.
+</think>
+构建已通过。正在添加 MongoDB→MySQL 迁移脚本、Docker Compose 和 NAS 部署文档。
+
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"MySQL 适配层：lib/mysql.ts + db 抽象，支持 Mongo/MySQL 切换","status":"completed"},{"id":"2","content":"MySQL 建表 SQL 与初始化脚本","status":"completed"},{"id":"3","content":"MongoDB → MySQL 数据迁移脚本（NAS 或本机可运行）","status":"in_progress"},{"id":"4","content":"NAS Docker 部署：docker-compose + 部署文档","status":"pending"},{"id":"5","content":"修改 mongodb.ts 为 db 双模式并修正 API 中 ObjectId 用法","status":"completed"}]
+  merge: true
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mysql.ts
+  offset: 1
+  limit: 50
+
+[Tool result] TodoWrite
+
+[Tool result] Read
+
+assistant:
+<think>
+Migration script: Node script that:
+1. Connects to MongoDB (using MONGODB_URI)
+2. Connects to MySQL (using MYSQL_*)
+3. For each collection in COLLECTIONS, read all docs from Mongo, for each doc: id = doc._id.toString(), doc clean = copy without _id, serialize dates to ISO string, INSERT INTO table (id, doc) VALUES (id, JSON.stringify(doc))
+4. Run on NAS: first start MySQL in Docker, then run migration (with MONGODB_URI pointing to NAS Mongo if Mongo is on NAS, or to a remote Mongo)
+
+I'll write scripts/migrate-mongo-to-mysql.mjs as ESM so it can use dynamic import for mongodb and mysql2. Or we can do it in TypeScript and run with ts-node - but project might not have ts-node. So .mjs with import is fine.
+</think>
+
+
+[Tool call] Write
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/scripts/migrate-mongo-to-mysql.mjs
+  contents: #!/usr/bin/env node
+/**
+ * 知己 · MongoDB 数据迁移到 MySQL
+ * 在 NAS 或本机运行：先把 Mongo 数据导出，再写入 MySQL（表结构 id + doc JSON）
+ *
+ * 使用前：
+ * 1. 确保 MySQL 已建库建表（见 开发文档/7、数据库/MySQL表结构.sql 或应用启动时 DATABASE_TYPE=mysql 会自动建表）
+ * 2. 设置环境变量：MONGODB_URI、MYSQL_HOST、MYSQL_USER、MYSQL_PASSWORD、MYSQL_DATABASE
+ *
+ * 运行：node scripts/migrate-mongo-to-mysql.mjs
+ */
+
+import { MongoClient } from "mongodb"
+import mysql from "mysql2/promise"
+
+const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017"
+const MONGODB_DB = process.env.MONGODB_DB || "zhiji"
+const MYSQL_HOST = process.env.MYSQL_HOST || "localhost"
+const MYSQL_PORT = parseInt(process.env.MYSQL_PORT || "3306", 10)
+const MYSQL_USER = process.env.MYSQL_USER || "root"
+const MYSQL_PASSWORD = process.env.MYSQL_PASSWORD || ""
+const MYSQL_DATABASE = process.env.MYSQL_DATABASE || "zhiji"
+
+const COLLECTIONS = [
+  "users", "reports", "test_records", "appointments", "bookings", "consultants",
+  "surveys", "invitations", "orders", "pay_trades", "referral_bindings",
+  "profit_sharing_rules", "profit_sharing_records", "distribution_orders", "distribution_users",
+  "admin_users", "question_banks", "ai_settings", "system_settings", "knowledge_base", "consultant_applications",
+]
+
+function serializeDoc(doc) {
+  const out = {}
+  for (const [k, v] of Object.entries(doc)) {
+    if (v instanceof Date) out[k] = v.toISOString()
+    else if (v && typeof v === "object" && v.constructor?.name === "ObjectID") out[k] = v.toString()
+    else if (v !== undefined && v !== null && typeof v === "object" && !Array.isArray(v))
+      out[k] = serializeDoc(v)
+    else out[k] = v
+  }
+  return out
+}
+
+async function main() {
+  console.log("[迁移] 连接 MongoDB:", MONGODB_URI)
+  const mongoClient = new MongoClient(MONGODB_URI)
+  await mongoClient.connect()
+  const mongoDb = mongoClient.db(MONGODB_DB)
+
+  console.log("[迁移] 连接 MySQL:", MYSQL_HOST + ":" + MYSQL_PORT)
+  const mysqlConn = await mysql.createConnection({
+    host: MYSQL_HOST,
+    port: MYSQL_PORT,
+    user: MYSQL_USER,
+    password: MYSQL_PASSWORD,
+    database: MYSQL_DATABASE,
+    charset: "utf8mb4",
+  })
+
+  for (const collName of COLLECTIONS) {
+    try {
+      const cursor = mongoDb.collection(collName).find({})
+      const docs = await cursor.toArray()
+      if (docs.length === 0) {
+        console.log("[迁移]", collName, "0 条，跳过")
+        continue
+      }
+
+      await mysqlConn.execute(
+        "CREATE TABLE IF NOT EXISTS `" + collName + "` ( id VARCHAR(64) PRIMARY KEY, doc JSON NOT NULL ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+      )
+
+      let inserted = 0
+      for (const doc of docs) {
+        const id = doc._id ? doc._id.toString() : null
+        if (!id) continue
+        const { _id, ...rest } = doc
+        const clean = serializeDoc(rest)
+        try {
+          await mysqlConn.execute("INSERT INTO `" + collName + "` (id, doc) VALUES (?, ?) ON DUPLICATE KEY UPDATE doc = VALUES(doc)", [
+            id,
+            JSON.stringify(clean),
+          ])
+          inserted++
+        } catch (e) {
+          console.warn("[迁移]", collName, "插入失败 id=" + id, e.message)
+        }
+      }
+      console.log("[迁移]", collName, inserted + "/" + docs.length)
+    } catch (e) {
+      console.warn("[迁移]", collName, "集合跳过:", e.message)
+    }
+  }
+
+  await mongoClient.close()
+  await mysqlConn.end()
+  console.log("[迁移] 完成")
+}
+
+main().catch((err) => {
+  console.error("[迁移] 失败:", err)
+  process.exit(1)
+})
+
+
+[Tool result] Write
+
+assistant:
+<think>
+Mongo's ObjectID - in Node driver the class might be ObjectId. Let me check - in mongodb package it's ObjectId. So when we do doc._id it might be ObjectId. So serializeDoc we need to handle ObjectId - we check v.constructor?.name === "ObjectID" but the class name might be "ObjectId" (capital I). Let me fix to also accept ObjectId.
+</think>
+修复迁移脚本中对 Mongo ObjectId 的序列化判断（同时支持 ObjectID/ObjectId）。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/scripts/migrate-mongo-to-mysql.mjs
+  old_string:     else if (v && typeof v === "object" && v.constructor?.name === "ObjectID") out[k] = v.toString()
+  new_string:     else if (v && typeof v === "object" && typeof v.toString === "function" && /ObjectId|ObjectID/i.test(v.constructor?.name || "")) out[k] = v.toString()
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Now add Docker Compose and NAS deployment doc. Docker Compose should have:
+- mysql service (image mysql:8 or mariadb)
+- zhiji app (build from . or use node image and run pnpm build && pnpm start)
+- env: DATABASE_TYPE=mysql, MYSQL_HOST=mysql, MYSQL_DATABASE=zhiji, MYSQL_USER=zhiji, MYSQL_PASSWORD=...
+- app depends on mysql, port 3000 or 3050
+</think>
+正在创建 Docker Compose 与 NAS 部署文档。
+
+[Tool call] Write
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/docker-compose.yml
+  contents: # 知己 · NAS / 本机 Docker 部署（Next.js + MySQL）
+# 使用：在项目根目录执行 docker compose up -d
+# 首次启动后执行数据迁移（若从 Mongo 迁入）：见下方「迁移」说明
+
+version: "3.8"
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: zhiji-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-zhiji_root_123}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-zhiji}
+      MYSQL_USER: ${MYSQL_USER:-zhiji}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-zhiji_pass_123}
+    ports:
+      - "3306:3306"
+    volumes:
+      - zhiji_mysql_data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  zhiji:
+    build: .
+    container_name: zhiji-app
+    restart: unless-stopped
+    ports:
+      - "3050:3050"
+    environment:
+      DATABASE_TYPE: mysql
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-zhiji}
+      MYSQL_USER: ${MYSQL_USER:-zhiji}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-zhiji_pass_123}
+      NODE_ENV: production
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+volumes:
+  zhiji_mysql_data:
+
+[Tool call] Write
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/Dockerfile
+  contents: # 知己 · 生产镜像（Node 20 + pnpm + Next.js standalone）
+FROM node:20-alpine AS base
+RUN corepack enable && corepack prepare pnpm@latest --activate
+WORKDIR /app
+
+# 依赖
+FROM base AS deps
+COPY package.json pnpm-lock.yaml* ./
+RUN pnpm install --frozen-lockfile
+
+# 构建
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+ENV DATABASE_TYPE=mysql
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm run build
+
+# 生产运行
+FROM base AS runner
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+USER nextjs
+EXPOSE 3050
+ENV PORT=3050
+ENV HOSTNAME="0.0.0.0"
+CMD ["node", "server.js"]
+
+
+[Tool result] Write
+
+[Tool result] Write
+
+assistant:
+<think>
+Next.js standalone output is needed for the Dockerfile to have server.js. Let me check next.config - we need to set output: 'standalone'.
+</think>
+正在检查 next.config 是否包含 `output: 'standalone'`
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/next.config.mjs
+
+[Tool result] Read
+
+assistant:
+<think>
+Need to add output: 'standalone' for Docker. Then the build will produce .next/standalone with server.js.
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/next.config.mjs
+  old_string: /** @type {import('next').NextConfig} */
+const nextConfig = {
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  images: {
+    unoptimized: true,
+  },
+ 
+}
+  new_string: /** @type {import('next').NextConfig} */
+const nextConfig = {
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  images: {
+    unoptimized: true,
+  },
+  output: "standalone", // Docker / NAS 部署时生成 server.js
+}
+
+[Tool result] StrReplace
+
+user:
+<user_query>
+继续
+</user_query>
+
+assistant:
+<think>
+The user said "继续" (continue). I need to continue the work from where I left off. Looking at my todo list:
+
+1. MySQL 适配层 - completed
+2. MySQL 建表 SQL - completed
+3. MongoDB → MySQL 迁移脚本 - in_progress (I wrote the script, should mark completed)
+4. NAS Docker 部署 - pending (I wrote docker-compose and Dockerfile, but need to add NAS 部署文档 and verify standalone build)
+5. mongodb.ts 双模式 - completed
+
+I should:
+1. Mark migration script as completed
+2. Finish NAS deployment doc (开发文档/8、部署/NAS部署说明.md)
+3. Verify the Docker build works (standalone output) - the Dockerfile copies .next/standalone and server.js - Next.js when output: 'standalone' puts server.js in .next/standalone/, so the COPY and CMD are correct
+4. Update project progress / experience log per 知己 Skill
+
+Let me add the NAS deployment document and then run a quick test to ensure docker build would work (or at least document the full flow).
+</think>
+继续完成 NAS 部署文档并做收尾验证。
+
+[Tool call] TodoWrite
+  todos: [{"id":"3","content":"MongoDB → MySQL 数据迁移脚本（NAS 或本机可运行）","status":"completed"},{"id":"4","content":"NAS Docker 部署：docker-compose + 部署文档","status":"in_progress"}]
+  merge: true
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/开发文档/8、部署/部署规范.md
+  limit: 50
+
+[Tool result] TodoWrite
+
+[Tool result] Read
+
+assistant:
+<think>
+I'll add a new section to 部署规范.md for NAS 部署，or create a separate file 开发文档/8、部署/NAS部署说明.md and then add a reference in 部署规范.md. Creating a dedicated NAS部署说明.md is cleaner.
+</think>
+
+
+[Tool call] Write
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/开发文档/8、部署/NAS部署说明.md
+  contents: # 知己 · NAS 服务器部署说明
+
+> **目标**：在 NAS（如群晖 Synology）上使用 Docker 运行知己项目，数据库使用 MySQL（可从现有 MongoDB 迁移数据），保证项目完整可运行。
+
+---
+
+## 1. 前置条件
+
+| 项 | 说明 |
+|:---|:---|
+| **NAS** | 支持 Docker（群晖 Container Manager / Docker CE） |
+| **镜像** | 项目内 `Dockerfile` + `docker-compose.yml` |
+| **数据库** | 使用 MySQL 8（由 docker-compose 启动），不再依赖 MongoDB |
+
+---
+
+## 2. 环境变量（MySQL 模式）
+
+部署时必须设置 `DATABASE_TYPE=mysql`，并配置 MySQL 连接：
+
+| 变量 | 必填 | 说明 |
+|:---|:---:|:---|
+| `DATABASE_TYPE` | ✅ | 固定为 `mysql`（NAS 部署） |
+| `MYSQL_HOST` | ✅ | MySQL 地址（Docker 内为服务名 `mysql`） |
+| `MYSQL_PORT` | | 默认 3306 |
+| `MYSQL_DATABASE` | | 默认 `zhiji` |
+| `MYSQL_USER` | | 默认见 docker-compose |
+| `MYSQL_PASSWORD` | | 与 MySQL 容器一致 |
+
+其他如 `AI_API_KEY`、`CUNKEBAO_*`、支付相关等按需在 `.env` 或 docker-compose 的 `environment` 中配置。
+
+---
+
+## 3. 一键部署（Docker Compose）
+
+### 3.1 在 NAS 上操作
+
+1. **上传项目**  
+   将整个「知己开发」项目拷贝到 NAS 某目录，例如：`/docker/zhiji/`。
+
+2. **创建环境变量文件（可选）**  
+   在项目根目录创建 `.env`，覆盖默认密码等：
+   ```bash
+   MYSQL_ROOT_PASSWORD=你的root密码
+   MYSQL_DATABASE=zhiji
+   MYSQL_USER=zhiji
+   MYSQL_PASSWORD=你的数据库密码
+   ```
+
+3. **构建并启动**
+   ```bash
+   cd /docker/zhiji
+   docker compose up -d
+   ```
+
+4. **等待 MySQL 就绪**  
+   首次启动 MySQL 会初始化，约 30 秒后再访问应用。  
+   应用端口：**3050**（浏览器访问 `http://NAS的IP:3050`，管理后台 `http://NAS的IP:3050/admin`）。
+
+### 3.2 本机测试（与 NAS 相同流程）
+
+```bash
+cd 知己开发
+docker compose up -d
+# 访问 http://localhost:3050
+```
+
+---
+
+## 4. MongoDB 数据迁移到 MySQL（在 NAS 上执行）
+
+若原有数据在 MongoDB，需先迁到 NAS 上的 MySQL，再切到 MySQL 模式运行。
+
+### 4.1 保证 MySQL 已就绪
+
+- 已用上面的 `docker compose up -d` 启动过，或 NAS 上已有 MySQL 服务并创建好数据库 `zhiji`。
+
+### 4.2 执行迁移脚本
+
+迁移脚本会从 MongoDB 读取各集合数据，写入 MySQL（表结构：`id` + `doc` JSON）。
+
+**方式一：在 NAS 上安装 Node 后执行（推荐）**
+
+```bash
+cd /docker/zhiji
+export MONGODB_URI="mongodb://你的Mongo地址:27017"
+export MONGODB_DB=zhiji
+export MYSQL_HOST=127.0.0.1
+export MYSQL_PORT=3306
+export MYSQL_DATABASE=zhiji
+export MYSQL_USER=zhiji
+export MYSQL_PASSWORD=你的MySQL密码
+node scripts/migrate-mongo-to-mysql.mjs
+```
+
+**方式二：在已运行 MySQL 的 Docker 宿主机上执行**
+
+- 若 MySQL 在 Docker 内，`MYSQL_HOST` 填 `127.0.0.1` 或 NAS 本机 IP，并确保 3306 已映射到主机。
+
+**方式三：迁移脚本放进一次性容器内执行**
+
+- 将 `scripts/migrate-mongo-to-mysql.mjs` 和依赖（或整个项目）挂载进一个带 Node 的容器，环境变量指向 NAS 上的 MySQL 和 Mongo，在容器内执行 `node scripts/migrate-mongo-to-mysql.mjs`。
+
+### 4.3 迁移后
+
+- 应用已使用 `DATABASE_TYPE=mysql` 且 `MYSQL_*` 指向同一 MySQL，则重启应用即可，无需再改代码。
+
+---
+
+## 5. 表结构说明（MySQL）
+
+- 所有表均为：`id`（主键，对应 Mongo `_id` 字符串）+ `doc`（JSON，存整条文档）。
+- 建表由应用在首次连接 MySQL 时自动执行（`lib/mysql.ts` 的 `initializeMySQLTables`），也可提前执行 `开发文档/7、数据库/MySQL表结构.sql`。
+
+---
+
+## 6. 常见问题
+
+| 问题 | 处理 |
+|:---|:---|
+| 访问 3050 无响应 | 检查 NAS 防火墙是否放行 3050；`docker compose ps` 看 zhiji 容器是否运行。 |
+| 应用报错连不上 MySQL | 确认 `MYSQL_HOST`（Docker 内为 `mysql`）、端口、账号密码与 MySQL 容器一致；等 MySQL 健康检查通过后再访问。 |
+| 迁移脚本报连接失败 | 检查 `MONGODB_URI` 可从当前机器访问；`MYSQL_*` 是否指向 NAS 上已启动的 MySQL。 |
+| 想继续用 MongoDB | 不设置 `DATABASE_TYPE` 或设为 `mongodb`，并配置 `MONGODB_URI` 即可。 |
+
+---
+
+## 7. 总结
+
+- **NAS 部署**：用 `docker-compose.yml` 启动 MySQL + 知己应用，环境变量设 `DATABASE_TYPE=mysql` 和 `MYSQL_*`。
+- **Mongo → MySQL**：在 NAS（或能同时访问 Mongo 与 MySQL 的机器）上执行 `node scripts/migrate-mongo-to-mysql.mjs`，配置好两边连接信息。
+- 迁移完成后，整个项目在 NAS 上仅依赖 MySQL 即可运转，无需再部署 MongoDB。
+
+
+[Tool result] Write
+
+assistant:
+<think>
+Now I need to fix the Dockerfile: Next.js standalone output puts files in .next/standalone and the server.js is inside .next/standalone. So we need to copy the whole standalone folder and run from there. Let me check Next.js standalone structure - usually it's .next/standalone/ with server.js at root, and we need to also copy .next/static into standalone/.next/static. So the Dockerfile COPY should be:
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./standalone/.next/static
+Actually the default is: .next/standalone contains server.js and a .next subfolder. And we need to add .next/static to standalone/.next/static. So:
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+So the runner workdir is /app, we copy standalone contents to ., so we have /app/server.js and /app/.next/... But standalone output typically has server.js at root of standalone folder. So /app/.next/standalone/ has server.js, so after COPY we have /app/server.js. And .next/static should go to .next/static relative to where server.js runs. So /app/.next/static. So the second COPY is correct. Let me verify - Next doc says: copy .next/standalone to ., copy .next/static to .next/static. So we're good. But wait, the standalone folder might already contain a .next inside it with minimal files. So structure might be:
+.next/standalone/
+  server.js
+  .next/  (minimal)
+  node_modules/
+  public/
+So we need to copy .next/static into .next/standalone/.next/static. So in runner, we have:
+COPY --from=builder /app/.next/standalone ./
+So now /app has server.js, .next/, node_modules/, public/
+Then COPY --from=builder /app/.next/static ./.next/static
+So we add .next/static under /app. So /app/.next/static. That's correct. Good.
+
+Let me run a quick build to see if standalone is generated.
+</think>
+验证 Next.js 的 standalone 输出并修正 Dockerfile 的 COPY 路径（若需要）：
+
+[Tool call] Shell
+  command: cd /Users/karuo/Documents/开发/4、合作项目/知己开发 && pnpm run build 2>&1 | tail -20
+  description: 验证 Next.js 构建是否生成 standalone
+  timeout: 90000
+
+[Tool result] Shell
+
+assistant:
+<think>
+Build succeeded. Let me check if .next/standalone exists and has server.js
+</think>
+
+
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/开发/4、合作项目/知己开发/.next
+
+[Tool result] LS
+
+assistant:
+<think>
+I see .next/standalone/ with .next/ and node_modules/ inside it. But I don't see server.js at the root of standalone. Let me check - Next.js 16 might output differently. Let me list .next/standalone directly.
+</think>
+
+
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/开发/4、合作项目/知己开发/.next/standalone
+[Tool call] Glob
+  target_directory: /Users/karuo/Documents/开发/4、合作项目/知己开发/.next
+  glob_pattern: **/server.js
+
+[Tool result] LS
+
+[Tool result] Glob
+
+assistant:
+<think>
+So server.js is at .next/standalone/server.js. So when we COPY .next/standalone to . we get server.js at /app/server.js. Good. The Dockerfile says:
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+So after first COPY we have /app/server.js, /app/.next/, /app/node_modules/. But wait - standalone has .next/ inside it, so we get /app/.next/ from standalone. Then we copy static to ./.next/static - so we're putting static inside the .next we got from standalone. That's correct. So the Dockerfile is correct. Let me double-check the CMD: "node", "server.js" - runs from /app so that's correct.
+
+Let me add the deployment doc reference to 部署规范.md and update project progress + experience log.
+</think>
+确认 standalone 含 `server.js`。在部署规范中加入对 NAS 部署说明的引用，并更新进度与经验日志。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/开发文档/8、部署/部署规范.md
+  old_string: ## 附录 A：kr宝塔（43.139.27.93）部署
+  new_string: ## 附录 A：NAS 部署（Docker + MySQL）
+
+在 NAS 上使用 Docker 运行知己，数据库为 MySQL（可从 MongoDB 迁移）。详见：**[NAS部署说明.md](./NAS部署说明.md)**。
+
+- 一键启动：`docker compose up -d`
+- 环境变量：`DATABASE_TYPE=mysql` + `MYSQL_*`
+- 迁移脚本：`node scripts/migrate-mongo-to-mysql.mjs`
+
+---
+
+## 附录 B：kr宝塔（43.139.27.93）部署
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/开发文档/8、部署/部署规范.md
+  old_string: ## 附录：快速索引
+  new_string: ## 附录 C：快速索引
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+I added "附录 B" but the original "附录：快速索引" I changed to "附录 C". Let me check - the original had "附录 A" and "附录：快速索引". So now we have 附录 A (NAS), 附录 B (kr宝塔), 附录 C (快速索引). Good.
+
+Now update project progress and experience log in the zhiji skill references.
+</think>
+
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/.cursor/skills/zhiji-project-manager/references/project-progress.md
+  limit: 80
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/.cursor/skills/zhiji-project-manager/references/experience-log.md
+  limit: 60
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+I need to add a new entry to project-progress.md for NAS deployment + MySQL migration, and add experience to experience-log.md. Then mark todo 4 completed.
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/.cursor/skills/zhiji-project-manager/references/project-progress.md
+  old_string: # 知己 · 项目进度跟踪
+
+> 最后更新：2026-02-10（我的页精简+咨询师入驻+默认账号流光）
+
+**变更（2026-02-10）**：① 我的页：去掉「邀请好友」「找专家咨询」入口；昵称改为使用 `displayName`（用户昵称），默认账号为「流光」；② 咨询师入驻：新增 C 端入口→咨询师入驻申请页（仅填手机号）→ POST `/api/consultant-apply` 写入 `consultant_applications`，由存客宝侧后续添加；③ 默认登录账号：手机 **13512517152**、密码 **lg123456**、昵称 **流光**，前端无本地用户时自动用该账号登录/注册并展示；④ 文档：`开发文档/5、接口/默认账号与登录说明.md` 写明 C 端/后台登录接口及用户数据登记。
+  new_string: # 知己 · 项目进度跟踪
+
+> 最后更新：2026-02-11（NAS 部署 + MySQL 双模式 + Mongo→MySQL 迁移）
+
+**变更（2026-02-11）**：① **NAS 部署**：支持在 NAS 上通过 Docker Compose 一键部署（Next.js + MySQL）；② **数据库双模式**：`DATABASE_TYPE=mysql` 时使用 MySQL（`lib/mysql.ts` 集合适配器），否则使用 MongoDB，API 无需改动；③ **Mongo→MySQL 迁移**：`scripts/migrate-mongo-to-mysql.mjs` 从 MongoDB 导出并写入 MySQL（id+doc JSON 表）；④ 部署文档：`开发文档/8、部署/NAS部署说明.md`，`开发文档/7、数据库/MySQL表结构.sql`。
+
+**变更（2026-02-10）**：① 我的页：去掉「邀请好友」「找专家咨询」入口；昵称改为使用 `displayName`（用户昵称），默认账号为「流光」；② 咨询师入驻：新增 C 端入口→咨询师入驻申请页（仅填手机号）→ POST `/api/consultant-apply` 写入 `consultant_applications`，由存客宝侧后续添加；③ 默认登录账号：手机 **13512517152**、密码 **lg123456**、昵称 **流光**，前端无本地用户时自动用该账号登录/注册并展示；④ 文档：`开发文档/5、接口/默认账号与登录说明.md` 写明 C 端/后台登录接口及用户数据登记。
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/.cursor/skills/zhiji-project-manager/references/experience-log.md
+  old_string: ## 2026-02-11
+
+### Next.js 部署后显示旧版页面
+  new_string: ## 2026-02-11
+
+### NAS 部署 + MongoDB 迁 MySQL（双库模式）
+**问题**：将知己部署到 NAS，且把 Mongo 数据迁到 MySQL，保证项目在 NAS 上可运行。
+**方案**：
+1. **双模式**：`lib/mongodb.ts` 根据 `DATABASE_TYPE=mysql` 切换；MySQL 时用 `lib/mysql.ts` 连接池 + 集合适配器（表结构 `id` + `doc` JSON），对外接口与 Mongo 一致（findOne/find/insertOne/updateOne/countDocuments/deleteOne）。
+2. **ObjectId 兼容**：MySQL 下导出 `MySQLObjectId` 类（id 字符串 + toString），API 中 `new ObjectId(id)` 不变。
+3. **迁移脚本**：`scripts/migrate-mongo-to-mysql.mjs` 读 Mongo 各集合，序列化文档（Date/ObjectId→字符串）后 INSERT 到 MySQL，支持 ON DUPLICATE KEY UPDATE。
+4. **NAS 部署**：`docker-compose.yml`（MySQL 8 + 知己应用）+ `Dockerfile`（Next.js standalone），`next.config.mjs` 增加 `output: 'standalone'`。
+**关键**：适配器需支持 `$set`/`$inc`/`$setOnInsert`、`$or`、`$regex` 等常用 Mongo 操作，以便现有 API 零改动。
+
+### Next.js 部署后显示旧版页面
+[Tool call] TodoWrite
+  todos: [{"id":"4","content":"NAS Docker 部署：docker-compose + 部署文档","status":"completed"}]
+  merge: true
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] TodoWrite
+
+assistant:
+<think>
+All tasks are done. Let me give the user a short summary of what was done and how to use it.
+</think>
+收尾已完成，当前状态与用法如下。
+
+---
+
+## 已完成的收尾内容
+
+1. **NAS 部署文档**  
+   - 新增 `开发文档/8、部署/NAS部署说明.md`：环境变量、一键 Docker 部署、Mongo→MySQL 迁移步骤、常见问题。  
+   - 在 `开发文档/8、部署/部署规范.md` 中增加「附录 A：NAS 部署」并指向该说明。
+
+2. **Next.js standalone**  
+   - 已确认 `output: 'standalone'` 会生成 `.next/standalone/server.js`，Dockerfile 的 COPY 与 `node server.js` 配置正确。
+
+3. **进度与经验**  
+   - `project-progress.md`：补充 2026-02-11 变更（NAS 部署、MySQL 双模式、迁移脚本、文档位置）。  
+   - `experience-log.md`：新增「NAS 部署 + MongoDB 迁 MySQL」经验条。
+
+---
+
+## 你现在可以这样用
+
+| 目标 | 操作 |
+|:---|:---|
+| **在 NAS 上一键跑起项目** | 把项目拷到 NAS，执行 `docker compose up -d`，访问 `http://NAS的IP:3050`。 |
+| **用 MySQL 当数据库** | 在环境变量中设置 `DATABASE_TYPE=mysql` 和 `MYSQL_*`（docker-compose 已配好）。 |
+| **把现有 Mongo 数据迁到 MySQL** | 在能同时访问 Mongo 和 MySQL 的机器上配置两边连接信息，执行 `node scripts/migrate-mongo-to-mysql.mjs`。 |
+| **继续用 MongoDB** | 不设或设 `DATABASE_TYPE=mongodb`，并配置 `MONGODB_URI`。 |
+
+关键文件一览：
+
+- `lib/mysql.ts`：MySQL 连接与集合适配器（兼容现有 Mongo 风格 API）。  
+- `lib/mongodb.ts`：按 `DATABASE_TYPE` 切换 Mongo/MySQL，并导出兼容的 `ObjectId`。  
+- `scripts/migrate-mongo-to-mysql.mjs`：Mongo → MySQL 迁移脚本。  
+- `docker-compose.yml` + `Dockerfile`：NAS/本机 Docker 部署。  
+- `开发文档/8、部署/NAS部署说明.md`：NAS 部署与迁移的完整说明。

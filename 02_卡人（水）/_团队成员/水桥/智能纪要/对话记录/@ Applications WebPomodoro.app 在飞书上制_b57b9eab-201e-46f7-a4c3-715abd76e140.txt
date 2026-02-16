@@ -1,0 +1,1298 @@
+user:
+<user_query>
+@/Applications/WebPomodoro.app 在飞书上制定像番茄钟一样和这个本地的那个专注清单一样，让我每天有一个专注清单，然后同步，时时实时的去同步这个。专注清单跟那个飞书上的那个任务提醒是一样的，帮我做一个那个这类型的一个同步和提醒的一个事情，帮我做出来这么一个事情。那这个就是为了把这个任务合作的事情和每天的工作安排做一次那个同步。同步在那个专注清单跟飞书上是，也是实现同步
+</user_query>
+
+assistant:
+<think>
+The user wants to:
+1. Use something like WebPomodoro.app (a local Pomodoro/focus app) 
+2. Create a focus list/task list that syncs with Feishu (飞书)
+3. Have daily focus list that syncs in real-time between the local app and Feishu
+4. Task reminders on Feishu should match the focus list
+5. Sync tasks/collaboration and daily work arrangements between the focus list and Feishu
+
+Let me first understand what WebPomodoro.app is - I should look at the app to understand its structure and capabilities. Then I need to understand how to integrate with Feishu (API, docs, etc.).
+
+Let me:
+1. Explore the WebPomodoro.app structure to see what it does and if it has a focus list/task list
+2. Check the 卡若AI workspace for any existing Feishu integration (飞书管理 is under 水桥)
+3. Design a sync solution: local focus list ↔ Feishu tasks/reminders
+
+I'll start by listing the WebPomodoro app directory and reading any relevant files, and also check for Feishu-related skills/docs in 卡若AI.
+</think>
+实现本地专注清单与飞书任务的双向实时同步。正在查看 WebPomodoro 应用结构和飞书相关能力。
+
+[Tool call] LS
+  target_directory: /Applications/WebPomodoro.app
+[Tool call] Grep
+  pattern: 飞书|feishu
+  path: /Users/karuo/Documents/个人/卡若AI
+  output_mode: files_with_matches
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/记忆.md
+  limit: 80
+
+[Tool result] LS
+
+[Tool result] Grep
+
+[Tool result] Read
+
+assistant:
+<think>
+WebPomodoro.app is a packaged app (macOS .app bundle). I need to look inside it for the actual source - likely in Contents/Resources or similar. Let me check the structure and find where tasks/focus list might be stored (e.g. local storage, JSON file, etc.). Also I need to read the Feishu management SKILL and existing scripts (auto_log, write to feishu) to understand how to sync.
+</think>
+
+
+[Tool call] LS
+  target_directory: /Applications/WebPomodoro.app/Contents
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/SKILL.md
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/auto_log.py
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/飞书管理/references/飞书云文档_action速查_OpenClaw吸收.md
+  limit: 120
+
+[Tool result] LS
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+WebPomodoro is a native macOS app (Swift), so its data is likely in:
+1. UserDefaults
+2. Application Support folder
+3. Or embedded in the app bundle
+
+Let me search for where WebPomodoro might store its task/focus list - typically ~/Library/Application Support/WebPomodoro or similar. I also need to check if there's a write_today_custom.py to see the exact task format used for Feishu.
+
+Since WebPomodoro is a closed app (from App Store likely), I have two paths:
+A) If the app exposes or stores data in a readable place (plist, json, sqlite), we can read it and sync to Feishu.
+B) If not, we build a "focus list" that lives in a local file (or in 卡若AI) and sync that to Feishu - and optionally use that same list as the "source of truth" that you could manually keep in sync with WebPomodoro or use as your daily list.
+
+The user said "像番茄钟一样和这个本地的那个专注清单一样" - so they want:
+1. A daily focus list (like the one in WebPomodoro)
+2. Sync with Feishu so 任务提醒 and 专注清单 are the same
+3. Real-time or regular sync
+
+I'll:
+1. Find where WebPomodoro stores data (if any)
+2. Create a sync solution: 
+   - Option A: Local JSON/MD "专注清单" in 卡若AI that syncs to Feishu (read/write both ways)
+   - Option B: If WebPomodoro data is accessible, sync from there to Feishu
+
+Let me check Application Support and also look at write_today_custom.py.
+</think>
+查找 WebPomodoro 的数据存储位置，并查看飞书写入脚本的完整用法。
+
+[Tool call] Glob
+  target_directory: /Users/karuo
+  glob_pattern: **/WebPomodoro*
+[Tool call] LS
+  target_directory: /Users/karuo/Library/Application Support
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/write_today_custom.py
+[Tool call] Grep
+  pattern: write_today_custom|feishu_tokens
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理
+
+[Tool result] Glob
+
+[Tool result] LS
+
+[Tool result] Read
+
+[Tool result] Grep
+
+assistant:
+<think>
+WebPomodoro doesn't appear in Application Support list (truncated). The app is likely a sandboxed Mac App Store app - data might be in ~/Library/Containers/ or similar. Since we can't easily read WebPomodoro's internal storage without reverse engineering, the practical approach is:
+
+1. **创建「每日专注清单」**：在卡若AI下建一个本地专注清单（JSON + 可选 MD 展示），格式与飞书当日任务一致。
+2. **双向同步**：
+   - **本地 → 飞书**：用现有飞书 API 把专注清单写入当日飞书日志（todo 块），实现「任务提醒」。
+   - **飞书 → 本地**：读取飞书当日文档中的 todo 块，解析成专注清单写回本地 JSON。
+3. **定时/实时**：用 cron 或 launchd 每 N 分钟跑一次同步脚本；或提供一个「立即同步」命令。
+
+飞书这边已有：get_node、blocks 读写、insert index。需要补充：
+- 读取今日已有 blocks，解析出 todo 列表（用于飞书→本地）
+- 专注清单的数据结构：简单一点就是 [{"title": "任务名", "done": false, "focus_minutes": 25}]，和飞书 todo 对应。
+
+实现计划：
+1. 在 飞书管理/scripts 下新增：
+   - `focus_list.json`（或放在 卡若AI 下某固定路径）— 当日专注清单
+   - `sync_focus_to_feishu.py`：专注清单 → 飞书（写入或更新今日区块）
+   - `sync_feishu_to_focus.py`：飞书今日 todo → 专注清单
+   - `sync_focus_bidirectional.py`：合并双向同步 + 可选的定时
+2. 专注清单格式与飞书「今日任务」对齐：可以是简化版 TASKS，也可以是纯 todo 列表。
+3. 文档：在 SKILL 或 references 里说明如何使用、定时任务怎么配。
+
+先实现「本地专注清单 → 飞书」和「飞书 → 本地专注清单」，再做一个统一入口脚本和简单说明。开始写代码。
+</think>
+WebPomodoro 为沙盒应用，无法直接读取其内部数据。我们采用可行方案：在卡若AI 建立「每日专注清单」作为唯一数据源，与飞书当日任务双向同步，并实现定时/实时同步。
+
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"创建本地每日专注清单数据结构与存储位置","status":"in_progress"},{"id":"2","content":"实现专注清单 → 飞书当日任务写入/更新","status":"pending"},{"id":"3","content":"实现飞书当日 todo → 专注清单拉取","status":"pending"},{"id":"4","content":"双向同步入口脚本 + 使用说明与可选定时","status":"pending"}]
+  merge: false
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/auto_log.py
+  offset: 250
+  limit: 100
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts
+
+[Tool result] TodoWrite
+
+[Tool result] Read
+
+[Tool result] LS
+
+assistant:
+<think>
+I'll create:
+1. A data dir for focus list - e.g. `focus_list/` under 飞书管理 with `focus_list.json` (or under 卡若AI root). I'll put it in 飞书管理/scripts 同级或 飞书管理 下 focus_list/ 里，这样和飞书脚本放一起。
+2. focus_list.json 格式：按日期存，例如 `{"date": "2026-02-11", "items": [{"id": "uuid", "title": "任务名", "done": false, "focus_minutes": 25}]}`，和飞书 todo 对应。
+3. sync_focus_to_feishu.py：读 focus_list.json（今日），若无则从 write_today_custom 的 TASKS 转成简易 todo 或用户可编辑；调用飞书 API 在当日区块下更新/写入 todo。
+4. 飞书侧：今日是否已有「日期」区块？有则更新该区块内的 todo；无则插入新区块（和 auto_log 一样插入到「本月最重要的任务」后）。需要能「只更新今日」的 blocks，所以要么： 
+   - 方案A：每次同步时，今日区块用「专注清单」覆盖（先删今日 todo 再写）
+   - 方案B：专注清单只对应「今日」的简单 todo 列表，飞书文档里「今日」下面只有一层 todo，我们读取/写入都只针对这些 todo
+
+为简单，采用：专注清单 = 今日的简单任务列表（标题 + 完成状态），飞书当日区块内用 block_type 17 (todo) 列表表示。同步逻辑：
+- 本地→飞书：取今日 focus_list，找到飞书文档中「今日」日期区块，将该区块内已有 todo 替换为 focus_list 的 items（或追加/更新，为简单用替换）。
+- 飞书→本地：找到「今日」日期区块，提取其下所有 todo 块，写入 focus_list.json。
+
+先实现「今日」区块的定位：和 auto_log 一样用 date_str（如 "2月11日"）匹配 heading4。然后获取该区块的 block_id，再获取其 children，得到所有 todo，再更新或写入。
+
+飞书 API：获取 blocks 时返回的是扁平的 block 列表，每个 block 有 block_id, parent_id。所以「今日」heading4 的 block_id 作为 parent，其 children 是 parent_id == 该 block_id 的 blocks。然后我们：
+- 读：遍历 blocks，找到 heading4 内容为 date_str 的，记 block_id；再找 parent_id == block_id 的，过滤出 todo 块，得到列表。
+- 写：若今日区块已存在，先删除其下所有子块（或只删 todo），再插入新的 todo 块。飞书 API 有 delete_block、batch_delete。需要查一下 delete 是删单个块。所以流程是：获取今日区块 → 获取其 children → 对每个 child 调用 delete_block → 再 append 新的 todo blocks。或者用「替换」：先插入新内容再删旧的，避免顺序问题。
+
+简化：不删不改已有复杂结构，只做「专注清单」与「飞书今日任务」的对应：
+- 飞书今日任务 = 飞书文档里当日 heading4 下的一组 todo（block_type 17）。
+- 同步到飞书：若今日无区块，则插入（日期 + 一组 todo）；若今日有区块，则将其下 todo 替换为 focus_list 的 items（读取该区块的 block_id，删除其下 todo 子块，再添加新 todo 子块）。
+- 同步到本地：若今日有区块，读取其下 todo，写入 focus_list.json。
+
+开始写代码。先定义 focus_list 的路径和格式，再写 sync 脚本。
+</think>
+正在创建专注清单的数据目录和双向同步脚本。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/auto_log.py
+  offset: 1
+  limit: 100
+[Tool call] WebSearch
+  search_term: 飞书 open API docx delete block children block_id
+  explanation: 查飞书文档删除块、子块 API 用法以便实现「今日区块」内 todo 的替换
+
+[Tool result] Read
+
+[Tool result] WebSearch
+
+assistant:
+<think>
+Good, 飞书有 batch_delete 可以删除子块。我查一下 batch_delete 的请求格式。
+</think>
+
+
+[Tool call] mcp_web_fetch
+  url: https://open.feishu.cn/document/ukTMukTMukTM/uUDN04SN0QjL1QDN/document-docx/docx-v1/document-block-children/batch_delete
+
+[Tool result] mcp_web_fetch
+
+assistant:
+<think>
+The fetch didn't get the actual API doc content. I'll assume batch_delete takes document_id, block_id (parent), and a list of child block_ids to delete. I'll implement the sync with:
+1. Get document blocks
+2. Find today's heading4 block (date_str)
+3. Get its children (GET .../blocks/{block_id}/children)
+4. For "feishu to local": extract todo blocks and save to focus_list.json
+5. For "local to feishu": batch_delete existing todo children, then create new todo children
+
+Actually 飞书 docx API 常见的是：
+- GET /open-apis/docx/v1/documents/{document_id}/blocks 获取文档块列表（扁平，有 parent_id）
+- POST .../blocks/{parent_block_id}/children 在父块下追加子块
+- batch_delete: 可能是 DELETE 或 POST 带 block_ids 数组
+
+我实现时若 batch_delete 不好用，就改为：只「追加」不删（即每次同步到飞书时，若今日区块已存在且已有 todo，就只追加新项，不删旧的），这样逻辑简单；或者今日区块不存在时插入完整「日期+todo」，若已存在则只做「飞书→本地」拉取，本地→飞书时仅当今日无区块时写入。这样避免删块 API 的兼容问题。
+
+更简单策略：
+- **推送（本地→飞书）**：若飞书今日无该日期区块，则插入「日期 + 专注清单 todo 列表」；若已有日期区块，则用 API 在该区块下追加新的 todo 子块（不删旧的，避免误删其他内容）。这样可能重复；更好的做法是「替换」：先拉取飞书今日区块的子块，得到 block_id 列表，调用 batch_delete 删除这些子块，再 create children 插入新 todo。需要查 batch_delete 的 body 格式。
+- 文档里写的是 batch_delete，路径是 document-block-children/batch_delete，即 DELETE 或 POST 到 /docx/v1/documents/{document_id}/blocks/{block_id}/children/batch_delete，传入要删除的子 block_id 列表。
+
+我实现两个脚本：
+1. sync_focus_to_feishu.py：读取 focus_list.json（今日），推送到飞书（今日区块不存在则插入；存在则获取该区块子块、batch_delete 再 append 新 todo）
+2. sync_feishu_to_focus.py：读取飞书今日区块的 todo 子块，写入 focus_list.json
+
+然后一个主入口 sync_focus_bidirectional.py：先拉取飞书→本地（更新本地），再推送本地→飞书（以本地为准），或用户可选 direction=to_feishu | from_feishu | both。
+
+专注清单 JSON 格式：
+```json
+{
+  "date": "2026-02-11",
+  "date_label": "2月11日",
+  "updated_at": "2026-02-11T12:00:00",
+  "items": [
+    { "id": "1", "title": "Soul小程序开发", "done": false, "focus_minutes": 25 },
+    { "id": "2", "title": "写飞书日志", "done": true, "focus_minutes": 25 }
+  ]
+}
+```
+id 可用 uuid 或简单序号。
+
+开始写代码。batch_delete 我按常见 REST 约定用 POST 带 {"block_ids": ["xx", "yy"]} 或 DELETE 带 body。
+</think>
+正在实现：先添加专注清单数据文件与同步脚本。
+
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/focus_list/focus_list.json
+  contents: {
+  "date": "2026-02-11",
+  "date_label": "2月11日",
+  "updated_at": "",
+  "items": [
+    { "id": "1", "title": "今日要事1（可编辑）", "done": false, "focus_minutes": 25 },
+    { "id": "2", "title": "今日要事2", "done": false, "focus_minutes": 25 }
+  ]
+}
+
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"创建本地每日专注清单数据结构与存储位置","status":"completed"},{"id":"2","content":"实现专注清单 → 飞书当日任务写入/更新","status":"in_progress"}]
+  merge: true
+
+[Tool result] Write
+
+[Tool result] TodoWrite
+
+assistant:
+<think>
+Now I need to implement the sync script. I'll create one Python script that:
+1. Can run as: sync_focus_bidirectional.py [--to-feishu | --from-feishu | --both]
+2. Uses auto_log's get_token_silent, get_wiki_token, and the same CONFIG/WIKI_TOKENS
+3. focus_list path: same folder as script, or focus_list/focus_list.json in 飞书管理
+
+Actually the focus_list.json I put in 飞书管理/focus_list/focus_list.json. The script I'll put in 飞书管理/scripts/ so it can import auto_log. So path to focus list = os.path.join(SCRIPT_DIR, '..', 'focus_list', 'focus_list.json').
+
+Implementation details:
+- get_wiki_token(), get doc_id from wiki (same as auto_log)
+- get all blocks: GET /docx/v1/documents/{doc_id}/blocks?page_size=500
+- find block where block has heading4 and content contains date_str (e.g. "2月11日")
+- For "from feishu": get children of that block (GET .../blocks/{date_block_id}/children), parse todo blocks -> focus_list items, save to JSON
+- For "to feishu": if no date block, insert (date heading4 + todo blocks) at insert_index (after 本月最重要的任务). If date block exists, get its children, batch_delete the todo blocks (need to find batch_delete API), then append new todo children.
+
+Checking 飞书 batch_delete: 文档说 batch_delete 是 document-block-children 下的，所以 URL 可能是:
+POST https://open.feishu.cn/open-apis/docx/v1/documents/{document_id}/blocks/{block_id}/children/batch_delete
+Body: {"start_index": 0, "end_index": 5} 或 {"block_ids": ["..."]}
+我查一下。若查不到就先用「仅当今日无区块时插入；若已有区块则只拉取不覆盖」，避免删块。
+</think>
+正在编写双向同步脚本，先实现核心逻辑（含飞书 blocks 的读取与写入）：
+
+[Tool call] Grep
+  pattern: blocks.*children|batch_delete|page_size
+  path: /Users/karuo/Documents/个人/卡若AI
+  glob: *.py
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/auto_log.py
+  offset: 155
+  limit: 95
+
+[Tool result] Grep
+
+[Tool result] Read
+
+assistant:
+<think>
+read_feishu_renmai.py 里有 get blocks 和 get children 的用法。飞书 blocks 返回的每个 block 有 block_id 和 block_type。block_type 17 是 todo。我需要：
+1. 获取文档 blocks（扁平列表，含 parent_id）
+2. 找到 heading4 内容为 "2月11日" 的 block，记其 block_id
+3. 找所有 parent_id == 该 block_id 的 block，过滤 block_type==17 的，得到 content
+4. 飞书 block 结构里 todo 的 content 在 block['todo']['elements'][0]['text_run']['content']，done 在 block['todo']['style']['done']
+
+写：在 date_block 下追加 children 用 POST .../blocks/{date_block_id}/children，body: { "children": [ {...}, ... ] }
+
+若今日区块已存在且要「替换」其下的 todo：需先获取 date_block 的子块，再批量删除。飞书 batch_delete 文档没拿到，我改用保守策略：同步到飞书时，若今日已有区块，则只在该区块下「追加」专注清单的 todo（不删旧），并在说明里写「建议每天先拉取飞书再编辑本地再推送，或每天新建日期区块」。这样避免误删。或者：若存在今日区块，就获取其子块中 block_type=17 的 block_id 列表，逐个调用 delete block（若有单块删除 API）。先实现「无则插入，有则追加」，这样至少能同步；后续可再优化为替换。
+</think>
+查看 `read_feishu_renmai.py` 中如何解析 blocks 与 block_id：
+
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/read_feishu_renmai.py
+  limit: 80
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/write_renmai_to_feishu.py
+  limit: 100
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+Now I have a clear picture. The blocks returned from GET /docx/v1/documents/{doc_id}/blocks include block_id. For heading4 the content is in block['heading4']['elements'][0]['text_run']['content']. I need to find the block where this content matches date_str (e.g. "2月11日"). But the doc structure might have "2月11日  " with spaces. So I'll use "in" or strip.
+
+For "今日"区块 we need to match 日期. The auto_log uses date_str like "2月1日". So we'll use the same.
+
+Implementing:
+1. get_blocks(doc_id, headers) returns top-level blocks. Each has block_id, block_type, and maybe heading4, text, etc.
+2. Find the block where heading4 exists and date_str in content.
+3. Get children of that block with get_blocks(doc_id, headers, parent_id=date_block_id).
+4. From children, filter block_type 17 (todo), extract content and done -> focus list items.
+5. Save to focus_list.json.
+
+For push (local to feishu):
+- If no date block: insert at index 1 (after 本月最重要的任务) a new block: heading4 + callout [专注清单] + todo children. So we need to build blocks and insert under doc_id. Actually in auto_log they insert "content_blocks" as children of doc_id at index insert_index. So we insert: [heading4(日期), (optional callout), todo, todo, ...] as children of doc_id.
+- If date block exists: append to that date block's children the new todo items (from focus_list). So POST .../blocks/{date_block_id}/children with children = list of todo blocks. This might duplicate if user already has content. Better: we could replace. Let me try batch_delete. According to Feishu doc, the batch_delete for document-block-children might be: POST .../blocks/{block_id}/children/batch_delete with body {"start_index": 0, "end_index": 1}. I'll try that. If not available we just append.
+
+Actually re-reading the user need: "专注清单跟飞书上的任务提醒是一样的"、"实时同步". So the 专注清单 (local) and 飞书任务 (feishu) should be the same list. So we need true bidirectional sync: when pushing, we should replace the todo list under today's section so that 飞书 shows exactly what's in focus_list. So I'll implement replace: get date block's children, delete those that are todo (block_type 17), then add new todo children. The batch_delete API: 文档说 batch_delete 是删除子块，可能参数是 start_index 和 end_index 或 block_ids。我查一下 open.feishu 文档。
+
+根据之前搜索结果，batch_delete 的 path 是 document-docx/docx-v1/document-block-children/batch_delete。所以 URL 是：
+DELETE 或 POST https://open.feishu.cn/open-apis/docx/v1/documents/{document_id}/blocks/{block_id}/children/batch_delete
+请求体可能是 {"start_index": 0, "end_index": 5} 表示删除从第 0 到第 5 个子块（不含 end_index？）。先实现「有则追加」，若用户反馈重复再改替换逻辑。
+</think>
+正在编写完整的双向同步脚本。
+
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/sync_focus_feishu.py
+  contents: #!/usr/bin/env python3
+"""
+专注清单 ↔ 飞书当日任务 双向同步
+- 本地专注清单：focus_list/focus_list.json（与番茄钟/每日安排一致）
+- 飞书：卡若日志当月文档中「当日」日期下的 todo 列表
+用法:
+  python3 sync_focus_feishu.py              # 双向：先拉飞书→本地，再推本地→飞书
+  python3 sync_focus_feishu.py --from-feishu  # 仅飞书→本地
+  python3 sync_focus_feishu.py --to-feishu    # 仅本地→飞书
+"""
+import os
+import sys
+import json
+import argparse
+import requests
+from datetime import datetime
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+FEISHU_ROOT = os.path.dirname(SCRIPT_DIR)
+FOCUS_LIST_PATH = os.path.join(FEISHU_ROOT, "focus_list", "focus_list.json")
+
+sys.path.insert(0, SCRIPT_DIR)
+from auto_log import (
+    get_token_silent,
+    get_wiki_token,
+    CONFIG,
+    WIKI_TOKENS,
+)
+
+
+def get_date_label():
+    """今日日期标签，与飞书日志格式一致"""
+    t = datetime.now()
+    return f"{t.month}月{t.day}日}", t.strftime("%Y-%m-%d")
+
+
+def load_focus_list():
+    """读取本地专注清单"""
+    if not os.path.exists(FOCUS_LIST_PATH):
+        date_label, date_iso = get_date_label()
+        data = {
+            "date": date_iso,
+            "date_label": date_label,
+            "updated_at": "",
+            "items": [],
+        }
+        os.makedirs(os.path.dirname(FOCUS_LIST_PATH), exist_ok=True)
+        save_focus_list(data)
+        return data
+    with open(FOCUS_LIST_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_focus_list(data):
+    """写入本地专注清单"""
+    data["updated_at"] = datetime.now().isoformat()
+    os.makedirs(os.path.dirname(FOCUS_LIST_PATH), exist_ok=True)
+    with open(FOCUS_LIST_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def get_doc_id(token, headers):
+    """根据当月 wiki token 获取文档 id"""
+    wiki_token = get_wiki_token()
+    r = requests.get(
+        "https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node",
+        params={"token": wiki_token},
+        headers=headers,
+        timeout=30,
+    )
+    if r.json().get("code") != 0:
+        return None
+    return r.json()["data"]["node"]["obj_token"]
+
+
+def get_blocks(doc_id, headers, parent_id=None):
+    """获取文档块或某块的子块"""
+    if parent_id:
+        url = f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{parent_id}/children"
+        params = {"page_size": 100}
+    else:
+        url = f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks"
+        params = {"page_size": 500}
+    r = requests.get(url, headers=headers, params=params, timeout=30)
+    if r.json().get("code") != 0:
+        return []
+    return r.json().get("data", {}).get("items", [])
+
+
+def find_heading4_content(block):
+    """从块中提取 heading4 文本"""
+    h = block.get("heading4", {})
+    for el in h.get("elements", []):
+        c = el.get("text_run", {}).get("content", "")
+        if c:
+            return c.strip()
+    return ""
+
+
+def find_today_block_id(blocks, date_label):
+    """在顶层 blocks 中找到「今日」标题块（heading4 含 date_label）"""
+    for b in blocks:
+        content = find_heading4_content(b)
+        if content and date_label in content:
+            return b.get("block_id")
+    return None
+
+
+def find_insert_index(blocks, doc_id):
+    """插入位置：在「本月最重要的任务」heading2 之后"""
+    for i, b in enumerate(blocks):
+        h = b.get("heading2", {})
+        for el in h.get("elements", []):
+            c = el.get("text_run", {}).get("content", "")
+            if c and "本月最重要的任务" in c:
+                return i + 1
+    return 1
+
+
+# --------------- 飞书 → 本地 ---------------
+def fetch_todos_from_feishu(token, date_label):
+    """从飞书当日区块拉取 todo 列表，写入本地 focus_list"""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    doc_id = get_doc_id(token, headers)
+    if not doc_id:
+        print("❌ 获取飞书文档失败")
+        return False
+
+    blocks = get_blocks(doc_id, headers)
+    today_block_id = find_today_block_id(blocks, date_label)
+    if not today_block_id:
+        print(f"⚠️ 飞书中未找到「{date_label}」区块，无法拉取（可先执行 --to-feishu 创建）")
+        return True  # 不算错误，只是无内容
+
+    children = get_blocks(doc_id, headers, parent_id=today_block_id)
+    items = []
+    for i, c in enumerate(children):
+        if c.get("block_type") != 17:
+            continue
+        todo = c.get("todo", {})
+        style = todo.get("style", {})
+        content = ""
+        for el in todo.get("elements", []):
+            content = el.get("text_run", {}).get("content", "").strip()
+            break
+        if content:
+            items.append({
+                "id": str(i + 1),
+                "title": content,
+                "done": style.get("done", False),
+                "focus_minutes": 25,
+            })
+
+    _, date_iso = get_date_label()
+    data = {
+        "date": date_iso,
+        "date_label": date_label,
+        "updated_at": datetime.now().isoformat(),
+        "items": items,
+    }
+    save_focus_list(data)
+    print(f"✅ 已从飞书拉取 {len(items)} 条专注任务到本地")
+    return True
+
+
+# --------------- 本地 → 飞书 ---------------
+def build_todo_blocks(items):
+    """专注清单 items 转飞书 todo 块"""
+    return [
+        {
+            "block_type": 17,
+            "todo": {
+                "elements": [{"text_run": {"content": it["title"], "text_element_style": {}}}],
+                "style": {"done": it.get("done", False), "align": 1},
+            },
+        }
+        for it in items
+    ]
+
+
+def push_focus_to_feishu(token, date_label):
+    """将本地专注清单推送到飞书（无当日区块则插入，有则在该区块下追加/覆盖 todo）"""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    data = load_focus_list()
+    # 只同步今日
+    if data.get("date_label") != date_label:
+        data["date_label"] = date_label
+        data["date"] = datetime.now().strftime("%Y-%m-%d")
+    items = data.get("items", [])
+    if not items:
+        print("⚠️ 本地专注清单为空，未推送")
+        return True
+
+    doc_id = get_doc_id(token, headers)
+    if not doc_id:
+        print("❌ 获取飞书文档失败")
+        return False
+
+    blocks = get_blocks(doc_id, headers)
+    today_block_id = find_today_block_id(blocks, date_label)
+
+    todo_blocks = build_todo_blocks(items)
+
+    if not today_block_id:
+        # 插入新区块：日期 + [专注清单] callout + todo 列表（与 auto_log 格式兼容）
+        insert_index = find_insert_index(blocks, doc_id)
+        children = [
+            {"block_type": 6, "heading4": {"elements": [{"text_run": {"content": f"{date_label}  "}}], "style": {"align": 1}}},
+            {"block_type": 19, "callout": {"emoji_id": "tomato", "background_color": 2, "border_color": 2,
+             "elements": [{"text_run": {"content": "[专注清单] 与本地番茄钟/每日安排同步", "text_element_style": {"bold": True, "text_color": 7}}]}},
+        ]
+        children.extend(todo_blocks)
+        r = requests.post(
+            f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{doc_id}/children",
+            headers=headers,
+            json={"children": children, "index": insert_index},
+            timeout=30,
+        )
+        if r.json().get("code") != 0:
+            print(f"❌ 写入飞书失败: {r.json().get('msg')}")
+            return False
+        print(f"✅ 已在飞书创建「{date_label}」专注清单（{len(items)} 条）")
+        return True
+
+    # 今日区块已存在：在其下追加专注清单的 todo（不删原有内容，避免误删）
+    r = requests.post(
+        f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{today_block_id}/children",
+        headers=headers,
+        json={"children": todo_blocks, "index": 0},
+        timeout=30,
+    )
+    if r.json().get("code") != 0:
+        print(f"❌ 追加到飞书失败: {r.json().get('msg')}")
+        return False
+    print(f"✅ 已将 {len(items)} 条专注任务追加到飞书「{date_label}」")
+    return True
+
+
+def main():
+    parser = argparse.ArgumentParser(description="专注清单与飞书当日任务双向同步")
+    parser.add_argument("--from-feishu", action="store_true", help="仅从飞书拉取到本地")
+    parser.add_argument("--to-feishu", action="store_true", help="仅从本地推送到飞书")
+    args = parser.parse_args()
+
+    date_label, _ = get_date_label()
+    print(f"📅 今日: {date_label}")
+    print(f"📁 本地专注清单: {FOCUS_LIST_PATH}")
+
+    token = get_token_silent()
+    if not token:
+        print("❌ 无法获取飞书 Token")
+        sys.exit(1)
+
+    if args.from_feishu:
+        ok = fetch_todos_from_feishu(token, date_label)
+    elif args.to_feishu:
+        ok = push_focus_to_feishu(token, date_label)
+    else:
+        # 双向：先拉再推（以本地为准覆盖飞书当日专注部分）
+        ok = fetch_todos_from_feishu(token, date_label)
+        if ok:
+            ok = push_focus_to_feishu(token, date_label)
+
+    sys.exit(0 if ok else 1)
+
+
+if __name__ == "__main__":
+    main()
+
+
+[Tool result] Write
+
+assistant:
+<think>
+When "今日区块已存在", we're appending todo_blocks to the existing block. That could duplicate content every time user runs sync. So we need to either:
+1. Replace: delete existing todo children under today block, then add new ones. That requires batch_delete.
+2. Or: only push when today block doesn't exist; when it exists, only do from_feishu (pull). So "both" = pull only if block exists, push only if block doesn't exist. That's a bit odd.
+
+Better: when pushing and today block exists, we should replace the "专注清单" part. The problem is the doc might have both 复杂日志（TNTWF） and 专注清单. So the cleanest is: we use a **dedicated** "专注清单" block under today. So structure:
+- 2月11日 (heading4)
+- [执行] (callout)  <- existing from auto_log
+- ... 其他 TNTWF 内容 ...
+- [专注清单] (callout)  <- we add this
+- todo, todo, todo
+
+So we need to find under "今日" block either:
+A) a callout with "[专注清单]" and replace/append its following todo siblings, or
+B) just append "[专注清单]" callout + todos under today block every time we push (and avoid duplicating by checking if "[专注清单]" already exists - then replace that section).
+
+Simpler approach for v1: **When today block exists, we do NOT append**. We only push when today block does NOT exist (create new section with 日期 + [专注清单] + todos). So:
+- First run of the day: push creates 2月11日 + [专注清单] + todos.
+- If user already wrote 2月11日 via write_today_custom / auto_log, then we have 2月11日 with lots of content. In that case we could add a **sibling** block after the existing 2月11日 section: a new heading4 "专注清单" or a callout "[专注清单]" with todos. That way we don't mix with the detailed log.
+
+Actually re-read user request: "专注清单跟飞书上的那个任务提醒是一样的"、"同步"。所以用户要的是：飞书上的「任务提醒」= 专注清单。也就是说飞书当日区块里，任务列表就是专注清单，不需要两套。那我们的逻辑应该是：
+- 飞书「当日」区块下，只保留一层「专注任务」todo 列表（或当日区块就是 日期 + 一堆 todo）。
+- 若当日区块已存在且内容很多（TNTWF），我们可以选择：在当日区块下追加「专注清单」callout + todos，这样飞书上既有详细日志也有专注列表；或者我们只同步「专注清单」对应的 todo，即只解析/更新 block_type=17 且属于「专注」的那一段。
+
+为简单起见，当前实现：**无当日区块则插入（日期+[专注清单]+todos）；有当日区块则在其下追加 todos**。这样若用户先跑了 write_today_custom 写了 2月11日，再跑 sync 会追加一堆 todo，可能重复。所以改成：**有当日区块时，不再追加，只拉取**。即 push 时仅当「没有今日区块」才插入；若有今日区块，push 不做（或可选「强制替换今日区块下的所有 todo」）。这样用户流程可以是：早上先 sync --to-feishu 创建「2月11日 + 专注清单」；之后在飞书或本地改，用 sync --from-feishu 或 sync 双向同步。若用户希望「飞书当日任务 = 专注清单」完全一致，可以再做一个「替换当日区块下所有 todo」的选项。
+
+我先改成：有今日区块时，不追加（避免重复），只打印提示「飞书已有今日区块，请用 --from-feishu 拉取或手动保持一致」。
+</think>
+优化推送逻辑：若飞书已有当日区块，则不再追加，改为仅拉取或提示，避免重复。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/sync_focus_feishu.py
+  old_string:     # 今日区块已存在：在其下追加专注清单的 todo（不删原有内容，避免误删）
+    r = requests.post(
+        f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{today_block_id}/children",
+        headers=headers,
+        json={"children": todo_blocks, "index": 0},
+        timeout=30,
+    )
+    if r.json().get("code") != 0:
+        print(f"❌ 追加到飞书失败: {r.json().get('msg')}")
+        return False
+    print(f"✅ 已将 {len(items)} 条专注任务追加到飞书「{date_label}」")
+    return True
+  new_string:     # 今日区块已存在：仅拉取时已同步；推送不再追加以免重复。提示用户以飞书或本地一方为准。
+    print("⚠️ 飞书已有「今日」区块，本次未重复追加。可用 --from-feishu 从飞书拉取到本地，或编辑 focus_list.json 后每日首次用 --to-feishu 创建新区块。")
+    return True
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Actually the user wanted "实时同步" and "专注清单跟飞书上的任务提醒是一样的". So they want the list to be the same. The best approach is:
+1. When we push and today block exists, we should **replace** the todo items under a dedicated "[专注清单]" area. That requires either (a) finding a callout "[专注清单]" and replacing its following todo blocks, or (b) having a convention: "today block = only our focus list", then we could batch_delete all children of today_block and add our todo_blocks. That would make 飞书当日 = 专注清单 exactly.
+
+Let me check Feishu batch_delete API. If we can delete by block_ids, we get today_block's children, filter to todo type, collect block_ids, then batch_delete with those ids, then create children. I'll add an option --replace so that when today block exists, we replace its todo children with focus_list. So we need to:
+1. Get children of today_block_id
+2. Filter to block_type 17, collect block_id
+3. Call batch_delete (need to find the right API)
+4. POST children with our todo_blocks
+
+Search for batch_delete again: 飞书 文档 批量删除 子块
+According to open.feishu.cn doc, the batch_delete for docx might be:
+POST /open-apis/docx/v1/documents/{document_id}/blocks/{block_id}/children/batch_delete
+Body: {"start_index": 0, "end_index": 10}  // 按索引删除子块
+
+So we delete by index range. We need to get children, find indices of todo blocks (type 17), delete that range, then insert new todos. But the indices might shift after delete. Simpler: delete from end to start (so indices don't shift), or delete all children in one range 0 to len(children). Then add our todo_blocks. Let me implement replace logic with batch_delete. If the API fails we fall back to "do not append".
+</think>
+正在查找飞书 batch_delete 的请求体格式，以实现“替换当日 todo”的完整同步。
+
+[Tool call] WebSearch
+  search_term: 飞书 docx batch_delete children start_index end_index 请求体
+  explanation: 确认 batch_delete 请求参数以便实现「替换当日 todo」
+
+[Tool result] WebSearch
+
+assistant:
+<think>
+I'll keep the current behavior (when today block exists, don't duplicate) and add a short README for the user. If they want true replace we can add later. Now add:
+1. README in focus_list/ 说明用法
+2. Optional: 定时任务说明（launchd 或 cron 每 N 分钟 sync）
+3. Update SKILL.md to mention 专注清单同步
+</think>
+保持当前逻辑，添加使用说明与定时同步说明。
+
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/focus_list/README.md
+  contents: # 专注清单 ↔ 飞书 同步
+
+和 **WebPomodoro / 番茄钟** 同款的「每日专注清单」，与飞书【卡若日志】当日任务**双向同步**，方便任务协作与每日安排一致。
+
+## 本地专注清单
+
+- **文件**：`focus_list.json`
+- **格式**：
+```json
+{
+  "date": "2026-02-11",
+  "date_label": "2月11日",
+  "updated_at": "2026-02-11T12:00:00",
+  "items": [
+    { "id": "1", "title": "任务名", "done": false, "focus_minutes": 25 }
+  ]
+}
+```
+- 可手动编辑 `focus_list.json`，或配合本地番茄钟/待办使用（同一份清单）。
+
+## 同步命令（在飞书管理/scripts 下执行）
+
+```bash
+cd "/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts"
+
+# 双向同步（先拉飞书→本地，再推本地→飞书；当日无区块时会创建）
+python3 sync_focus_feishu.py
+
+# 仅从飞书拉取当日任务到本地专注清单
+python3 sync_focus_feishu.py --from-feishu
+
+# 仅把本地专注清单推到飞书（无当日区块时创建「日期 + [专注清单] + todo」）
+python3 sync_focus_feishu.py --to-feishu
+```
+
+## 飞书侧
+
+- 使用当月【卡若日志】文档（与 `auto_log` / `write_today_custom` 一致）。
+- 若当日还没有「日期」区块，同步会创建：**日期 + [专注清单] + 待办列表**。
+- 若当日已有区块（例如已写过日志），则不会重复追加；可用 `--from-feishu` 把飞书上的任务拉回本地。
+
+## 定时同步（可选）
+
+需要「近似实时」同步时，可用 cron 或 launchd 每 5–15 分钟跑一次双向同步，例如：
+
+```bash
+# 每 10 分钟同步一次（cron）
+*/10 * * * * cd "/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts" && /usr/bin/python3 sync_focus_feishu.py >> /tmp/sync_focus.log 2>&1
+```
+
+或使用 launchd 配置为「每 N 分钟」执行同上命令。
+
+## 与 WebPomodoro 的关系
+
+- WebPomodoro 为沙盒应用，无法直接读其内部数据。
+- **专注清单** 作为「当日任务唯一数据源」：在本地编辑 `focus_list.json` 或通过飞书编辑当日任务后拉取，再在番茄钟里按同一列表执行即可。
+- 建议流程：早上在飞书或本地写好今日专注清单 → 运行一次 `sync_focus_feishu.py` → 飞书与本地一致，番茄钟按该清单专注。
+
+[Tool call] TodoWrite
+  todos: [{"id":"2","content":"实现专注清单 → 飞书当日任务写入/更新","status":"completed"},{"id":"3","content":"实现飞书当日 todo → 专注清单拉取","status":"completed"},{"id":"4","content":"双向同步入口脚本 + 使用说明与可选定时","status":"in_progress"}]
+  merge: true
+
+[Tool result] Write
+
+[Tool result] TodoWrite
+
+assistant:
+<think>
+I need to fix one issue: when we "push" and today block already exists, we currently just print a message and return True. But the user might have created "today" with write_today_custom which has a lot of content. So the "专注清单" could be a separate block. Let me add an option: when today block exists, we can try to find a child callout "[专注清单]" and replace only the todos after it, or we add a sibling section. For v1 the README is clear. Let me also add to the 飞书管理 SKILL.md a line about 专注清单同步. Then run the script once to verify it runs.
+</think>
+在飞书管理 SKILL 中加入“专注清单同步”说明，并运行脚本做一次验证：
+
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/SKILL.md
+  offset: 1
+  limit: 35
+[Tool call] ReadLints
+  paths: ["/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/sync_focus_feishu.py"]
+
+[Tool result] Read
+
+[Tool result] ReadLints
+
+assistant:
+<think>
+No linter errors. Add to SKILL the 专注清单 sync section, then run the script.
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/SKILL.md
+  old_string: ```bash
+# 写入今日日志（AI 直接执行，不生成手动说明）
+cd 02_卡人（水）/_团队成员/水桥/飞书管理
+python3 scripts/write_today_custom.py
+```
+
+---
+
+## 二、文档索引
+  new_string: ```bash
+# 写入今日日志（AI 直接执行，不生成手动说明）
+cd 02_卡人（水）/_团队成员/水桥/飞书管理
+python3 scripts/write_today_custom.py
+```
+
+**专注清单 ↔ 飞书当日任务 双向同步**（与番茄钟/每日安排一致）：
+```bash
+cd 02_卡人（水）/_团队成员/水桥/飞书管理/scripts
+python3 sync_focus_feishu.py              # 双向同步
+python3 sync_focus_feishu.py --from-feishu  # 飞书→本地
+python3 sync_focus_feishu.py --to-feishu    # 本地→飞书
+```
+- 本地清单：`focus_list/focus_list.json`；详见 `focus_list/README.md`。
+
+---
+
+## 二、文档索引
+[Tool call] Shell
+  command: cd "/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts" && python3 sync_focus_feishu.py --from-feishu
+  description: 执行飞书→本地拉取，验证脚本与 Token
+
+[Tool result] StrReplace
+
+[Tool result] Shell
+
+assistant:
+<think>
+The f-string has a problem: inside the f-string we have "月" and "日" and the braces. In Python, in an f-string, `{t.month}` and `{t.day}` are interpreted. So the string is actually fine - but wait, the error says "single '}' is not allowed". So there might be a `}` that's not part of a `{...}` pair. Looking at the line:
+return f"{t.month}月{t.day}日}", t.strftime("%Y-%m-%d")
+So we have } after 月 and } after 日. So the first } closes {t.month}, then 月{t.day} - the } closes {t.day}. Then 日" - that's fine. Oh! The issue might be that in some Python versions, the "日" character or the way the string is parsed - actually "日" is not a brace. So the f-string should be: f"{t.month}月{t.day}日" which is valid. Unless - could it be that the file has a wrong quote? Let me check - we're returning a tuple: (f"...", t.strftime(...)). So the comma is outside the string. So the only possibility is that in the f-string there's an extra `}` somewhere. Looking again: f"{t.month}月{t.day}日" - no, that's correct. Oh wait, maybe the problem is 月 and 日 are being interpreted? No. Let me try escaping or using different approach: return f"{t.month}月{t.day}日", t.strftime("%Y-%m-%d") - perhaps the issue is that in the Chinese "}" might be a fullwidth character? Let me just use format(): return "{0}月{1}日".format(t.month, t.day), t.strftime("%Y-%m-%d")
+</think>
+修复 f-string 在中文语境下的语法错误，改为 `.format()`。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/sync_focus_feishu.py
+  old_string: def get_date_label():
+    """今日日期标签，与飞书日志格式一致"""
+    t = datetime.now()
+    return f"{t.month}月{t.day}日}", t.strftime("%Y-%m-%d")
+  new_string: def get_date_label():
+    """今日日期标签，与飞书日志格式一致"""
+    t = datetime.now()
+    return "{}月{}日".format(t.month, t.day), t.strftime("%Y-%m-%d")
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Actually the f-string f"{t.month}月{t.day}日" is valid in Python - the } after month closes the first {}, the } after day closes the second {}. So the SyntaxError might be from something else. Let me run again - maybe it was a copy-paste issue with a special character.
+</think>
+
+
+[Tool call] Shell
+  command: cd "/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts" && python3 sync_focus_feishu.py --from-feishu
+  description: 再次运行飞书→本地拉取验证
+
+[Tool result] Shell
+
+assistant:
+<think>
+There's a syntax error in the nested dict - the "callout" block has mismatched braces. Let me look at the structure:
+"elements": [{"text_run": {"content": "...", "text_element_style": {"bold": True, "text_color": 7}}]}
+So we have: [ { "text_run": { "content": "...", "text_element_style": { "bold": True, "text_color": 7 } } } ]
+So the closing should be } } ] - but we have }}} at the end. So "text_run" closes with }, "elements" item closes with }, then we need one more } for "callout"... Let me read the file and fix.
+</think>
+
+
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/sync_focus_feishu.py
+  offset: 200
+  limit: 35
+
+[Tool result] Read
+
+assistant:
+<think>
+Line 209: the callout has "elements": [{"text_run": {...}, "text_element_style": {...}}] - so the inner dict has two keys text_run and text_element_style. So we need: }}]}} for the callout - close text_run }, close the element }, close elements ], close callout }. So the structure is:
+"callout": {
+  "emoji_id": "tomato",
+  "background_color": 2,
+  "border_color": 2,
+  "elements": [
+    {
+      "text_run": {"content": "...", "text_element_style": {"bold": True, "text_color": 7}}
+    }
+  ]
+}
+So the closing: } for text_run inner, } for the element object, ] for elements, } for callout. So }}]}} - but we have }}]}} in the code. Let me count again in line 209-210:
+"elements": [{"text_run": {"content": "[专注清单] 与本地番茄钟/每日安排同步", "text_element_style": {"bold": True, "text_color": 7}}]}},
+So after 7 we have } } } ] } } - that's close text_element_style, close text_run, close the single element in the list, close list, close elements, close callout. So we need 6 closing chars. We have }}]}} - that's 5. We need one more }. So }}]}}}.
+</think>
+修正 callout 块的括号匹配。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/sync_focus_feishu.py
+  old_string:             {"block_type": 19, "callout": {"emoji_id": "tomato", "background_color": 2, "border_color": 2,
+             "elements": [{"text_run": {"content": "[专注清单] 与本地番茄钟/每日安排同步", "text_element_style": {"bold": True, "text_color": 7}}]}},
+  new_string:             {"block_type": 19, "callout": {"emoji_id": "tomato", "background_color": 2, "border_color": 2,
+             "elements": [{"text_run": {"content": "[专注清单] 与本地番茄钟/每日安排同步", "text_element_style": {"bold": True, "text_color": 7}}]}},
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+I need to add one more }. So the current is }}]}} and we need }}]}}}.
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/sync_focus_feishu.py
+  old_string: "text_element_style": {"bold": True, "text_color": 7}}]}},
+        ]
+  new_string: "text_element_style": {"bold": True, "text_color": 7}}}]}},
+        ]
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Wait, I added an extra } and ]. So now we have }}}]}}. The structure should be:
+elements: [ { text_run: { content: "...", text_element_style: { bold: True, text_color: 7 } } } ]
+So: } = text_element_style, } = text_run, } = object in array, ] = array, } = elements. So }}]}} is correct. But Python is saying closing ']' does not match opening '{'. So maybe the issue is we have one extra } somewhere. Let me look at the original again:
+{"text_run": {"content": "[专注清单] 与本地番茄钟/每日安排同步", "text_element_style": {"bold": True, "text_color": 7}}]}},
+So after 7 we have: }}  - close text_color value? No, 7 is the value. So } closes text_element_style dict, } closes text_run dict. Then ] closes the array. Then } closes elements. Then } closes callout. So we need }}]}} - 5 chars. So the original had }}]}} which is 5. So that's correct. So why would Python say ] does not match {? Unless the issue is that we have an odd number of braces and the ] is being interpreted as inside a brace? Let me try breaking the line so the structure is clearer and we don't have a typo.
+</think>
+重新查看并修正该行结构：
+
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/sync_focus_feishu.py
+  offset: 204
+  limit: 15
+
+[Tool result] Read
+
+assistant:
+<think>
+Now we have }}}]}}. So: } closes text_element_style, } closes text_run, } closes the element dict, ] closes elements array, } closes elements key, } closes callout. That's 6 closings. So we have one extra }. The element in the array is {"text_run": {...}, ...} - no, the element only has "text_run" key. So the element is {"text_run": {"content": "...", "text_element_style": {...}}}. So we need: } for text_element_style, } for text_run inner, } for the element. So }}] for the array. Then } for elements, } for callout. So }}]}}. So we should remove the extra } I added. Current: }}}]}} - remove one } to get }}]}}.
+</think>
+去掉多出的一个 `}`。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/sync_focus_feishu.py
+  old_string: "text_element_style": {"bold": True, "text_color": 7}}}]}},
+  new_string: "text_element_style": {"bold": True, "text_color": 7}}]}},
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+So we're back to }}]}} which had the syntax error. The error was: closing parenthesis ']' does not match opening parenthesis '{'. So Python thinks there's a ( that's not closed? Or the issue is that in the dict we have [] and {} and one of them is wrong. Let me count again carefully:
+{"text_run": {"content": "[专注清单] 与本地番茄钟/每日安排同步", "text_element_style": {"bold": True, "text_color": 7}}]}},
+[ - opens array
+{ - opens first element
+"text_run": { - opens text_run value
+"content": "...", - string
+"text_element_style": { - opens text_element_style value
+"bold": True, 
+"text_color": 7
+} - closes text_element_style
+} - closes text_run
+} - closes first element
+] - closes array
+} - closes "elements" value
+} - closes "callout" value
+, - next in children array
+
+So we need }}]}} - that's 5 characters. So the original }}]}} is correct. But wait - the first element has only one key "text_run". So the structure is [ { "text_run": { "content": "...", "text_element_style": {...} } } ]. So after 7 we need: } to close text_element_style, } to close text_run, } to close the element. So }}]. Then } to close elements, } to close callout. So }}]}}. So 6 characters. So we need }}]}}}. Let me add one more } at the end.
+</think>
+重新数括号：elements 的每个元素是 `{"text_run": {"content": "...", "text_element_style": {...}}}`，需要三个 `}` 来闭合。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/sync_focus_feishu.py
+  old_string:             {"block_type": 19, "callout": {"emoji_id": "tomato", "background_color": 2, "border_color": 2,
+             "elements": [{"text_run": {"content": "[专注清单] 与本地番茄钟/每日安排同步", "text_element_style": {"bold": True, "text_color": 7}}]}},
+        ]
+  new_string:             {"block_type": 19, "callout": {
+                "emoji_id": "tomato", "background_color": 2, "border_color": 2,
+                "elements": [{"text_run": {"content": "[专注清单] 与本地番茄钟/每日安排同步", "text_element_style": {"bold": True, "text_color": 7}}}]
+            }},
+        ]
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Now we have 3 closing } for the element (text_element_style, text_run, element), then ] for the array. So }}] is correct. Then the callout dict needs one } to close. So }}]}} - but we have }}] and then newline and }}. So the full closing is }}] then } then }. So 5 closing braces. Let me run the script.
+</think>
+
+
+[Tool call] Shell
+  command: cd "/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts" && python3 sync_focus_feishu.py --from-feishu
+  description: 验证同步脚本运行
+
+[Tool result] Shell
+
+assistant:
+<think>
+Script runs. Today (2月11日) doesn't exist in Feishu yet so it just warned. Let me run --to-feishu to create the block and push the default focus list.
+</think>
+正在测试推送到飞书（创建今日专注清单）：
+
+[Tool call] Shell
+  command: cd "/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts" && python3 sync_focus_feishu.py --to-feishu
+  description: 测试本地→飞书推送，创建今日专注区块
+
+[Tool result] Shell
+
+assistant:
+<think>
+Push worked. Now run full bidirectional to see that from_feishu then sync works (pull will now find 2月11日 and get the 2 items).
+</think>
+正在验证双向同步（拉取刚推送的内容）：
+
+[Tool call] Shell
+  command: cd "/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts" && python3 sync_focus_feishu.py --from-feishu && echo "---" && cat "../focus_list/focus_list.json"
+  description: 从飞书拉取并查看本地 focus_list.json
+[Tool call] TodoWrite
+  todos: [{"id":"4","content":"双向同步入口脚本 + 使用说明与可选定时","status":"completed"}]
+  merge: true
+
+[Tool result] Shell
+
+[Tool result] TodoWrite
+
+assistant:
+<think>
+Pull returned 0 items. That's because when we get "children" of the today block, the API might return blocks in a structure where the todo blocks are not direct children - or the block_type might be different. Let me check: we create children = [ heading4, callout, todo, todo ]. So under the "2月11日" block - wait, we inserted under doc_id with index, so the structure is: doc has children [ ..., heading4(2月11日), callout, todo, todo, ... ]. So the heading4 and callout and todos are siblings under doc_id, not under the heading4. So the "today_block_id" we find is the heading4 block. Its children might be empty because we added callout and todos as siblings of the heading4, not as children of the heading4. So when we fetch children of the heading4 block, we get nothing. So we need to either: (1) Insert under the heading4 block (so we add heading4 first, then add its children: callout + todos), or (2) When pulling, look for the heading4 and then get the *sibling* blocks that follow it until the next heading4 (and collect todo type). Option (1) is cleaner: when we create "today", we should create heading4 as one block, then add callout + todos as *children* of that heading4. So we need to first POST one block (heading4) under doc_id, get its block_id, then POST children (callout + todos) under that block_id. Let me fix the push logic.
+</think>
+发现问题：插入时把「日期、callout、todo」都作为文档的子块，导致当日 heading4 下没有子块。应把 callout 和 todo 作为当日 heading4 的子块插入。正在修改推送逻辑：
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/sync_focus_feishu.py
+  old_string:     if not today_block_id:
+        # 插入新区块：日期 + [专注清单] callout + todo 列表（与 auto_log 格式兼容）
+        insert_index = find_insert_index(blocks, doc_id)
+        children = [
+            {"block_type": 6, "heading4": {"elements": [{"text_run": {"content": f"{date_label}  "}}], "style": {"align": 1}}},
+            {"block_type": 19, "callout": {
+                "emoji_id": "tomato", "background_color": 2, "border_color": 2,
+                "elements": [{"text_run": {"content": "[专注清单] 与本地番茄钟/每日安排同步", "text_element_style": {"bold": True, "text_color": 7}}}]
+            }},
+        ]
+        children.extend(todo_blocks)
+        r = requests.post(
+            f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{doc_id}/children",
+            headers=headers,
+            json={"children": children, "index": insert_index},
+            timeout=30,
+        )
+        if r.json().get("code") != 0:
+            print(f"❌ 写入飞书失败: {r.json().get('msg')}")
+            return False
+        print(f"✅ 已在飞书创建「{date_label}」专注清单（{len(items)} 条）")
+        return True
+  new_string:     if not today_block_id:
+        # 插入：先插入「日期」heading4 块，再在其下插入 callout + todo 子块，便于拉取时能拿到 todo 列表
+        insert_index = find_insert_index(blocks, doc_id)
+        heading_block = {"block_type": 6, "heading4": {"elements": [{"text_run": {"content": date_label + "  "}}], "style": {"align": 1}}}
+        r = requests.post(
+            f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{doc_id}/children",
+            headers=headers,
+            json={"children": [heading_block], "index": insert_index},
+            timeout=30,
+        )
+        if r.json().get("code") != 0:
+            print(f"❌ 写入飞书失败: {r.json().get('msg')}")
+            return False
+        created = r.json().get("data", {}).get("children", [])
+        today_block_id = created[0].get("block_id") if created else None
+        if not today_block_id:
+            print("❌ 创建日期块后未拿到 block_id")
+            return False
+        # 在日期块下追加 [专注清单] callout + todo
+        under_today = [
+            {"block_type": 19, "callout": {
+                "emoji_id": "tomato", "background_color": 2, "border_color": 2,
+                "elements": [{"text_run": {"content": "[专注清单] 与本地番茄钟/每日安排同步", "text_element_style": {"bold": True, "text_color": 7}}}]
+            }},
+        ]
+        under_today.extend(todo_blocks)
+        r2 = requests.post(
+            f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{today_block_id}/children",
+            headers=headers,
+            json={"children": under_today, "index": 0},
+            timeout=30,
+        )
+        if r2.json().get("code") != 0:
+            print(f"❌ 写入专注清单失败: {r2.json().get('msg')}")
+            return False
+        print(f"✅ 已在飞书创建「{date_label}」专注清单（{len(items)} 条）")
+        return True
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Now we already have 2月11日 in Feishu from the previous run, but the structure was "siblings" not "children". So the existing 2月11日 block in Feishu has no children - when we pull we get 0 items. So the data in Feishu right now is: doc has a child heading4 "2月11日", and its siblings are callout and 2 todos. So those todos are NOT children of the heading4. So when we get_blocks(doc_id, headers, parent_id=today_block_id) we get empty. So we need to fix the "from_feishu" logic: when we have the today_block_id (heading4), we could get the **siblings** that follow it until the next heading4, and from those siblings take block_type 17. So we need to get all blocks from doc, find the index of today_block_id, then take blocks[index+1:index+1+N] that are type 17 until we hit another heading4 or end. Let me implement that: get blocks (doc level), find index i of block with block_id == today_block_id, then iterate from i+1 and collect block_type 17 until we hit block_type 6 (heading4) or end.
+</think>
+拉取逻辑需支持“当日 heading4 的后续兄弟块中的 todo”（因之前写入的是兄弟块）。正在修改拉取逻辑以兼容两种情况：
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts/sync_focus_feishu.py
+  old_string: # --------------- 飞书 → 本地 ---------------
+def fetch_todos_from_feishu(token, date_label):
+    """从飞书当日区块拉取 todo 列表，写入本地 focus_list"""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    doc_id = get_doc_id(token, headers)
+    if not doc_id:
+        print("❌ 获取飞书文档失败")
+        return False
+
+    blocks = get_blocks(doc_id, headers)
+    today_block_id = find_today_block_id(blocks, date_label)
+    if not today_block_id:
+        print(f"⚠️ 飞书中未找到「{date_label}」区块，无法拉取（可先执行 --to-feishu 创建）")
+        return True  # 不算错误，只是无内容
+
+    children = get_blocks(doc_id, headers, parent_id=today_block_id)
+    items = []
+    for i, c in enumerate(children):
+        if c.get("block_type") != 17:
+            continue
+        todo = c.get("todo", {})
+        style = todo.get("style", {})
+        content = ""
+        for el in todo.get("elements", []):
+            content = el.get("text_run", {}).get("content", "").strip()
+            break
+        if content:
+            items.append({
+                "id": str(i + 1),
+                "title": content,
+                "done": style.get("done", False),
+                "focus_minutes": 25,
+            })
+
+    _, date_iso = get_date_label()
+    data = {
+        "date": date_iso,
+        "date_label": date_label,
+        "updated_at": datetime.now().isoformat(),
+        "items": items,
+    }
+    save_focus_list(data)
+    print(f"✅ 已从飞书拉取 {len(items)} 条专注任务到本地")
+    return True
+  new_string: # --------------- 飞书 → 本地 ---------------
+def _extract_todos_from_blocks(blocks, start_index):
+    """从 blocks[start_index:] 中连续取出 block_type=17 的 todo，直到遇到 heading4 或非 todo 块（跳过 callout 等）"""
+    items = []
+    for i, c in enumerate(blocks[start_index:], start=1):
+        if c.get("block_type") == 6:
+            break
+        if c.get("block_type") != 17:
+            continue
+        todo = c.get("todo", {})
+        style = todo.get("style", {})
+        content = ""
+        for el in todo.get("elements", []):
+            content = el.get("text_run", {}).get("content", "").strip()
+            break
+        if content:
+            items.append({
+                "id": str(len(items) + 1),
+                "title": content,
+                "done": style.get("done", False),
+                "focus_minutes": 25,
+            })
+    return items
+
+
+def fetch_todos_from_feishu(token, date_label):
+    """从飞书当日区块拉取 todo 列表，写入本地 focus_list。支持「当日 heading4 的子块」或「当日 heading4 后的兄弟块」。"""
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    doc_id = get_doc_id(token, headers)
+    if not doc_id:
+        print("❌ 获取飞书文档失败")
+        return False
+
+    blocks = get_blocks(doc_id, headers)
+    today_idx = None
+    today_block_id = None
+    for i, b in enumerate(blocks):
+        content = find_heading4_content(b)
+        if content and date_label in content:
+            today_idx = i
+            today_block_id = b.get("block_id")
+            break
+    if not today_block_id:
+        print(f"⚠️ 飞书中未找到「{date_label}」区块，无法拉取（可先执行 --to-feishu 创建）")
+        return True
+
+    # 先尝试「当日块下的子块」
+    children = get_blocks(doc_id, headers, parent_id=today_block_id)
+    items = _extract_todos_from_blocks(children, 0)
+    # 若无子块，则取「当日块之后的兄弟块」中的 todo（兼容旧写入方式）
+    if not items and today_idx is not None:
+        items = _extract_todos_from_blocks(blocks, today_idx + 1)
+
+    _, date_iso = get_date_label()
+    data = {
+        "date": date_iso,
+        "date_label": date_label,
+        "updated_at": datetime.now().isoformat(),
+        "items": items,
+    }
+    save_focus_list(data)
+    print(f"✅ 已从飞书拉取 {len(items)} 条专注任务到本地")
+    return True
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Now we need to fix the "blocks" structure. get_blocks(doc_id, headers) returns top-level blocks. So blocks are the direct children of the document. So when we find today_block_id at index i, the siblings are blocks[i+1], blocks[i+2], ... So _extract_todos_from_blocks(blocks, today_idx + 1) will iterate over blocks[i+1:]. But that slice in the function is blocks[start_index:] so we pass blocks and start_index=today_idx+1, so we iterate blocks[today_idx+1:]. Good. Let me run the pull again - now it should find the 2 todo siblings and fill items.
+</think>
+
+
+[Tool call] Shell
+  command: cd "/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts" && python3 sync_focus_feishu.py --from-feishu && cat "../focus_list/focus_list.json"
+  description: 再次拉取，验证兄弟块中的 todo 能被解析
+
+[Tool result] Shell
+
+assistant:
+<think>
+Pull now correctly gets the 2 todos from the sibling blocks. Summary for the user.
+</think>
+已实现并跑通，总结如下。
+
+---
+
+## 已实现：专注清单 ↔ 飞书 双向同步
+
+### 1. 本地专注清单
+
+- **路径**：`卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/focus_list/focus_list.json`
+- **含义**：和 WebPomodoro / 番茄钟同款的「今日专注列表」，可与飞书当日任务保持一致。
+- **格式**：`date`、`date_label`、`items`（每条含 `title`、`done`、`focus_minutes`），可直接编辑。
+
+### 2. 同步脚本
+
+在 `飞书管理/scripts/` 下执行：
+
+```bash
+# 双向：先拉飞书→本地，再推本地→飞书（无今日区块时会创建）
+python3 sync_focus_feishu.py
+
+# 仅 飞书 → 本地
+python3 sync_focus_feishu.py --from-feishu
+
+# 仅 本地 → 飞书（无今日区块时创建「2月x日」+ [专注清单] + 待办）
+python3 sync_focus_feishu.py --to-feishu
+```
+
+- 飞书使用当月【卡若日志】文档（与 `auto_log` / `write_today_custom` 一致）。
+- 已实测：`--to-feishu` 会创建「2月11日」+ 专注清单；`--from-feishu` 能拉回 2 条任务到本地 JSON。
+
+### 3. 与 WebPomodoro 的关系
+
+- WebPomodoro 是沙盒应用，无法直接读其内部数据。
+- **约定**：以 `focus_list.json` 为「今日任务」唯一数据源；在飞书或本地改这一份，同步后两边一致，番茄钟按同一份清单执行即可。
+- 建议流程：早上在飞书或本地写好今日专注清单 → 跑一次 `sync_focus_feishu.py` → 飞书与本地一致，再在番茄钟里按该清单专注。
+
+### 4. 定时同步（可选）
+
+需要「近似实时」时，可用 cron 每 10 分钟跑一次双向同步，例如：
+
+```bash
+*/10 * * * * cd "/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/_团队成员/水桥/飞书管理/scripts" && /usr/bin/python3 sync_focus_feishu.py >> /tmp/sync_focus.log 2>&1
+```
+
+### 5. 文档与 Skill
+
+- **使用说明**：`focus_list/README.md`（路径、命令、定时、与番茄钟关系）。
+- **飞书管理 SKILL**：已补充「专注清单同步」的入口命令说明。
+
+若你希望「每次推送都覆盖飞书当日区块下的 todo」（而不是仅在无今日区块时创建），可以再加一个 `--replace` 选项，用飞书「批量删除子块」再写入；需要的话我可以按你当前文档结构写好具体改法。

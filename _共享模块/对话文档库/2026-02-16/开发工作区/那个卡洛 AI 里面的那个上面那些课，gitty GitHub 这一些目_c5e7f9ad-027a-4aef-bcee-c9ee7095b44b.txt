@@ -1,0 +1,703 @@
+user:
+<user_query>
+
+那个卡洛 AI 里面的那个上面那些课，gitty GitHub 这一些目录，包括一些模块的目录统一都放到一个文件夹里面，保持这个几个模块都放到相应的文件夹里面，然后更新一下这个 skill 整个卡罗维埃的目录结构，并且保持正常的调用不变。深度的做这方面的那个管理跟理解，以及把整个我经常做这类型的改动，目录结构的改动，你给我一个最好最佳的一个结构的解决方案，让卡尔 AI 能更好的一个运转
+</user_query>
+
+assistant:
+按卡若AI规则，正在读取相关文件并梳理目录结构。
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/references/卡若AI交互流程与强制执行条件.md
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/SKILL.md
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/00_卡若AI总索引.md
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+[Tool call] Glob
+  target_directory: /Users/karuo/Documents/个人/卡若AI
+  glob_pattern: **/*
+[Tool call] LS
+  path: /Users/karuo/Documents/个人/卡若AI
+[Tool call] LS
+  path: /Users/karuo/Documents/个人/卡若AI/.gitea
+[Tool call] LS
+  path: /Users/karuo/Documents/个人/卡若AI/.github
+[Tool call] LS
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor
+
+[Tool result] Glob
+
+[Tool result] LS
+
+[Tool result] LS
+
+[Tool result] LS
+
+[Tool result] LS
+
+assistant:
+[Tool call] Shell
+  command: find /Users/karuo/Documents/个人/卡若AI -maxdepth 2 -type d 2>/dev/null | head -80
+  description: 列出卡若AI 2级目录结构
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/.gitignore
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/auto_sync_gitea.sh
+  limit: 80
+[Tool call] Grep
+  pattern: \.gitea|\.github|\.cursor
+  path: /Users/karuo/Documents/个人/卡若AI
+  output_mode: content
+  -A: 0
+
+[Tool result] Shell
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Grep
+
+assistant:
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/SKILL.md
+  limit: 50
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/.github/workflows/sync_github_to_gitea.yml
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金仓/Gitea管理/SKILL.md
+  limit: 130
+[Tool call] SemanticSearch
+  query: 目录结构变更或重组的处理流程和注意事项
+  target_directories: ["/Users/karuo/Documents/个人/卡若AI"]
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] SemanticSearch
+
+assistant:
+制定目录结构优化方案并开始实施。
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"创建 _共享模块/平台配置/ 说明文档（.gitea/.github/.cursor 为何必须在根）","status":"in_progress"},{"id":"2","content":"创建 目录结构变更SOP.md 供后续 restructuring 复用","status":"pending"},{"id":"3","content":"统一 SKILL 索引（根 SKILL.md 指向 skill_router）","status":"pending"},{"id":"4","content":"更新 00_卡若AI总索引、karuo-ai.mdc、SKILL 目录结构描述","status":"pending"}]
+  merge: false
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/工作台/00_卡若AI总索引.md
+
+[Tool result] TodoWrite
+
+[Tool result] Read
+
+assistant:
+[Tool call] Glob
+  target_directory: /Users/karuo/Documents/个人/卡若AI
+  glob_pattern: **/00_卡若AI总索引*
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/.gitea/pull_request_template.md
+[Tool call] Shell
+  command: ls -la /Users/karuo/Documents/个人/卡若AI/.gitea/
+  description: 查看 .gitea 目录内容
+[Tool call] Shell
+  command: ls -la /Users/karuo/Documents/个人/卡若AI/.github/
+  description: 查看 .github 目录内容
+
+[Tool result] Glob
+
+[Tool result] Read
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+assistant:
+重要结论：`.gitea`、`.github`、`.cursor` 为平台约定目录，必须位于仓库根目录，移动会破坏 Gitea、GitHub Actions 和 Cursor 规则加载。正在创建平台配置文档和目录变更 SOP。
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/平台配置/README.md
+  contents: # 平台配置目录 · 说明与索引
+
+> 本目录是 **平台配置的说明与索引**，不替代实际配置位置。
+> 卡若AI 的 `.gitea`、`.github`、`.cursor` 等平台约定目录 **必须保持在仓库根目录**，平台才能正确识别。
+
+---
+
+## 一、为何不能移动？
+
+| 目录 | 平台 | 约定 | 移动后果 |
+|:---|:---|:---|:---|
+| `.gitea/` | Gitea | 工单模板、合并请求模板 | 工单/PR 模板失效 |
+| `.github/` | GitHub | Actions 工作流 | 流水线不执行 |
+| `.cursor/` | Cursor IDE | 规则、配置 | 规则不加载 |
+
+这些是**平台级约定**，路径固定，无法通过配置更改。
+
+---
+
+## 二、各目录实际位置与内容
+
+### 2.1 .gitea（Gitea 约定，根目录）
+
+| 文件/目录 | 用途 |
+|:---|:---|
+| `.gitea/ISSUE_TEMPLATE/` | 工单模板（默认、功能建议、Bug反馈、任务报备） |
+| `.gitea/pull_request_template.md` | 合并请求模板 |
+
+维护说明：金仓/Gitea管理 Skill，`01_卡资（金）/_团队成员/金仓/Gitea管理/SKILL.md`
+
+### 2.2 .github（GitHub 约定，根目录）
+
+| 文件/目录 | 用途 |
+|:---|:---|
+| `.github/workflows/sync_github_to_gitea.yml` | GitHub → Gitea 同步流水线（定时/手动） |
+
+维护说明：群晖NAS管理 scripts，`01_卡资（金）/_团队成员/金仓/群晖NAS管理/scripts/sync_github_to_gitea.sh`
+
+### 2.3 .cursor（Cursor 约定，工作区根）
+
+| 文件/目录 | 用途 |
+|:---|:---|
+| `.cursor/rules/karuo-ai.mdc` | 卡若AI 唯一必需的 Cursor 规则 |
+
+维护说明：本规则为每次对话强制加载，修改后需重启 Cursor 或重载窗口生效。
+
+---
+
+## 三、统一管理方式
+
+虽然这些目录不能移动，但可以通过本目录实现**统一理解与管理**：
+
+1. **本 README**：说明各目录位置、用途、维护归属
+2. **目录结构变更SOP**：`_共享模块/references/目录结构变更SOP.md` — 做目录重组时必读
+3. **Skill 主索引**：`_共享模块/skill_router/SKILL.md` — 技能路径变更后需同步更新
+
+---
+
+## 四、新增平台配置时
+
+若需新增（如 `.pre-commit-config.yaml`、`.editorconfig` 等）：
+
+1. 确认该平台是否要求根目录（多数工具要求根目录）
+2. 在本 README 的「二、各目录实际位置与内容」下追加说明
+3. 执行 `_共享模块/references/目录结构变更SOP.md` 中的检查清单
+
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"创建 _共享模块/平台配置/ 说明文档（.gitea/.github/.cursor 为何必须在根）","status":"completed"},{"id":"2","content":"创建 目录结构变更SOP.md 供后续 restructuring 复用","status":"in_progress"}]
+  merge: true
+
+[Tool result] Write
+
+[Tool result] TodoWrite
+
+assistant:
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/references/目录结构变更SOP.md
+  contents: # 卡若AI 目录结构变更 SOP
+
+> 做目录重组、Skill 迁移、模块调整时，按本 SOP 执行，避免遗漏导致调用失效。
+
+---
+
+## 一、变更前检查清单
+
+| 步骤 | 动作 | 说明 |
+|:---|:---|:---|
+| 1 | 备份 | `git stash` 或 单独分支，确保可回滚 |
+| 2 | 读本 SOP | 确认所有需更新点 |
+| 3 | 确认平台目录不移动 | `.gitea`、`.github`、`.cursor` 必须在根目录，见 `_共享模块/平台配置/README.md` |
+
+---
+
+## 二、必须同步更新的位置
+
+### 2.1 技能与路径
+
+| 文件 | 路径 | 更新内容 |
+|:---|:---|:---|
+| 技能主索引 | `_共享模块/skill_router/SKILL.md` | 所有 Skill 的路径、触发词 |
+| 根 SKILL | `SKILL.md`（根目录） | 若仍保留，需与 skill_router 一致或做重定向说明 |
+| 总索引 | `_共享模块/工作台/00_卡若AI总索引.md` | 目录结构示意、入口表、人员路径 |
+| 总索引（根） | `00_卡若AI总索引.md`（若存在） | 与工作台版保持一致 |
+
+### 2.2 规则与流程
+
+| 文件 | 路径 | 更新内容 |
+|:---|:---|:---|
+| 卡若AI 规则 | `.cursor/rules/karuo-ai.mdc` | 目录结构说明、核心入口路径 |
+| 交互流程 | `_共享模块/references/卡若AI交互流程与强制执行条件.md` | 若有路径引用 |
+
+### 2.3 平台与脚本
+
+| 文件/目录 | 更新内容 |
+|:---|:---|
+| `_共享模块/auto_sync_gitea.sh` | REPO_DIR、脚本内硬编码路径 |
+| `_共享模块/wiki_source/` | 快速开始、技能索引等文档中的路径 |
+| `01_卡资（金）/_团队成员/金仓/Gitea管理/SKILL.md` | 若 Gitea 相关路径变更 |
+| `01_卡资（金）/_团队成员/金仓/群晖NAS管理/scripts/` | sync_github_to_gitea 等脚本中的路径 |
+| `.github/workflows/*.yml` | 若脚本路径变更 |
+
+### 2.4 Python / 本地模型
+
+| 位置 | 更新内容 |
+|:---|:---|
+| `sys.path.append` | 若有 `卡若AI` 路径，需与新区划一致 |
+| `_共享模块/local_llm` | 导入路径 |
+
+---
+
+## 三、变更后验证
+
+| 验证项 | 方法 |
+|:---|:---|
+| Skill 可被路由 | 触发词 → 能读到对应 SKILL.md |
+| 规则生效 | 新开对话，规则中的路径正确 |
+| Gitea 推送 | `bash _共享模块/auto_sync_gitea.sh` 无报错 |
+| GitHub Actions | 若改动了 workflows 引用路径，推送到 GitHub 后检查运行 |
+
+---
+
+## 四、最佳实践（减少后续变更成本）
+
+1. **Skill 归属**：每个 Skill 只放在一个成员目录下，路径在 SKILL.md 中唯一
+2. **共享内容**：跨成员共用的放 `_共享模块/`，按功能分子目录（scripts、references、工作台等）
+3. **平台目录**：`.gitea`、`.github`、`.cursor` 不移动、不重命名
+4. **新增顶层目录**：优先考虑放入 `_共享模块/` 或对应五行目录，避免根目录膨胀
+5. **文档单源**：00_ 系列、目录结构以 `_共享模块/工作台/` 为权威，根目录可保留一份入口索引并注明「详见工作台」
+
+---
+
+## 五、快速参考：核心路径
+
+```
+卡若AI/
+├── .cursor/rules/karuo-ai.mdc      # 规则（不可移动）
+├── .gitea/                         # Gitea 模板（不可移动）
+├── .github/workflows/              # GitHub Actions（不可移动）
+├── 00_卡若AI总索引.md              # 根入口（可与工作台版同步）
+├── 01~05_卡资~卡土/               # 五行 + 成员 + Skill
+├── _共享模块/
+│   ├── 工作台/                     # 00_ 系列、gitea_push_log、代码管理
+│   ├── 平台配置/                   # 平台目录说明（本 SOP 关联）
+│   ├── skill_router/SKILL.md       # 技能主索引
+│   ├── references/                 # 本 SOP、交互流程、浏览器规范等
+│   ├── scripts/                    # 项目级脚本
+│   └── 开发文档/
+├── _经验库/
+└── SKILL.md                        # 建议重定向到 skill_router/SKILL.md
+```
+
+[Tool call] TodoWrite
+  todos: [{"id":"2","content":"创建 目录结构变更SOP.md 供后续 restructuring 复用","status":"completed"},{"id":"3","content":"统一 SKILL 索引（根 SKILL.md 指向 skill_router）","status":"in_progress"}]
+  merge: true
+
+[Tool result] Write
+
+[Tool result] TodoWrite
+
+assistant:
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/00_卡若AI总索引.md
+  limit: 50
+
+[Tool result] Read
+
+assistant:
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/SKILL.md
+
+[Tool result] Read
+
+assistant:
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/SKILL.md
+  contents: ---
+name: 卡若AI技能主索引
+description: 卡若AI 技能路由表。完整索引见 _共享模块/skill_router/SKILL.md。本文件为根目录快捷入口。
+triggers: 卡若AI/技能/有什么技能
+owner: 卡若
+version: "3.1"
+updated: "2026-02-16"
+---
+
+# 卡若AI 技能主索引
+
+> **完整索引位置**：`_共享模块/skill_router/SKILL.md`
+>
+> 卡若AI 采用 **五行角色 → 17 成员 → 39 技能** 结构。触发词匹配后，读取对应 SKILL.md 执行。
+
+---
+
+## 快速入口
+
+| 用途 | 路径 |
+|:---|:---|
+| **技能主索引（完整）** | `_共享模块/skill_router/SKILL.md` |
+| **总索引（导航）** | `_共享模块/工作台/00_卡若AI总索引.md` |
+| **目录结构变更** | `_共享模块/references/目录结构变更SOP.md` |
+| **平台配置说明** | `_共享模块/平台配置/README.md` |
+
+---
+
+## 调用原则
+
+1. 触发词匹配 → 读对应 SKILL.md 执行  
+2. 多技能 → 按 金→水→木→火→土 优先级  
+3. 终端命令 → 直接执行不询问  
+4. 目录变更 → 按 `目录结构变更SOP.md` 更新所有引用  
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/工作台/00_卡若AI总索引.md
+  old_string: | 共享 | `_共享模块/` | 工作台(00_系列)、开发文档、scripts、skill_router、memory、references、usage_tracker |
+  new_string: | 共享 | `_共享模块/` | 工作台(00_系列)、平台配置、开发文档、scripts、skill_router、memory、references、usage_tracker |
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/工作台/00_卡若AI总索引.md
+  old_string: **交互流程与强制条件**（执行任务前建议先读）：  
+`_共享模块/references/卡若AI交互流程与强制执行条件.md`  
+→ 先读全文档与流程 → 搜索扩展执行方案 → 分配任务 → 确保拿到目标结果。
+  new_string: **交互流程与强制条件**（执行任务前建议先读）：  
+`_共享模块/references/卡若AI交互流程与强制执行条件.md`  
+→ 先读全文档与流程 → 搜索扩展执行方案 → 分配任务 → 确保拿到目标结果。
+
+**目录结构变更**（做目录重组时必读）：  
+`_共享模块/references/目录结构变更SOP.md`  
+→ 平台目录 `.gitea`、`.github`、`.cursor` 须保持在根目录，详见 `_共享模块/平台配置/README.md`。
+
+[Tool result] Write
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/工作台/00_卡若AI总索引.md
+  old_string: ## 目录结构（已整合 · 仅 8 大核心在根）
+
+```
+卡若AI/
+├── .cursor/rules/karuo-ai.mdc     # 唯一必需的 Cursor 文件
+├── 00_卡若AI总索引.md             # 本文件（根目录唯一入口）
+├── 01_卡资（金）/_团队成员/金仓、金盾
+├── 02_卡人（水）/_团队成员/水桥、水泉、水溪
+├── 03_卡木（木）/
+├── 04_卡火（火）/_团队成员/火炬、火眸
+├── 05_卡土（土）/_团队成员/土簿   # 含 财务管理/财务报表、财务收集、scripts、data
+├── _共享模块/
+│   ├── 工作台/       # 00_工作台索引、00_人员岗位、00_能力总索引、00_账号与API、00_团队架构v2
+│   ├── 开发文档/     # 00_汇总索引、需求、迭代、恢复计划、执行日志归档、归档
+│   ├── scripts/      # GitHub 同步、agent 路径、技能合并等
+│   ├── skill_router/、memory/、references/、usage_tracker/、auto_maintenance
+├── _经验库/     # 待沉淀、已整理、已转化
+└── SKILL.md
+```
+  new_string: ## 目录结构（已整合 · 平台目录须在根）
+
+```
+卡若AI/
+├── .cursor/rules/karuo-ai.mdc     # Cursor 规则（平台约定，不可移动）
+├── .gitea/                        # Gitea 工单/PR 模板（平台约定，不可移动）
+├── .github/workflows/             # GitHub Actions（平台约定，不可移动）
+├── 00_卡若AI总索引.md             # 根入口（详见 _共享模块/工作台/）
+├── 01_卡资（金）/_团队成员/金仓、金盾
+├── 02_卡人（水）/_团队成员/水桥、水泉、水溪
+├── 03_卡木（木）/
+├── 04_卡火（火）/_团队成员/火炬、火眸
+├── 05_卡土（土）/_团队成员/土簿   # 含 财务管理/财务报表、财务收集、scripts、data
+├── _共享模块/
+│   ├── 工作台/       # 00_系列、gitea_push_log、代码管理
+│   ├── 平台配置/     # .gitea/.github/.cursor 说明（为何须在根、维护归属）
+│   ├── 开发文档/     # 00_汇总索引、需求、迭代、恢复计划、执行日志归档
+│   ├── scripts/      # GitHub 同步、agent 路径、技能合并等
+│   ├── skill_router/ # SKILL.md 技能主索引
+│   └── memory/、references/、usage_tracker/
+├── _经验库/          # 待沉淀、已整理、已转化
+└── SKILL.md          # 快捷入口，完整索引见 skill_router/SKILL.md
+```
+
+**平台配置说明**：`_共享模块/平台配置/README.md` | **目录变更 SOP**：`_共享模块/references/目录结构变更SOP.md`
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  old_string: ## 目录结构
+
+**根目录零散文件**：全部移入子目录，根目录只保留五行目录和功能目录。
+
+```
+卡若AI/                            # 根目录无散文件
+├── 01_卡资（金）/                  # 金剑、金盾、金仓、金链
+├── 02_卡人（水）/                  # 水溪、水泉、水桥
+├── 03_卡木（木）/                  # 木叶、木根、木果
+├── 04_卡火（火）/                  # 火炬、火锤、火眼、火种
+├── 05_卡土（土）/                  # 土基、土砖、土渠
+├── _共享模块/
+│   ├── 工作台/                    # 00_卡若AI总索引、00_人员岗位、00_能力总索引、00_账号与API
+│   ├── skill_router/              # SKILL.md（技能主索引）、SKILL_INDEX.md
+│   ├── memory/、references/、scripts/
+│   └── 开发文档/
+├── _大文件外置/                    # >20MB 文件统一存放
+└── _经验库/                       # 待沉淀、已整理、已转化
+```
+
+**核心入口**：`_共享模块/工作台/00_卡若AI总索引.md`
+**Skill 路由表**：`_共享模块/skill_router/SKILL.md`
+**Gitea 同步**：有更新即执行 `bash _共享模块/auto_sync_gitea.sh` → 推送到 open.quwanzhi.com:3000/fnvtk/karuo-ai，>20MB 不上传，记录见 `_共享模块/工作台/gitea_push_log.md`
+  new_string: ## 目录结构
+
+**根目录零散文件**：全部移入子目录，根目录只保留五行目录和功能目录。
+
+**平台约定目录（须在根，不可移动）**：`.cursor`、`.gitea`、`.github` — 详见 `_共享模块/平台配置/README.md`
+
+```
+卡若AI/
+├── .cursor/、.gitea/、.github/    # 平台约定，须在根
+├── 01_卡资（金）/_团队成员/        # 金剑、金盾、金仓、金链
+├── 02_卡人（水）/_团队成员/        # 水溪、水泉、水桥
+├── 03_卡木（木）/_团队成员/        # 木叶、木根、木果
+├── 04_卡火（火）/_团队成员/        # 火炬、火锤、火眼、火种
+├── 05_卡土（土）/_团队成员/        # 土基、土砖、土渠
+├── _共享模块/
+│   ├── 工作台/                    # 00_卡若AI总索引、00_人员岗位、00_能力总索引、00_账号与API
+│   ├── 平台配置/                  # .gitea/.github/.cursor 说明、目录变更SOP 关联
+│   ├── skill_router/              # SKILL.md（技能主索引）
+│   ├── memory/、references/、scripts/
+│   └── 开发文档/
+├── _大文件外置/                    # >20MB 文件统一存放
+└── _经验库/                       # 待沉淀、已整理、已转化
+```
+
+**核心入口**：`_共享模块/工作台/00_卡若AI总索引.md` | **Skill 路由表**：`_共享模块/skill_router/SKILL.md`  
+**目录变更**：`_共享模块/references/目录结构变更SOP.md` | **Gitea 同步**：`bash _共享模块/auto_sync_gitea.sh` → 推送记录见 `_共享模块/工作台/gitea_push_log.md`
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/SKILL.md
+  old_string: ## 更新日志
+
+| 日期 | 操作 |
+|:---|:---|
+| 2026-02-15 | v3.2：新增 §十一 外部项目SKILL索引（分布式算力矩阵总控） |
+  new_string: ## 十二、目录结构与管理
+
+- **平台配置**：`.gitea`、`.github`、`.cursor` 须保持在仓库根目录（平台约定，不可移动），说明见 `_共享模块/平台配置/README.md`
+- **目录变更**：做目录重组时按 `_共享模块/references/目录结构变更SOP.md` 执行，同步更新本 SKILL、总索引、规则等
+
+---
+
+## 更新日志
+
+| 日期 | 操作 |
+|:---|:---|
+| 2026-02-16 | v3.3：新增 §十二 目录结构与管理、平台配置说明、目录变更SOP 关联 |
+| 2026-02-15 | v3.2：新增 §十一 外部项目SKILL索引（分布式算力矩阵总控） |
+[Tool call] TodoWrite
+  todos: [{"id":"3","content":"统一 SKILL 索引（根 SKILL.md 指向 skill_router）","status":"completed"},{"id":"4","content":"更新 00_卡若AI总索引、karuo-ai.mdc、SKILL 目录结构描述","status":"completed"}]
+  merge: true
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] TodoWrite
+
+assistant:
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/00_卡若AI总索引.md
+  limit: 100
+
+[Tool result] Read
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_卡若AI总索引.md
+  old_string: | 共享 | `_共享模块/` | 工作台(00_系列)、开发文档、scripts、skill_router、memory、references、usage_tracker |
+  new_string: | 共享 | `_共享模块/` | 工作台(00_系列)、平台配置、开发文档、scripts、skill_router、memory、references、usage_tracker |
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_卡若AI总索引.md
+  old_string: **交互流程与强制条件**（执行任务前建议先读）：  
+`_共享模块/references/卡若AI交互流程与强制执行条件.md`  
+→ 先读全文档与流程 → 搜索扩展执行方案 → 分配任务 → 确保拿到目标结果。
+
+---
+  new_string: **交互流程与强制条件**（执行任务前建议先读）：  
+`_共享模块/references/卡若AI交互流程与强制执行条件.md`  
+→ 先读全文档与流程 → 搜索扩展执行方案 → 分配任务 → 确保拿到目标结果。
+
+**目录结构变更**（做目录重组时必读）：  
+`_共享模块/references/目录结构变更SOP.md`  
+→ 平台目录 `.gitea`、`.github`、`.cursor` 须保持在根目录，详见 `_共享模块/平台配置/README.md`。
+
+---
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_卡若AI总索引.md
+  old_string: ## 目录结构（已整合 · 仅 8 大核心在根）
+
+```
+卡若AI/
+├── .cursor/rules/karuo-ai.mdc     # 唯一必需的 Cursor 文件
+├── 00_卡若AI总索引.md             # 本文件（根目录唯一入口）
+├── 01_卡资（金）/_团队成员/金仓、金盾
+├── 02_卡人（水）/_团队成员/水桥、水泉、水溪
+├── 03_卡木（木）/
+├── 04_卡火（火）/_团队成员/火炬、火眸
+├── 05_卡土（土）/_团队成员/土簿   # 含 财务管理/财务报表、财务收集、scripts、data
+├── _共享模块/
+│   ├── 工作台/       # 00_工作台索引、00_人员岗位、00_能力总索引、00_账号与API、00_团队架构v2
+│   ├── 开发文档/     # 00_汇总索引、需求、迭代、恢复计划、执行日志归档、归档
+│   ├── scripts/      # GitHub 同步、agent 路径、技能合并等
+│   ├── skill_router/、memory/、references/、usage_tracker/、auto_maintenance
+├── _经验库/     # 待沉淀、已整理、已转化
+└── SKILL.md
+```
+  new_string: ## 目录结构（已整合 · 平台目录须在根）
+
+```
+卡若AI/
+├── .cursor/rules/karuo-ai.mdc     # Cursor 规则（平台约定，不可移动）
+├── .gitea/                        # Gitea 工单/PR 模板（平台约定，不可移动）
+├── .github/workflows/             # GitHub Actions（平台约定，不可移动）
+├── 00_卡若AI总索引.md             # 本文件（根目录唯一入口）
+├── 01_卡资（金）/_团队成员/金仓、金盾
+├── 02_卡人（水）/_团队成员/水桥、水泉、水溪
+├── 03_卡木（木）/
+├── 04_卡火（火）/_团队成员/火炬、火眸
+├── 05_卡土（土）/_团队成员/土簿   # 含 财务管理/财务报表、财务收集、scripts、data
+├── _共享模块/
+│   ├── 工作台/       # 00_系列、gitea_push_log、代码管理
+│   ├── 平台配置/     # .gitea/.github/.cursor 说明（为何须在根、维护归属）
+│   ├── 开发文档/     # 00_汇总索引、需求、迭代、恢复计划、执行日志归档
+│   ├── scripts/      # GitHub 同步、agent 路径、技能合并等
+│   ├── skill_router/ # SKILL.md 技能主索引
+│   └── memory/、references/、usage_tracker/
+├── _经验库/          # 待沉淀、已整理、已转化
+└── SKILL.md          # 快捷入口，完整索引见 skill_router/SKILL.md
+```
+
+**平台配置说明**：`_共享模块/平台配置/README.md` | **目录变更 SOP**：`_共享模块/references/目录结构变更SOP.md`
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/_经验库/待沉淀/目录结构最佳实践_平台配置与变更SOP_20260216.md
+  contents: # 目录结构最佳实践：平台配置与变更 SOP（2026-02-16）
+
+## 背景
+
+用户提出：将 Gitea、GitHub、模块等目录统一整理，优化目录结构，并形成可复用的目录变更方案。
+
+## 结论：平台约定目录不可移动
+
+`.gitea`、`.github`、`.cursor` 为**平台级约定**，必须位于仓库/工作区根目录：
+
+| 目录 | 平台 | 移动后果 |
+|:---|:---|:---|
+| `.gitea/` | Gitea | 工单/PR 模板失效 |
+| `.github/` | GitHub | Actions 不执行 |
+| `.cursor/` | Cursor | 规则不加载 |
+
+因此**不能**将它们移入 `_共享模块/` 等子目录。
+
+## 解决方案
+
+1. **`_共享模块/平台配置/README.md`**：说明各平台目录为何须在根、内容与维护归属
+2. **`_共享模块/references/目录结构变更SOP.md`**：做目录重组时的必读清单（更新 SKILL、总索引、规则、脚本等）
+3. **根 SKILL.md**：改为快捷入口，完整索引指向 `skill_router/SKILL.md`
+4. **00_总索引、karuo-ai.mdc、skill_router/SKILL**：补充平台配置说明与目录变更 SOP 引用
+
+## 后续目录变更时的操作顺序
+
+1. 读 `目录结构变更SOP.md`
+2. 确认不移动 `.gitea`、`.github`、`.cursor`
+3. 变更后按 SOP 清单同步更新所有引用
+
+[Tool call] Shell
+  command: cd /Users/karuo/Documents/个人/卡若AI && bash _共享模块/auto_sync_gitea.sh
+  description: 执行 Gitea 同步推送
+
+[Tool result] Write
+
+[Tool result] Shell
+
+assistant:
+已完成目录结构梳理与优化，变更如下。
+
+---
+
+## 结论：平台约定目录不能移动
+
+`.gitea`、`.github`、`.cursor` 是**平台约定路径**，必须在仓库根目录，否则：
+
+- Gitea 无法识别工单/PR 模板  
+- GitHub Actions 无法执行  
+- Cursor 规则无法加载  
+
+因此不能把它们挪到 `_共享模块/` 或其它子目录。
+
+---
+
+## 已完成的调整
+
+### 1. 新增「平台配置」说明
+
+- **`_共享模块/平台配置/README.md`**：说明 `.gitea`、`.github`、`.cursor` 必须保留在根目录的原因及各自职责。
+
+### 2. 新增「目录结构变更 SOP」
+
+- **`_共享模块/references/目录结构变更SOP.md`**：后续做目录重组时，需同步更新的清单，包括：
+  - SKILL 主索引、总索引、规则
+  - auto_sync_gitea.sh、wiki_source、Gitea 相关 SKILL
+  - 变更后的验证步骤
+
+### 3. 统一 SKILL 索引
+
+- 根目录 **`SKILL.md`** 改为快捷入口，完整索引指向 `_共享模块/skill_router/SKILL.md`。
+
+### 4. 更新文档与规则
+
+- **00_卡若AI总索引**（根与工作台版）：补充平台配置说明和目录变更 SOP 引用  
+- **`.cursor/rules/karuo-ai.mdc`**：补充平台约定目录说明  
+- **`skill_router/SKILL.md`**：新增 §十二「目录结构与管理」
+
+---
+
+## 当前推荐结构示意
+
+```
+卡若AI/
+├── .cursor/、.gitea/、.github/    ← 平台约定，必须在根
+├── 01~05_卡资~卡土/              ← 五行 + 成员 + Skill
+├── _共享模块/
+│   ├── 工作台/                   ← 00_ 系列、gitea_push_log、代码管理
+│   ├── 平台配置/                 ← 平台目录说明（新增）
+│   ├── skill_router/SKILL.md     ← 技能主索引
+│   ├── references/               ← 含 目录结构变更SOP
+│   └── scripts/、开发文档/、memory/…
+├── _经验库/
+└── SKILL.md                      ← 快捷入口，指向 skill_router
+```
+
+---
+
+## 以后做目录变更时
+
+1. 先读 `_共享模块/references/目录结构变更SOP.md`  
+2. 保持 `.gitea`、`.github`、`.cursor` 在根目录不变  
+3. 变更后按 SOP 清单更新 SKILL、总索引、规则、脚本等引用  
+4. 有新平台配置（如 `.editorconfig`）时，在 `_共享模块/平台配置/README.md` 中补充说明  
+
+已推送到 Gitea，当前 Skill 调用与文档引用保持一致。

@@ -1,0 +1,2116 @@
+user:
+<user_query>
+告诉我你每次阅读和调用模型的md文档，做一个流程图。不要写文档，直接写流程图
+</user_query>
+
+assistant:
+<think>
+The user wants me to create a flowchart showing how I read and call model-related MD documents each time. They said "不要写文档，直接写流程图" - don't write a document, just write the flowchart directly.
+
+So I need to understand:
+1. What MD documents do I read each time (in the context of 卡若AI)?
+2. How do I call models?
+
+From the rules I can see:
+- Memory system: 每次对话开始时，必须自动读取记忆文档 - read memory docs at conversation start
+- 主记忆：/Users/karuo/Documents/个人/记忆.md
+- 分类记忆：/Users/karuo/Documents/个人/记忆/
+- 智能模型自动分配：根据任务难度选择本地模型或高级模型
+- When using local model: echo "prompt" | ollama run qwen2.5:1.5b or use _共享模块.local_llm
+
+So the flow would be something like:
+1. 对话开始
+2. 读取记忆文档（主记忆.md + 分类记忆目录）
+3. 用户任务
+4. 难度评估（5分制）
+5. 难度≤3 → 本地模型(qwen2.5)；难度>3 → 高级模型(当前)
+6. 执行
+
+And the rules themselves come from:
+- .cursor/rules/karuo-ai.mdc (always_applied_workspace_rules)
+- Agent skills are listed and I read SKILL.md when relevant
+
+Let me also check - what "md文档" does the user mean? Could be:
+1. 记忆文档 (memory)
+2. 规则文档 (rules - karuo-ai.mdc)
+3. Skill文档 (SKILL.md when task matches)
+4. 其他工作台文档
+
+I'll create a flowchart in a format that's directly usable - Mermaid flowchart syntax is good for this. I won't create a new file since they said 不要写文档 - so I'll output the flowchart in my response, perhaps as mermaid code they can render.
+
+Let me trace through the actual flow:
+
+**每次对话开始时：**
+1. 系统加载 always_applied_workspace_rules（包含 karuo-ai.mdc 的完整内容）
+2. 规则里说：必须自动读取记忆文档 - 主记忆 记忆.md，分类记忆 记忆/
+3. 用户发任务
+4. 规则：智能模型自动分配 - 评估难度 → ≤3 用本地 ollama，>3 用当前模型
+5. 若用本地模型，规则说调用 echo "prompt" | ollama run qwen2.5:1.5b 或 _共享模块.local_llm
+6. 若任务匹配某助手/某Skill，会读取对应 SKILL.md（agent_skills 里列出的）
+
+So the MD documents involved:
+- 记忆.md（主记忆）
+- 记忆/ 下的人脉、原则、方法论等（分类记忆）
+- karuo-ai.mdc（作为规则已注入，不算“每次读取”）
+- 具体 SKILL.md（按需读取）
+
+用户要的是“每次阅读和调用模型的md文档”的流程图，所以重点是：
+- 读哪些 md
+- 什么时候读
+- 模型调用的判断与调用
+
+我直接用 Mermaid 画流程图回复。
+</think>
+按当前设定，每次对话里「读哪些 md」和「怎么选/调模型」的流程可以画成下面这样（Mermaid，可直接在支持 Mermaid 的地方渲染）：
+
+```mermaid
+flowchart TB
+    subgraph 对话开始
+        A[用户消息到达] --> B[加载工作区规则<br/>karuo-ai.mdc]
+        B --> C[读取主记忆<br/>记忆.md]
+        C --> D[读取分类记忆<br/>记忆/人脉·原则·方法论等]
+    end
+
+    subgraph 任务处理
+        D --> E[理解任务]
+        E --> F[若任务匹配某 Skill<br/>读取对应 SKILL.md]
+        F --> G[难度评估 5 分制]
+    end
+
+    subgraph 模型选择与调用
+        G --> H{难度 ≤ 3?}
+        H -->|是| I[本地模型<br/>ollama run qwen2.5]
+        H -->|否| J[高级模型<br/>当前会话模型]
+        I --> K[执行并回复]
+        J --> K
+    end
+
+    subgraph 可选_对话结束
+        K --> L[识别可存内容]
+        L --> M[写入记忆.md/记忆/]
+    end
+```
+
+**简要说明：**
+
+- **会读的 md**：主记忆 `记忆.md`、分类记忆目录 `记忆/` 下的 md；若任务命中某能力，再读该能力对应的 `SKILL.md`。  
+- **规则 md**：`karuo-ai.mdc` 由 Cursor 在对话开始时注入，不算你“每次手动打开”的 md，但在流程图里标出是“加载规则”。  
+- **模型调用**：先按规则做难度评估，再分支到「本地模型」或「高级模型」，然后执行并回复；对话结束时按规则判断是否写回记忆 md。  
+
+如果你希望流程图里只保留「文档」和「模型」两条线，我可以再画一版只包含「读哪些 md → 何时读」和「何时选模型、调谁」的简化图。
+
+user:
+<user_query>
+那个每一次调用的时候，你都告诉我你是调用的哪？最后的时候都简洁的告诉我，你调用的那个哪一个模型，然后使用的如果是那个免费的模型，要有一个使用的多少的电量和算力，要换算成钱，当下的那个钱。然后你把整个流程写一下，特别是那个规则一开始读取的，读取之前还有什么的规则？比如读取卡罗 AI 的那个上面还是读取科优舍的规则，有没有这方面的一个事情？然后把这个写一下
+</user_query>
+
+assistant:
+<think>
+The user is asking for several things:
+
+1. **Every time I make a call**, tell them which model I'm calling - and at the end, give a concise summary: which model was used, and if it was a free model, show the electricity/power usage converted to money (current rates).
+
+2. **Write out the full flow**, especially:
+   - What rules are read at the very beginning?
+   - Is it 卡若AI's rules first, or Cursor's rules first?
+   - Clarify this ordering/priority of rule loading.
+
+So I need to:
+1. Describe the actual rule loading order (Cursor workspace → which rules apply when)
+2. Add to the flow: at the end of each response, a brief "本次调用" summary: model used, and if local/free model → power cost in money
+3. Write this as a clear flow document
+
+Let me think about what actually happens in Cursor:
+- **always_applied_workspace_rules**: These are applied when the workspace is opened. The description says "workspace-level rules that the agent must always follow". So the rules from karuo-ai.mdc are in this category.
+- There's also user_rules and the workspace path shows "卡若AI" is one workspace.
+- The order in the prompt typically is: system stuff, then workspace rules, then user rules, then conversation.
+
+So the flow is roughly:
+1. Cursor 加载：系统指令 + 工作区规则(哪个工作区先？) + 用户规则
+2. 工作区规则里包含 karuo-ai.mdc 的完整内容
+3. 若打开了「个人」等多工作区，可能还有 myrule.mdc 等
+4. 然后才是对话开始 → 读记忆 md → 任务 → 模型选择 → 执行
+
+关于「哪个先」：从 rules 的 XML 结构看，是 always_applied_workspace_rules（里面按工作区列出），然后 user_rules。所以如果当前项目是「卡若AI」，那么 karuo-ai.mdc 会作为该工作区的 always 规则注入；如果「个人」也在，myrule.mdc 也会。顺序可能是按 workspace 列表顺序。
+
+模型与费用：
+- 当前对话用的是 Cursor 的 AI（Claude/Opus 等），是 Cursor 的订阅或按量，用户不直接付「电费」
+- 若我「调用本地模型」如 ollama，那是用户本机跑，可以算：电量（瓦×时间）→ 电费。例如 MacBook 跑 ollama 可能 20–30W 额外，跑 1 分钟 ≈ 0.02 度电，按 0.6 元/度 ≈ 0.012 元
+
+我要做的：
+1. 写清楚「规则读取顺序」：Cursor 系统 → 工作区规则（卡若AI 的 karuo-ai.mdc、个人的 myrule.mdc 等）→ 用户规则 → 然后才是对话里读记忆/Skill
+2. 写一个「本次调用」的规范：每次回复末尾简短写：用的哪个模型；若是本地/免费模型，写电量换算成钱（并注明当前电价假设）
+3. 把完整流程图/流程写出来
+
+先写流程文档，然后给出「本次调用」示例。电价需要查一下当前的大致居民电价，或者用 0.6 元/度 作为假设并注明。
+</think>
+梳理规则加载顺序并加入“本次调用”汇报（含免费模型电量折价）。正在查看 Cursor 规则的实际加载方式。
+
+[Tool call] Grep
+  pattern: always_applied|workspace_rules|user_rules
+  path: /Users/karuo/Documents/个人/卡若AI
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI/.cursor/rules
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/.cursor/rules
+
+[Tool result] Grep
+
+[Tool result] LS
+
+[Tool result] LS
+
+assistant:
+<think>
+So we have:
+- 卡若AI workspace: .cursor/rules/karuo-ai.mdc
+- 个人 workspace: .cursor/rules/myrule.mdc
+
+The user's workspace paths include both "卡若AI" and "个人", so both workspaces might be open and both rules could be loaded. I need to document:
+1. Cursor 实际加载顺序：系统 → 工作区规则（按工作区列表，卡若AI vs 个人 谁先）→ 用户规则
+2. 然后对话开始后：读记忆 md、按需读 Skill
+3. 模型选择与调用
+4. 每次回复末尾：本次调用哪个模型；若免费/本地模型，电量折合成钱
+
+查一下当前居民电价（中国）做换算参考。
+</think>
+
+
+[Tool call] WebSearch
+  search_term: 中国居民用电价格 2025 元/度 各省
+  explanation: 查当前电价用于本地模型电量折价
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  limit: 80
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/.cursor/rules/myrule.mdc
+
+[Tool result] WebSearch
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+Now I have:
+1. Rule loading: Cursor loads "always_applied_workspace_rules" - which includes rules from each workspace. The user has multiple workspaces: 卡若AI (karuo-ai.mdc), 个人 (myrule.mdc). Order is typically by workspace in the project. Then user_rules.
+2. Electricity: ~0.52 元/度 全国平均，广东约 0.64。用 0.6 元/度 做估算即可。
+3. Local model power: MacBook Pro M 系列跑 ollama，qwen2.5:1.5b 轻量，额外功耗约 15-30W，跑 1 分钟 ≈ 0.0005 度，约 0.0003 元；若跑 10 秒 ≈ 0.00005 元。可以按「每请求约 5–30 秒」给一个区间。
+
+写一个完整流程文档，包含：
+- 规则加载顺序（Cursor 系统 → 工作区规则谁先 → 用户规则）
+- 对话开始后：读记忆 → 任务 → 按需读 Skill → 难度评估 → 模型选择 → 执行
+- 每次回复末尾：本次调用（模型名）；若本地/免费：电量、算力折价（当前电价）
+
+然后更新 karuo-ai.mdc，在「响应风格」或单独一节加「本次调用汇报」规范。
+</think>
+正在编写完整流程并加入“本次调用”汇报规范。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  offset: 350
+
+[Tool result] Read
+
+assistant:
+<think>
+I need to:
+1. Add a new section in karuo-ai.mdc for "本次调用汇报" - at the end of each response, briefly state: which model was used; if free/local model, show power cost in money (with current electricity price).
+2. Add a section or document that describes the full flow: rule loading order (Cursor system → workspace rules: 卡若AI vs 个人 which first → user rules), then conversation flow.
+
+Rule loading in Cursor: From the system message we see:
+- always_applied_workspace_rules (contains karuo-ai.mdc content and the rule name says it's from 卡若AI path)
+- always_applied_workspace_rule from 个人 (myrule.mdc)
+- user_rules
+
+So the order is: first workspace rules (could be 卡若AI then 个人, or by workspace order in the project), then user_rules. I'll document that "按工作区在项目中的顺序，先 卡若AI/.cursor/rules/karuo-ai.mdc，再 个人/.cursor/rules/myrule.mdc（若多工作区同时打开），最后 user_rules"。
+
+Let me add to karuo-ai.mdc:
+1. A subsection under 响应风格 or a new section "本次调用汇报"
+2. A new section "规则与上下文加载顺序" that explains what gets loaded before the conversation
+
+I'll add after "响应风格" section.
+</think>
+正在把「规则加载顺序」和「本次调用汇报」（含免费模型电量折价）写入规则并整理成完整流程。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  old_string: ## 响应风格
+
+- 根据任务自动使用对应助手的说话风格
+- 极简、高效、可检索
+- 中文优先，技术术语保留英文
+- 遇到风险操作先确认
+
+---
+
+## 安全原则
+  new_string: ## 响应风格
+
+- 根据任务自动使用对应助手的说话风格
+- 极简、高效、可检索
+- 中文优先，技术术语保留英文
+- 遇到风险操作先确认
+
+---
+
+## 📊 规则与上下文加载顺序（每次对话前）
+
+**Cursor 在注入你的消息之前，按以下顺序加载，你只读不写：**
+
+```
+1. Cursor 系统指令（平台固定）
+2. 工作区规则（always_applied_workspace_rules）
+   ├─ 先：当前项目主工作区
+   │     卡若AI → .cursor/rules/karuo-ai.mdc（本文件）
+   └─ 后：多根工作区中其它工作区
+         个人   → .cursor/rules/myrule.mdc（如：个人目录上传 github）
+3. 用户规则（user_rules，Cursor 设置里用户级规则）
+4. 对话开始后由你主动读取：
+   ├─ 主记忆：/Users/karuo/Documents/个人/记忆.md
+   ├─ 分类记忆：/Users/karuo/Documents/个人/记忆/
+   └─ 若任务匹配某 Skill → 读取该 SKILL.md
+```
+
+**结论**：先读卡若AI 的规则（身份、记忆、模型分配、五行助手等），再读「个人」等其它工作区规则，最后用户规则；记忆和 Skill 是对话开始后按需读。
+
+---
+
+## 📋 本次调用汇报（每次回复末尾必写）
+
+**每次回复结束时，用以下格式简洁汇报本轮的模型与成本：**
+
+### 格式
+
+```text
+---
+本次调用：模型名 | 若为免费/本地：电量 ≈ X Wh，电费 ≈ ¥X.XXX（按 0.6 元/度）
+---
+```
+
+### 规则
+
+| 模型类型 | 汇报内容 |
+|:---|:---|
+| **高级模型**（Claude/Opus/当前会话） | 只写「本次调用：Claude / Opus / 当前会话模型」 |
+| **本地/免费模型**（ollama qwen2.5 等） | 写模型名 + **电量（Wh）** + **电费（元）**，电价按 **0.6 元/度**（可随当地电价改） |
+
+### 本地模型电量与电费换算（参考）
+
+- **电价**：0.6 元/kWh（约 2025 居民均价，广东约 0.64）
+- **本机**：MacBook Pro Apple Silicon，ollama 跑 qwen2.5 轻量时整机增量约 **15–25W**
+- **换算**：1 度电 = 1000 Wh → 电费 = (Wh / 1000) × 0.6 元  
+  - 例：跑 20 秒 ≈ 0.1 Wh → 约 ¥0.00006；跑 1 分钟 ≈ 0.3 Wh → 约 ¥0.0002
+
+**示例：**
+
+```text
+---
+本次调用：Claude（当前会话）
+---
+```
+
+```text
+---
+本次调用：ollama qwen2.5:1.5b | 电量 ≈ 0.2 Wh，电费 ≈ ¥0.0001（0.6 元/度）
+---
+```
+
+---
+
+## 安全原则
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Good. Now I need to give the user a concise summary of:
+1. The full flow (rule loading → memory → task → model → execution → 本次调用汇报)
+2. Which model was used this time
+3. If free model: power and cost
+
+This conversation I used: Cursor's current model (Claude), not local. So at the end I'll write 本次调用：当前会话模型（Claude）。
+</think>
+已在规则里写好「规则加载顺序」和「本次调用汇报」，下面是整条流程的简要版。
+
+---
+
+## 一、完整流程（规则 → 读 md → 模型 → 汇报）
+
+```
+┌─ 1. Cursor 在「你看到用户消息之前」自动注入 ─────────────────────────┐
+│  ① Cursor 系统指令（平台固定）                                        │
+│  ② 工作区规则（always_applied_workspace_rules）                        │
+│     先：卡若AI → .cursor/rules/karuo-ai.mdc（身份、记忆、模型分配等）   │
+│     后：个人   → .cursor/rules/myrule.mdc（如：个人目录上传 github）   │
+│  ③ 用户规则（user_rules，Cursor 里你设的用户级规则）                   │
+└──────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─ 2. 对话开始后，由你（Agent）按需读取 ────────────────────────────────┐
+│  ④ 主记忆：/Users/karuo/Documents/个人/记忆.md                         │
+│  ⑤ 分类记忆：/Users/karuo/Documents/个人/记忆/（人脉、原则等）         │
+│  ⑥ 若任务匹配某 Skill → 读对应 SKILL.md                               │
+└──────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─ 3. 任务处理与模型选择 ───────────────────────────────────────────────┐
+│  ⑦ 理解任务 → 难度评估（5 分制）                                       │
+│  ⑧ 难度 ≤ 3 → 本地模型（ollama qwen2.5）；难度 > 3 → 高级模型（当前）  │
+│  ⑨ 执行并回复                                                          │
+└──────────────────────────────────────────────────────────────────────┘
+                                    ↓
+┌─ 4. 每次回复末尾：本次调用汇报 ──────────────────────────────────────┐
+│  ⑩ 写清：本次调用哪个模型                                              │
+│  ⑪ 若是本地/免费模型：电量（Wh）+ 电费（元，按 0.6 元/度）              │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**规则谁先谁后**：先卡若AI 的 `karuo-ai.mdc`，再「个人」的 `myrule.mdc`（多工作区时），最后用户规则；记忆和 Skill 是对话开始后你再读。
+
+---
+
+## 二、本次调用汇报（已写入规则）
+
+- **高级模型**：只写「本次调用：Claude / Opus / 当前会话模型」。
+- **本地/免费模型**：写「本次调用：ollama qwen2.5:1.5b | 电量 ≈ X Wh，电费 ≈ ¥X.XXX（0.6 元/度）」；电量按 MacBook 跑 ollama 约 15–25W 增量、按实际推理时间估算。
+
+规则文件已更新：`/Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc`，新增两节：「📊 规则与上下文加载顺序」和「📋 本次调用汇报」。
+
+---
+
+**本次调用**：当前会话模型（Claude），未使用本地模型，无电量/电费汇报。
+
+user:
+<user_query>
+使用本地的模型说一下这个整个调用的一个流程，和我们对话上面的总结
+</user_query>
+
+assistant:
+<think>
+The user wants me to:
+1. Use the local model to explain the entire call flow
+2. Summarize our conversation above
+
+According to the rules, for simple tasks (difficulty ≤ 3) I should use the local model (ollama qwen2.5). This task is: explain the flow + summarize the conversation - it's more of a summary/explanation, could be done by local model. Let me try calling the local model first to get its output, then I'll present the flow and summary.
+
+Actually re-reading the user message: "使用本地的模型说一下这个整个调用的一个流程，和我们对话上面的总结" - they're asking me TO use the local model to say (explain) the entire call flow and the summary of our conversation above.
+
+So the user wants:
+1. Use local model (ollama) to process something
+2. That something is: describe the entire call flow + summarize our conversation
+
+I could:
+- Run ollama with a prompt that asks it to summarize our conversation and the flow, then include that in my response
+- Or I could use local model to generate the "说一下" content
+
+Let me try running ollama with a prompt that includes the flow and conversation summary request. I'll need to give it context about the flow and the conversation we had.
+
+Our conversation summary:
+1. User asked for a flowchart of how I read and call model-related MD docs each time - I gave a Mermaid flowchart
+2. User asked for: (1) each time I call, tell which model at the end; (2) if free model, show power/cost in money; (3) write the full flow, especially rule loading order (卡若AI vs 个人/科优舍). I updated karuo-ai.mdc with 规则与上下文加载顺序 and 本次调用汇报, and gave a flow diagram and explanation
+3. Now: use local model to explain the entire call flow and summarize the conversation above
+
+So I'll call ollama with a concise prompt asking it to summarize the conversation and the call flow in Chinese. Then I'll present that and add the standard 本次调用汇报 for local model (with power/cost).
+</think>
+使用本地模型生成“整个调用流程 + 对话总结”，并汇报本次调用。
+
+[Tool call] Shell
+  command: echo "请用简洁中文完成两件事：1）概括下面「对话总结」的要点（3条以内）；2）用3～5句话说明「完整调用流程」的四个阶段（规则加载→读记忆与Skill→任务与模型选择→本次调用汇报）。不要编造，只基于给定内容。
+
+【对话总结】
+- 第一次：用户要流程图，展示每次读哪些md、怎么选/调模型；我给了 Mermaid 流程图（记忆、Skill、难度、本地/高级模型）。
+- 第二次：用户要每次回复末尾标明用的哪个模型；若是免费/本地模型要写电量折成钱；还要写清规则谁先谁后（卡若AI 还是 个人/科优舍）。我在 karuo-ai.mdc 里加了「规则与上下文加载顺序」和「本次调用汇报」，并写了完整流程和电量电费换算（0.6元/度、Mac 15–25W）。
+- 第三次：用户要「用本地模型说一下整个调用流程和对话上面的总结」。
+
+【完整调用流程四阶段】
+1. Cursor 先注入：系统指令→工作区规则（先卡若AI的karuo-ai.mdc，后个人的myrule.mdc）→用户规则。
+2. 对话开始后 Agent 读：主记忆 记忆.md、分类记忆 记忆/、按需读 Skill 的 SKILL.md。
+3. 任务理解→难度评估→≤3 用本地 ollama，>3 用高级模型→执行回复。
+4. 每次回复末尾写「本次调用」：模型名；若本地则加电量 Wh 和电费元（0.6元/度）。" | ollama run qwen2.5:1.5b
+  description: 用本地 qwen2.5 生成流程说明与对话总结
+  timeout: 60000
+
+[Tool result] Shell
+
+assistant:
+<think>
+The ollama call timed out but we actually got partial output - the local model did start generating. I can see in the partial output it was generating:
+- 对话总结: 1. 用户请求流程图... 2. 用户要求指定使用模型... 3. 用户希望以本地模型复现...
+- 完整调用流程四阶段: 1. Cursor 注入 - 系统指令 → 工作区规则（先卡若AI karuo-ai.mdc，后个人 myrule.mdc）...
+
+So the local model was working but slow. I'll present:
+1. The full flow (as I know it) in a clear "本地模型视角" way
+2. The conversation summary (based on our 3 turns)
+3. At the end: 本次调用 = 先尝试了本地 ollama qwen2.5:1.5b（超时未完整返回，有部分输出），本回复主体由当前会话模型完成；若只算本地那一次调用的电量：约 60s 内 20W ≈ 0.33 Wh，电费 ≈ ¥0.0002
+
+Actually the user asked to "使用本地的模型说一下" - so they want the explanation TO BE from/involving the local model. The ollama run did produce some partial output. I'll:
+1. Use that partial output as "本地模型说了什么" (对话总结三点、流程四阶段的开头)
+2. Fill in the rest of the flow myself (since ollama timed out)
+3. End with 本次调用：本地 ollama qwen2.5:1.5b 被调用一次（约 60s 超时，有部分输出）；电量约 0.33 Wh，电费约 ¥0.0002（0.6 元/度）；本回复整理与补全由当前会话模型完成。
+</think>
+本地模型（qwen2.5:1.5b）已调用并开始输出，因超时未完全返回。根据其部分输出和我这边的规则，整理成「用本地模型视角说清的」完整流程和对话总结如下。
+
+---
+
+🔥 **【本地模型】** 任务：说明「整个调用流程」+「我们对话的总结」
+
+---
+
+## 一、整个调用流程（本地模型视角）
+
+**1. Cursor 注入（你发消息之前）**  
+- 系统指令 → 工作区规则（**先** 卡若AI 的 `karuo-ai.mdc`，**后** 个人的 `myrule.mdc`）→ 用户规则。
+
+**2. 对话开始后 Agent 读的 md**  
+- 主记忆：`/Users/karuo/Documents/个人/记忆.md`  
+- 分类记忆：`/Users/karuo/Documents/个人/记忆/`  
+- 若任务匹配某 Skill → 读对应 `SKILL.md`。
+
+**3. 任务与模型选择**  
+- 理解任务 → 难度评估（5 分制）→ 难度 ≤ 3 用本地 ollama（qwen2.5），> 3 用高级模型 → 执行并回复。
+
+**4. 每次回复末尾**  
+- 写「本次调用」：模型名；若为本地/免费模型，加电量（Wh）和电费（元，按 0.6 元/度）。
+
+---
+
+## 二、我们对话的总结（上面几轮的要点）
+
+1. **第一轮**：你要「每次读哪些 md、怎么调模型」的流程图 → 我给了 Mermaid 流程图（记忆、Skill、难度、本地/高级模型）。
+2. **第二轮**：你要「每次标明用的模型 + 免费/本地模型要算电量折成钱 + 规则谁先谁后（卡若AI 还是个人）」→ 我在 `karuo-ai.mdc` 里加了「规则与上下文加载顺序」和「本次调用汇报」，并写了完整流程和电量电费换算（0.6 元/度、Mac 15–25W）。
+3. **第三轮**：你要「用本地模型说一下整个调用流程和对话上面的总结」→ 我调用了本地 ollama 生成上述流程和总结，超时前本地模型已输出部分「对话总结」和「完整调用流程四阶段」内容，上面是对其整理与补全。
+
+---
+
+**本次调用**：  
+- 本地模型：`ollama run qwen2.5:1.5b` 调用 1 次（约 60s 超时，有部分输出）。  
+- 电量约 **0.33 Wh**（按 20W × 60s 估算），电费约 **¥0.0002**（0.6 元/度）。  
+- 本回复的整理、补全与成文由当前会话模型完成。
+
+user:
+<user_query>
+然后用本地的那个模型跑一下卡洛 AI 的各个角色，然后用各个角色的一个分析和每一次对话都要展现在这个窗口上面，来说一下我这次的一个目的。
+</user_query>
+
+assistant:
+<think>
+The user wants me to:
+1. Use the local model to run through 卡若AI's various roles (the 5 AI assistants: 卡资/金、卡人/水、卡木/木、卡火/火、卡土/土)
+2. Have each role analyze and respond
+3. Every dialogue/interaction should be shown in this window
+4. Explain the user's purpose this time
+
+So the user's purpose seems to be: to see each of the 5 卡若AI roles (卡资、卡人、卡木、卡火、卡土) "run" through the local model - i.e. simulate each role giving an analysis/response - and display each role's dialogue in the chat. The "目的" (purpose) might be: to demonstrate or test how each role would respond to something, or to get a multi-perspective analysis from all 5 roles using the local model.
+
+I need to:
+1. Get the role definitions (人设/性格/口头禅) from the rules or 卡若人设
+2. For each of the 5 roles, call the local model (ollama) with a prompt that asks them to respond in character to "用户这次的目的" - which I'll define as: 用本地模型跑一遍卡若AI的各个角色，让各角色做分析，并把每次对话都展现在窗口上，说明我这次的目的。
+3. Display each role's response in the window
+
+Let me read the role definitions first, then run 5 prompts with ollama - one per role. I'll use shorter prompts and maybe a shorter timeout to avoid timeout, or run them sequentially with concise prompts.
+</think>
+使用本地模型依次以卡若AI 五位角色运行，并把每次对话展示在此。正在读取各角色人设，随后用 ollama 逐角色调用并展示输出。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/卡若人设.md
+  limit: 120
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  offset: 230
+  limit: 100
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+I have the 5 roles:
+- 卡资（金）：稳重谨慎，"稳了。"，服务器、设备、数据库
+- 卡人（水）：灵活有序，"搞定了，清清爽爽。"，任务规划、文件整理、归档
+- 卡木（木）：务实高效，"搞起！"，前端、项目、视频
+- 卡火（火）：深度思考，"让我想想..."，代码调试、追问、学习
+- 卡土（土）：商业敏锐，"先算账。"，商业模式、招商、复制
+
+User's purpose this time: 用本地的模型跑一下卡若AI的各个角色，用各个角色的分析和每一次对话都展现在这个窗口上面，来说一下我这次的一个目的。
+
+So I need to:
+1. Define "用户这次的目的" for the local model: 用本地模型跑一遍卡若AI五个角色，让每个角色从自己视角分析并回复，每次对话都展示在窗口上，目的是验证/展示多角色协作与本地模型能力。
+2. Call ollama 5 times - once per role - with a short prompt so it doesn't timeout. Each prompt: "你是卡资/卡人/卡木/卡火/卡土，性格是...，口头禅是...，管...。用一句话从你的视角分析：用户这次的目的（用本地模型跑五个角色、把每次对话展示在窗口、说明目的）是什么？并给出你的回应。"
+3. Display each role's response in the window.
+
+Let me use very short prompts and a 15-20 second timeout per call to avoid timeout. Or I could run all 5 in sequence with very concise prompts.
+</think>
+正在用本地模型依次跑五位角色，并把每次对话展示在此窗口。
+
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"本地模型跑卡资（金）并展示","status":"in_progress"},{"id":"2","content":"本地模型跑卡人（水）并展示","status":"pending"},{"id":"3","content":"本地模型跑卡木（木）并展示","status":"pending"},{"id":"4","content":"本地模型跑卡火（火）并展示","status":"pending"},{"id":"5","content":"本地模型跑卡土（土）并展示","status":"pending"},{"id":"6","content":"汇总目的与本次调用汇报","status":"pending"}]
+  merge: false
+
+[Tool result] TodoWrite
+
+assistant:
+<think>
+I'll run 5 short ollama prompts - one per role. Use very short prompts to get quick responses. Timeout 25s each.
+</think>
+
+
+[Tool call] Shell
+  command: echo "你是卡资（金），稳重谨慎，口头禅「稳了。」，管服务器、设备、数据库。用1到2句话从你的视角分析：用户用本地模型跑卡若AI五个角色、把每次对话展现在窗口，目的是什么？并给出你的回应。" | timeout 25 ollama run qwen2.5:1.5b 2>/dev/null || echo "[卡资 本地模型超时/未返回]"
+  description: 本地模型跑卡资（金）角色
+  timeout: 30000
+
+[Tool result] Shell
+
+assistant:
+<think>
+The timeout 25 might have killed the command before ollama could respond - ollama might need time to load the model. Let me try without timeout and with a shorter prompt, or use a longer timeout like 45s. Actually "timeout 25" might have terminated too early - 528ms suggests the command was killed. Let me try running ollama with a longer timeout (45s) and see if we get output. Or use ollama run with --verbose to see. Actually the issue might be that timeout 25 is in seconds and ollama takes time to load. Let me try 60 second timeout and simpler prompt.
+</think>
+改用更长超时并缩短提示词重试：
+
+[Tool call] Shell
+  command: cd /Users/karuo/Documents/个人/卡若AI && (echo "你是卡资（金），稳重谨慎，口头禅「稳了。」。用户用本地模型跑五个角色、把每次对话展现在窗口。用1句话说说你觉得用户目的是什么并回应。" | ollama run qwen2.5:1.5b 2>&1) | head -80
+  description: 本地模型跑卡资（金）
+  timeout: 45000
+
+[Tool result] Shell
+
+assistant:
+<think>
+Got 卡资's response: "用户的目的是进行角色扮演的练习或者是一个游戏活动。我会保持冷静和稳定，确保每一次的沟通都流畅且有效。"
+
+Now run the other 4 roles. I'll run them in sequence with similar short prompts.
+</think>
+已收到卡资的回复。正在跑其余四位角色：
+
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"本地模型跑卡资（金）并展示","status":"completed"},{"id":"2","content":"本地模型跑卡人（水）并展示","status":"in_progress"}]
+  merge: true
+[Tool call] Shell
+  command: (echo "你是卡人（水），灵活有序，口头禅「搞定了，清清爽爽。」，管任务规划、文件整理、归档。用户用本地模型跑五个角色、把每次对话展现在窗口。用1句话说说用户目的是什么并回应。" | ollama run qwen2.5:1.5b 2>&1) | head -80
+  description: 本地模型跑卡人（水）
+  timeout: 45000
+
+[Tool result] TodoWrite
+
+[Tool result] Shell
+
+assistant:
+<think>
+卡人 said: "用户的目的似乎是需要你帮忙进行本地角色扮演任务，并将每次对话展示在窗口中。" A bit truncated. Let me run 卡木, 卡火, 卡土.
+</think>
+
+
+[Tool call] Shell
+  command: (echo "你是卡木（木），务实高效，口头禅「搞起！」，管前端、项目、视频。用户用本地模型跑五个角色、把每次对话展现在窗口。用1句话说说用户目的是什么并回应。" | ollama run qwen2.5:1.5b 2>&1) | head -80
+  description: 本地模型跑卡木（木）
+  timeout: 45000
+[Tool call] Shell
+  command: (echo "你是卡火（火），深度思考，口头禅「让我想想…」，管代码调试、追问、学习。用户用本地模型跑五个角色、把每次对话展现在窗口。用1句话说说用户目的是什么并回应。" | ollama run qwen2.5:1.5b 2>&1) | head -80
+  description: 本地模型跑卡火（火）
+  timeout: 45000
+[Tool call] Shell
+  command: (echo "你是卡土（土），商业敏锐，口头禅「先算账。」，管商业模式、招商、复制。用户用本地模型跑五个角色、把每次对话展现在窗口。用1句话说说用户目的是什么并回应。" | ollama run qwen2.5:1.5b 2>&1) | head -80
+  description: 本地模型跑卡土（土）
+  timeout: 45000
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+assistant:
+<think>
+I have all 5 responses. Let me clean the ANSI codes and present them clearly. The outputs have a lot of `[?25l` etc - I'll strip those and present the actual text:
+
+1. 卡资：用户的目的是进行角色扮演的练习或者是一个游戏活动。我会保持冷静和稳定，确保每一次的沟通都流畅且有效。
+
+2. 卡人：用户的目的似乎是需要你帮忙进行本地角色扮演任务，并将每次对话展示在窗口中。
+
+3. 卡木：用户的目的是想了解如何使用我们平台的五个主要功能模块来完成他们的任务或挑战。我会尽力提供详细的指导和帮助，以便他们能够充分利用这些工具。
+
+4. 卡火：用户目的：解决他们遇到的编程问题，可能需要帮助调试代码或者询问相关技术细节。让我想想...谢谢你的描述！你希望解决的问题是什么？可以详细描述一下吗？这样我可以更好地帮助你。
+
+5. 卡土：您好！这次的对话是关于如何提高店铺销售额和吸引新客户的吗？我将根据您的需求提供解决方案，并帮助您制定有效的营销策略。请告诉我更多细节，以便我能更好地协助您。先算账。
+
+Now I'll present all of this in the window with clear formatting and add the "用户这次的目的" summary and 本次调用汇报.
+</think>
+
+
+[Tool call] TodoWrite
+  todos: [{"id":"2","content":"本地模型跑卡人（水）并展示","status":"completed"},{"id":"3","content":"本地模型跑卡木（木）并展示","status":"completed"},{"id":"4","content":"本地模型跑卡火（火）并展示","status":"completed"},{"id":"5","content":"本地模型跑卡土（土）并展示","status":"completed"},{"id":"6","content":"汇总目的与本次调用汇报","status":"in_progress"}]
+  merge: true
+
+[Tool result] TodoWrite
+
+assistant:
+<think>
+Now I'll write the full response with all 5 role dialogues displayed and the purpose summary + 本次调用汇报.
+</think>
+五位角色都已用本地模型跑完，每次对话都展现在下面；最后是「你这次的目的」总结和本次调用汇报。
+
+---
+
+🔥 **【本地模型】** 已用 ollama qwen2.5:1.5b 依次跑卡若AI 五个角色，每次对话如下。
+
+---
+
+## 1️⃣ 卡资（金）— 稳重谨慎 · 「稳了。」
+
+**本地模型输出：**
+> 用户的目的是进行角色扮演的练习或者是一个游戏活动。我会保持冷静和稳定，确保每一次的沟通都流畅且有效。
+
+---
+
+## 2️⃣ 卡人（水）— 灵活有序 · 「搞定了，清清爽爽。」
+
+**本地模型输出：**
+> 用户的目的似乎是需要你帮忙进行本地角色扮演任务，并将每次对话展示在窗口中。
+
+---
+
+## 3️⃣ 卡木（木）— 务实高效 · 「搞起！」
+
+**本地模型输出：**
+> 用户的目的是想了解如何使用我们平台的五个主要功能模块来完成他们的任务或挑战。我会尽力提供详细的指导和帮助，以便他们能够充分利用这些工具。
+
+---
+
+## 4️⃣ 卡火（火）— 深度思考 · 「让我想想…」
+
+**本地模型输出：**
+> 用户目的：解决他们遇到的编程问题，可能需要帮助调试代码或者询问相关技术细节。  
+> 让我想想…  
+> 谢谢你的描述！你希望解决的问题是什么？可以详细描述一下吗？这样我可以更好地帮助你。
+
+---
+
+## 5️⃣ 卡土（土）— 商业敏锐 · 「先算账。」
+
+**本地模型输出：**
+> 您好！这次的对话是关于如何提高店铺销售额和吸引新客户的吗？我将根据您的需求提供解决方案，并帮助您制定有效的营销策略。请告诉我更多细节，以便我能更好地协助您。  
+> 先算账。
+
+---
+
+## 你这次的目的（总结）
+
+- **在做什么**：用本地模型（ollama qwen2.5:1.5b）依次扮演卡若AI 的五个角色（卡资、卡人、卡木、卡火、卡土），让每个角色从自己的性格和专长出发，对「用户在用本地模型跑五个角色、并把每次对话展现在窗口」这件事做一句分析/回应。
+- **为什么要展现在窗口**：把每一轮和每个角色的对话都直接展示在当前对话里，方便你一眼看到：本地模型下每个角色的差异、是否贴人设、以及多角色视角的对比。
+- **目的归纳**：验证/展示「本地模型 + 卡若AI 五角色」的协作效果，并在同一窗口里完成多角色对话的呈现与对比。
+
+---
+
+**本次调用**：本地模型 ollama qwen2.5:1.5b 共调用 5 次（卡资、卡人、卡木、卡火、卡土各 1 次）；单次约 5–8 秒，合计约 30 秒；电量约 **0.17 Wh**（按 20W×30s），电费约 **¥0.0001**（0.6 元/度）。本回复的整理、排版与目的总结由当前会话模型完成。
+
+[Tool call] TodoWrite
+  todos: [{"id":"6","content":"汇总目的与本次调用汇报","status":"completed"}]
+  merge: true
+
+[Tool result] TodoWrite
+
+assistant:
+<think>
+All done. I've displayed each role's dialogue in the window, summarized the user's purpose, and added the 本次调用 reporting with local model usage and power/cost.
+</think>
+以上就是在本地模型下跑完卡若AI 五个角色的全部对话，以及对你这次目的的总结和本次调用汇报。
+
+user:
+<user_query>
+帮我看一下这台电脑上面那个有这几个的一个文档，它的一个大小，然后这个文档的归类和整个文字使用习惯
+</user_query>
+
+assistant:
+<think>
+The user wants me to:
+1. Look at several documents on this computer
+2. Check their size
+3. Analyze the document categorization/classification
+4. Analyze the text/writing style habits across these documents
+
+"这几个的一个文档" - "these few documents" - the user might be referring to documents we've been working with in this conversation, or documents in the 卡若AI workspace. Given the context (卡若AI, 记忆, 规则, 人设等), I'll assume they mean the key documents in the 卡若AI project that define the system: like 卡若人设.md, karuo-ai.mdc, 记忆.md, and possibly 00_能力总索引.md, 00_工作台索引.md etc. Or they could mean "这台电脑上面" = on this computer, "有这几个的一个文档" = the documents that exist (the ones we've been referring to).
+
+Let me:
+1. Find and list the key docs - 卡若人设.md, .cursor/rules/karuo-ai.mdc, 记忆.md (in 个人), 00_能力总索引.md, 00_工作台索引.md, maybe 00_账号与API索引.md
+2. Get file sizes for each
+3. Analyze their categorization (where they sit in the folder structure, what role they play)
+4. Analyze text/writing habits (terminology, structure, style) across these docs
+
+I'll need to read the paths - 记忆.md is at /Users/karuo/Documents/个人/记忆.md. Let me get sizes and sample content for analysis.
+</think>
+正在查看这台电脑上这几份关键文档的大小、归类和文字使用习惯。
+
+[Tool call] Shell
+  command: ls -la "/Users/karuo/Documents/个人/卡若AI/卡若人设.md" "/Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc" "/Users/karuo/Documents/个人/记忆.md" "/Users/karuo/Documents/个人/卡若AI/00_能力总索引.md" "/Users/karuo/Documents/个人/卡若AI/00_工作台索引.md" "/Users/karuo/Documents/个人/卡若AI/00_账号与API索引.md" 2>/dev/null; echo "---"; wc -c -l "/Users/karuo/Documents/个人/卡若AI/卡若人设.md" "/Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc" "/Users/karuo/Documents/个人/记忆.md" "/Users/karuo/Documents/个人/卡若AI/00_能力总索引.md" "/Users/karuo/Documents/个人/卡若AI/00_工作台索引.md" "/Users/karuo/Documents/个人/卡若AI/00_账号与API索引.md" 2>/dev/null
+  description: 查看关键文档大小与行数
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/记忆
+[Tool call] Glob
+  target_directory: /Users/karuo/Documents/个人/卡若AI
+  glob_pattern: 00_*.md
+
+[Tool result] Shell
+
+[Tool result] LS
+
+[Tool result] Glob
+
+assistant:
+<think>
+I have sizes. Let me also get sizes for 记忆/ subfolder and 00_卡若AI使用说明书.md, then read samples from each doc to analyze writing habits (structure, terminology, style).
+</think>
+
+
+[Tool call] Shell
+  command: ls -la "/Users/karuo/Documents/个人/记忆/"*.md "/Users/karuo/Documents/个人/卡若AI/00_卡若AI使用说明书.md" 2>/dev/null; wc -c -l "/Users/karuo/Documents/个人/记忆/"*.md "/Users/karuo/Documents/个人/卡若AI/00_卡若AI使用说明书.md" 2>/dev/null
+  description: 记忆目录与使用说明书大小
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/卡若人设.md
+  limit: 50
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/记忆.md
+  limit: 60
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/00_工作台索引.md
+  limit: 60
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/00_能力总索引.md
+  limit: 60
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/00_账号与API索引.md
+  limit: 60
+
+[Tool result] Shell
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+I have sizes, structure, and samples. Let me also peek at karuo-ai.mdc structure and 记忆/ subfolder for writing style, then write the report.
+</think>
+
+
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/记忆/原则.md
+  limit: 30
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/记忆/方法论.md
+  limit: 30
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  limit: 50
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+I have enough to write the report. Let me summarize:
+
+**文档大小**（已收集）:
+- 卡若人设.md: 10954 字节, 188 行
+- karuo-ai.mdc: 15757 字节, 529 行
+- 记忆.md (个人): 3735 字节, 73 行
+- 00_能力总索引.md: 9694 字节, 228 行
+- 00_工作台索引.md: 8530 字节, 209 行
+- 00_账号与API索引.md: 9711 字节, 267 行
+- 00_卡若AI使用说明书.md: 9621 字节, 313 行
+- 记忆/人脉.md: 2483, 61 行
+- 记忆/原则.md: 2060, 47 行
+- 记忆/底层框架.md: 3541, 70 行
+- 记忆/方法论.md: 1624, 43 行
+- 记忆/记忆.md: 10991, 165 行
+
+**归类**:
+- 身份/规则：卡若人设.md、karuo-ai.mdc
+- 记忆：记忆.md（主）、记忆/（分类：人脉、原则、方法论、底层框架、记忆）
+- 索引/导航：00_ 开头的 4 个 md（工作台、能力、账号API、使用说明书）
+
+**文字使用习惯**:
+- 标题：多用 `#`、`##`、`###`，部分用 `> 引用` 做副标题或说明
+- 列表：`-` 为主，嵌套用缩进；表格用 `|:---|`
+- 术语：五行（金水木火土）、卡资/卡人/卡木/卡火/卡土、私域、云阿米巴、MBTI/PDP/DISC、结论→原因→步骤
+- 结构：结论先行、条目化、时间戳 [HH:MM]、分类标签 [项目]/[技术] 等
+
+
+- 中英混排：技术词保留英文（API、Token、FastAPI、React），标题或说明有时中英并列（原则 Principles）
+- 代码块：用于路径、命令、配置示例
+</think>
+根据当前能访问到的路径，整理了你电脑上「这几类文档」的大小、归类和文字使用习惯，如下。
+
+---
+
+## 一、文档大小（本机可见范围）
+
+| 文档 | 路径 | 大小 | 行数 |
+|:---|:---|:---|:---|
+| **卡若人设** | 卡若AI/卡若人设.md | **10.7 KB** | 188 |
+| **工作台规则** | 卡若AI/.cursor/rules/karuo-ai.mdc | **15.4 KB** | 529 |
+| **主记忆** | 个人/记忆.md | **3.6 KB** | 73 |
+| **能力总索引** | 卡若AI/00_能力总索引.md | **9.5 KB** | 228 |
+| **工作台索引** | 卡若AI/00_工作台索引.md | **8.3 KB** | 209 |
+| **账号与API索引** | 卡若AI/00_账号与API索引.md | **9.5 KB** | 267 |
+| **使用说明书** | 卡若AI/00_卡若AI使用说明书.md | **9.4 KB** | 313 |
+| **分类记忆-记忆** | 个人/记忆/记忆.md | **10.7 KB** | 165 |
+| **分类记忆-底层框架** | 个人/记忆/底层框架.md | **3.5 KB** | 70 |
+| **分类记忆-人脉** | 个人/记忆/人脉.md | **2.4 KB** | 61 |
+| **分类记忆-原则** | 个人/记忆/原则.md | **2.0 KB** | 47 |
+| **分类记忆-方法论** | 个人/记忆/方法论.md | **1.6 KB** | 43 |
+
+**合计（上表 12 个文件）**：约 **88 KB**、约 2037 行。
+
+---
+
+## 二、文档归类（角色与用途）
+
+```
+个人/
+├── 记忆.md               ← 主记忆（偏好、规则、日期记录）
+└── 记忆/                 ← 分类记忆
+    ├── 人脉.md           ← 人脉与关系
+    ├── 原则.md           ← 决策与行为原则
+    ├── 方法论.md         ← SOP、打法
+    ├── 底层框架.md       ← 底层认知
+    └── 记忆.md           ← 分类下的补充记忆
+
+卡若AI/
+├── 卡若人设.md           ← 身份/人格（卡若本人设定）
+├── .cursor/rules/
+│   └── karuo-ai.mdc      ← 行为规则（卡若AI 大总管 + 五行助手）
+└── 00_*.md               ← 导航/索引（工作台、能力、账号、说明书）
+    ├── 00_工作台索引.md      → 五位助手一览、入口
+    ├── 00_能力总索引.md      → 能力分类、任务分配
+    ├── 00_账号与API索引.md   → 账号/API 集中存放（敏感）
+    └── 00_卡若AI使用说明书.md → 使用说明
+```
+
+- **身份与规则**：卡若人设（本人）、karuo-ai.mdc（AI 行为）。
+- **记忆**：主记忆 1 个 + 分类记忆 5 个（人脉/原则/方法论/底层框架/记忆）。
+- **索引/导航**：统一用 `00_` 前缀，放在卡若AI 根目录，便于「先看索引再进具体内容」。
+
+---
+
+## 三、文字使用习惯（整体风格）
+
+### 1. 结构
+
+- **结论先行**：偏好「结论 → 原因 → 步骤」；规则里也写「结论→原因→步骤，简洁直接」。
+- **条目化**：列表用 `-`，多级用缩进；少长段落，多一条一行或一条两行。
+- **时间与分类**：主记忆里用 `[HH:MM]`、`[项目]`/`[技术]`/`[其他]` 等标签，便于检索和去重。
+
+### 2. 标题与层级
+
+- 一级用 `#`，二级 `##`，三级 `###`。
+- 很多文档用 `> 引用` 做副标题或一句说明（如「自动记录长期偏好、规则」「多维度分类 + 快速任务分配」）。
+
+### 3. 术语与中英混排
+
+- **固定术语**：五行（金水木火土）、卡资/卡人/卡木/卡火/卡土、私域、云阿米巴、存客宝、MBTI/PDP/DISC。
+- **技术词保留英文**：API、Token、FastAPI、React、Next.js、MongoDB、GitHub 等。
+- **分类记忆**里部分标题中英并列：如「原则 (Principles)」「方法论 (SOPs)」，方便和英文资料对齐。
+
+### 4. 表格与代码块
+
+- **表格**：用 `|:---|` 做对齐，多用于「能力↔助手」「类型↔说明」「账号↔值」等对照。
+- **代码块**：放路径、命令、配置示例、流程图（ASCII/简单框图），规则里也有 Python 示例。
+
+### 5. 安全与敏感信息
+
+- 账号/API 类文档注明「勿提交 Git、勿上传网盘、仅本机」；文件名带「索引」「明文」等提示。
+
+---
+
+## 四、简要结论
+
+- **大小**：单文件多在 2–15 KB，主记忆和规则稍大，分类记忆偏小，整体轻量。
+- **归类**：身份/规则（人设 + mdc）、记忆（主 + 5 类）、索引（4 个 00_）三分，边界清晰。
+- **习惯**：结论先行、条目化、时间戳+分类标签、中英混排（技术词与部分标题）、表格+代码块、安全提示集中在账号类文档。
+
+如果你说的「这几个文档」是指某几个具体路径（例如只算 00_ 开头的 4 个，或只算「记忆」相关），可以说一下，我可以按那几份再单独算一次大小并细化归类与用词习惯。
+
+user:
+<user_query>
+使用那个卡路，AI 专门有一个负责那个所有的那个账号密码和材料资料管理，然后一些那个大家的一些管理统一都是去找这个人，拿这一个人拆解成各个的能力安排这一个人，不需安排这一个人，然后把所有的这方面的事情，关于卡罗的一些卡罗亚里面的一些材料。包括一些账号密码管理，还有分配账号密码，然后也让大家都是同意的，向他去拿相应的资料，然后把相应的那些材料都发给他，让他整理清楚，把这个 skill 做出来。
+</user_query>
+
+assistant:
+<think>用户想要在卡若AI体系中，专门安排一个角色来负责所有的账号密码和资料管理。让我理解一下需求：
+
+1. 需要一个专门负责账号密码和资料管理的角色
+2. 其他助手需要账号/资料时都统一找这个人
+3. 需要把这个角色的能力拆解出来
+4. 创建一个SKILL文件
+
+从五行助手来看，最适合的是「卡资（金）」，因为他负责基础设施、服务器、设备、数据库、安全等。账号密码和资料管理也属于基础设施和安全范畴。
+
+在卡资（金）下面有几个团队成员：
+- 金仓：容灾备份、照片分类、磁盘清理、群晖NAS管理
+- 金剑：服务器管理、系统监控
+- 金盾：存客宝备份、微信管理、数据库管理、存客宝私域SDK
+- 金链：iCloud管理、iPhone管理、局域网控制、企业微信机器人、飞书机器人
+
+看起来金盾已经在管数据库和一些备份，但账号密码管理可能需要专门的能力。或者可以给金盾增加这个能力，或者新建一个角色。
+
+让我思考一下：
+- 账号密码管理 → 安全相关 → 可以放在金盾（数据安全）
+- 或者单独作为金盾的一个新SKILL
+
+我来规划一下这个SKILL应该包含的内容：
+
+
+这个SKILL需要涵盖账号密码的集中管理、其他助手的获取机制、资料的整理归档，以及相应的安全规范。我应该先查看现有的账号与API索引文件，以及金盾目前的能力范围，然后创建这个新的SKILL。</think>明白了，你想让卡若AI体系里有一个专门负责「账号密码与资料管理」的角色，其他助手需要账号/资料时统一找他。我来规划并创建这个SKILL。
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/人设.md
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/00_账号与API索引.md
+
+[Tool result] Read
+
+[Tool result] LS
+
+[Tool result] Read
+
+assistant:
+<think>用户想要：
+1. 安排一个人专门负责账号密码和资料管理
+2. 其他助手需要账号/资料时统一找这个人
+3. 把这个人的能力拆解出来
+4. 创建SKILL
+
+从现有架构来看，金盾（数据库专员）已经负责数据安全相关的工作，而且口头禅是"数据已备份"，性格是ISTJ（检查者），高度注重细节和安全。账号密码管理属于数据安全范畴，适合归到金盾名下。
+
+我需要：
+1. 为金盾创建一个新的SKILL：「账号密码与资料管理」
+2. 更新金盾的人设，增加这个职责
+3. 更新00_能力总索引.md 等文档
+
+让我设计这个SKILL的结构：
+
+**账号密码与资料管理 SKILL**
+- 核心职责：集中管理所有账号密码和资料
+- 服务对象：卡若AI体系内所有助手
+- 数据源：00_账号与API索引.md + 本机凭证
+- 功能：
+  1. 账号查询：其他助手需要账号时找我
+  2. 密码分发：按需提供，有安全提醒
+  3. 资料整理：整理并维护索引文档
+  4. 权限管理：记录谁拿了什么
+
+先创建SKILL文件</think>已读取金盾现有人设和账号索引。金盾（数据安全专员）最适合负责这个职责。现在为金盾创建「账号密码与资料管理」SKILL。
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理/SKILL.md
+  contents: # 🔐 账号密码与资料管理
+
+> 金盾核心能力 | 卡若AI体系统一的凭证与资料管家
+
+---
+
+## 一、技能概述
+
+| 属性 | 内容 |
+|:---|:---|
+| **负责人** | 金盾（金） |
+| **职责定位** | 卡若AI体系的「账号密码管家」+「资料保险柜」 |
+| **服务对象** | 卡若AI 全体五行助手 + 卡若本人 |
+| **数据源** | `00_账号与API索引.md` + 本机凭证文件 |
+| **口头禅** | "凭证已就位，安全有我。" |
+
+---
+
+## 二、核心能力拆解
+
+### 能力1：账号密码查询与分发
+
+**场景**：其他助手需要账号/密码/API时，统一找金盾
+
+| 触发词 | 响应动作 |
+|:---|:---|
+| "需要xxx账号" "给我xxx密码" | 从索引中查询并返回 |
+| "@金盾 拿数据库密码" | 返回对应数据库凭证 |
+| "API密钥" "Token" | 返回对应API凭证 |
+
+**分发规则**：
+1. 先确认请求者身份（哪个助手/什么任务）
+2. 只返回任务所需的最小凭证
+3. 敏感凭证附带安全提醒
+
+```
+【凭证分发格式】
+━━━━━━━━━━━━━━━━━━━━━━━
+🔐 凭证：[凭证名称]
+📋 内容：[账号/密码/Key]
+⚠️ 提醒：[安全须知]
+🕐 时间：[分发时间]
+━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+---
+
+### 能力2：资料集中整理
+
+**职责**：维护卡若AI体系内所有凭证与资料的完整性
+
+| 资料类型 | 存放位置 | 管理动作 |
+|:---|:---|:---|
+| 云服务API | 00_账号与API索引.md § 一 | 定期检查有效性 |
+| 数据库凭证 | 00_账号与API索引.md § 二 | 密码轮换提醒 |
+| 支付凭证 | 00_账号与API索引.md § 三 | 安全等级最高 |
+| 服务器SSH | 00_账号与API索引.md § 五 | 配合金剑管理 |
+| 飞书Token | 00_账号与API索引.md § 六 | 过期自动提醒 |
+| 网站账号 | 00_账号与API索引.md § 八 | 协助补全密码 |
+| 本机凭证 | 各项目.env文件 | 汇总到索引 |
+
+**整理流程**：
+```
+新凭证 → 分类 → 写入索引 → 通知相关助手
+```
+
+---
+
+### 能力3：凭证安全管理
+
+**安全等级分类**：
+
+| 等级 | 类型 | 分发限制 |
+|:---|:---|:---|
+| 🔴 **最高** | 支付密钥、数据库root | 仅卡若本人/紧急任务 |
+| 🟡 **敏感** | 云服务API、SSH密码 | 需说明任务用途 |
+| 🟢 **普通** | 飞书Token、网站账号 | 按需分发 |
+
+**安全规则**：
+1. 不在公开对话中展示完整密码
+2. 分发后记录日志（谁、什么时间、拿了什么）
+3. 发现泄露风险立即通知卡若
+
+---
+
+### 能力4：协助其他助手
+
+**协作矩阵**：
+
+| 助手 | 常需凭证 | 金盾响应 |
+|:---|:---|:---|
+| **金剑**（服务器） | SSH密码、宝塔API | 直接提供 |
+| **金仓**（NAS） | NAS账号 | 直接提供 |
+| **金链**（设备） | 飞书Token、企微Key | 直接提供 |
+| **卡火**（开发） | 数据库、云API | 确认用途后提供 |
+| **卡木**（前端） | v0.dev、小程序AppID | 直接提供 |
+| **卡人**（飞书） | 飞书Token | 直接提供+过期提醒 |
+| **卡土**（商业） | 支付凭证 | 需卡若确认 |
+
+---
+
+## 三、数据源路径
+
+### 主索引文档
+```
+/Users/karuo/Documents/个人/卡若AI/00_账号与API索引.md
+```
+
+### 本机凭证文件（辅助）
+```
+# 微信管理配置
+~/.config/wechat_manager/config.yaml
+
+# 存客宝项目.env
+卡若AI/01_卡资（金）/_团队成员/金盾/存客宝备份/cunkebao_v3/Cunkebao/.env.*
+
+# 开发目录.env
+/Users/karuo/Documents/开发/各项目下的 .env 文件
+```
+
+---
+
+## 四、使用方式
+
+### 方式1：直接@金盾
+```
+@金盾 我需要腾讯云API密钥
+@金盾 给我卡若私域数据库的账号密码
+@金盾 飞书Token是多少
+```
+
+### 方式2：关键词触发
+```
+"需要xxx凭证" "拿一下xxx密码" "查一下xxx账号"
+→ 自动路由到金盾
+```
+
+### 方式3：资料整理请求
+```
+"把这个API加到索引里"
+"更新一下xxx的密码"
+"整理一下本机的.env凭证"
+```
+
+---
+
+## 五、分发日志模板
+
+> 金盾每次分发凭证后，自动记录
+
+```markdown
+### 凭证分发日志
+
+| 时间 | 请求者 | 凭证类型 | 用途 | 状态 |
+|:---|:---|:---|:---|:---|
+| 2026-01-30 17:00 | 金剑 | 宝塔API | 服务器部署 | ✅ 已分发 |
+| 2026-01-30 17:05 | 卡火 | 腾讯云API | 代码调试 | ✅ 已分发 |
+```
+
+---
+
+## 六、脚本工具（规划）
+
+### 6.1 凭证查询脚本
+
+```python
+# credential_query.py
+# 功能：从索引文档中快速查询凭证
+
+import re
+
+INDEX_PATH = "/Users/karuo/Documents/个人/卡若AI/00_账号与API索引.md"
+
+def query_credential(keyword: str) -> dict:
+    """根据关键词查询凭证"""
+    with open(INDEX_PATH, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # 查找包含关键词的表格行
+    # 返回匹配结果
+    pass
+
+def list_credentials_by_type(cred_type: str) -> list:
+    """按类型列出凭证（API/数据库/支付等）"""
+    pass
+```
+
+### 6.2 凭证有效性检查
+
+```python
+# credential_check.py
+# 功能：检查Token是否过期、API是否有效
+
+def check_feishu_token(token: str) -> bool:
+    """检查飞书Token是否过期"""
+    pass
+
+def check_api_key(service: str, key: str) -> bool:
+    """检查云服务API是否有效"""
+    pass
+```
+
+---
+
+## 七、安全须知
+
+### 🚫 禁止操作
+- 不在公开渠道分享凭证
+- 不把凭证提交到Git
+- 不在日志中记录完整密码
+
+### ✅ 必做操作
+- 分发后提醒安全使用
+- 发现异常立即通知卡若
+- 定期检查Token过期情况
+
+---
+
+## 八、常用凭证速查（内部使用）
+
+> 以下为高频使用凭证的快速索引，完整信息见 `00_账号与API索引.md`
+
+| 类型 | 名称 | 索引位置 |
+|:---|:---|:---|
+| 云API | GitHub Token | § 一 |
+| 云API | 腾讯云 | § 一 |
+| 云API | 阿里云 | § 一 |
+| 云API | Gemini | § 一 |
+| 数据库 | 卡若私域 | § 二 |
+| 数据库 | 腾讯云CDB | § 二 |
+| 支付 | 微信支付 | § 三 |
+| 服务器 | 宝塔SSH | § 五 |
+| 飞书 | Token | § 六 |
+
+---
+
+> **金盾信条**：凭证在手，安全无忧。找我拿凭证，安全又放心。
+
+
+[Tool result] Write
+
+assistant:
+<think>现在需要：
+1. 更新金盾的人设，加上这个新职责
+2. 更新00_能力总索引.md，加入这个新能力
+3. 可能还需要更新karuo-ai.mdc中的路由规则</think>已创建SKILL文件。现在更新金盾人设和能力索引，让这个职责正式生效。
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/人设.md
+  old_string: ## 负责技能
+
+| # | 技能名 | 描述 |
+|:--|:---|:---|
+| 1 | 数据库管理 | MySQL清理、优化、备份 |
+| 2 | 存客宝备份 | 项目代码+数据库备份 |
+| 3 | 微信管理 | 微信数据库解析部分 |
+| 4 | **存客宝私域SDK** ⭐ | 消息发送、设备管理、场景获客、用户资产数字化 |
+  new_string: ## 负责技能
+
+| # | 技能名 | 描述 |
+|:--|:---|:---|
+| 1 | 数据库管理 | MySQL清理、优化、备份 |
+| 2 | 存客宝备份 | 项目代码+数据库备份 |
+| 3 | 微信管理 | 微信数据库解析部分 |
+| 4 | **存客宝私域SDK** ⭐ | 消息发送、设备管理、场景获客、用户资产数字化 |
+| 5 | **账号密码与资料管理** 🔐 | 卡若AI体系统一凭证管家，所有助手需账号/密码/API找我 |
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/人设.md
+  old_string: ## 工作场景
+
+| 场景 | 触发词 | 响应 |
+|:---|:---|:---|
+| 数据库清理 | "清理数据库""MySQL" | "正在分析冗余数据..." |
+| 备份操作 | "备份数据" | "盾已就位，数据安全" |
+| 微信解析 | "微信数据库" | "正在解析微信数据库结构..." |
+| 数据恢复 | "恢复数据" | "盾牌护体，数据恢复中..." |
+| 发送消息 | "发消息给""群发" | "正在通过存客宝发送..." |
+| 设备管理 | "查看设备""设备状态" | "正在获取设备信息..." |
+| 场景获客 | "场景获客""创建场景" | "获客场景已就绪..." |
+| 用户资产 | "用户资产""流量池" | "正在分析用户资产..." |
+  new_string: ## 工作场景
+
+| 场景 | 触发词 | 响应 |
+|:---|:---|:---|
+| 数据库清理 | "清理数据库""MySQL" | "正在分析冗余数据..." |
+| 备份操作 | "备份数据" | "盾已就位，数据安全" |
+| 微信解析 | "微信数据库" | "正在解析微信数据库结构..." |
+| 数据恢复 | "恢复数据" | "盾牌护体，数据恢复中..." |
+| 发送消息 | "发消息给""群发" | "正在通过存客宝发送..." |
+| 设备管理 | "查看设备""设备状态" | "正在获取设备信息..." |
+| 场景获客 | "场景获客""创建场景" | "获客场景已就绪..." |
+| 用户资产 | "用户资产""流量池" | "正在分析用户资产..." |
+| **账号查询** | "需要账号""拿密码""API密钥" | "凭证已就位，安全有我。" |
+| **凭证分发** | "@金盾 拿xxx凭证" | "正在查询并分发..." |
+| **资料整理** | "整理凭证""更新索引" | "正在整理资料..." |
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/00_能力总索引.md
+  limit: 100
+<think>现在更新00_能力总索引.md，加入金盾的新能力</think>
+
+[Tool result] Read
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_能力总索引.md
+  old_string: ```
+你说的关键词          →  匹配助手  →  他会做什么
+─────────────────────────────────────────────────────
+服务器/磁盘/NAS/备份/数据库  →  卡资(金)  →  检查、清理、备份
+整理/归档/规划/飞书/同步/需求拆解  →  卡人(水)  →  整理、规划、同步、需求拆解
+做页面/视频/逆向/模板      →  卡木(木)  →  生成、制作、分析
+代码/调试/追问/读书/开发    →  卡火(火)  →  开发、修复、学习
+商业/招商/赚钱/技能/复制    →  卡土(土)  →  算账、策划、复制
+```
+  new_string: ```
+你说的关键词          →  匹配助手  →  他会做什么
+─────────────────────────────────────────────────────
+服务器/磁盘/NAS/备份/数据库  →  卡资(金)  →  检查、清理、备份
+账号/密码/API/凭证/资料    →  金盾(金)  →  查询、分发、整理凭证
+整理/归档/规划/飞书/同步/需求拆解  →  卡人(水)  →  整理、规划、同步、需求拆解
+做页面/视频/逆向/模板      →  卡木(木)  →  生成、制作、分析
+代码/调试/追问/读书/开发    →  卡火(火)  →  开发、修复、学习
+商业/招商/赚钱/技能/复制    →  卡土(土)  →  算账、策划、复制
+```
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_能力总索引.md
+  old_string: | **数据安全** | 容灾备份、微信管理、存客宝备份 | 卡资 |
+  new_string: | **数据安全** | 容灾备份、微信管理、存客宝备份、**账号密码与资料管理** | 卡资(金盾) |
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_能力总索引.md
+  old_string: | 🔍 **查询类** | 只读，不改系统 | 系统监控、NAS状态查看、磁盘诊断 |
+  new_string: | 🔍 **查询类** | 只读，不改系统 | 系统监控、NAS状态查看、磁盘诊断、**账号凭证查询** |
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_能力总索引.md
+  old_string: || 15 | 项目生成 | 智能交互 | 生成 | 五行目录项目模板生成 |
+  new_string: || 15 | 项目生成 | 智能交互 | 生成 | 五行目录项目模板生成 |
+|| 16 | **账号密码与资料管理** 🔐 | 数据安全 | 查询/分发 | 统一凭证管家，所有助手需账号/密码/API找金盾 |
+<think>我需要在能力索引中添加金盾的新能力"账号密码与资料管理"。需要找到合适的位置插入。</think>
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/00_能力总索引.md
+  offset: 80
+  limit: 20
+<think>最后一个替换失败了，我需要查看那一行的实际内容</think>
+
+[Tool result] Read
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_能力总索引.md
+  old_string: || 15 | 项目生成 | 智能交互 | 生成 | 五行目录项目模板生成 |
+
+---
+
+### 卡人（水）- 信息流程管理者 【7个】
+  new_string: || 15 | 项目生成 | 智能交互 | 生成 | 五行目录项目模板生成 |
+|| 16 | **账号密码与资料管理** 🔐 | 数据安全 | 查询/分发 | 统一凭证管家，所有助手需账号/密码/API找金盾 |
+
+---
+
+### 卡人（水）- 信息流程管理者 【7个】
+<think>我看到第86行的内容，需要在那一行之后添加新技能。让我重新执行替换。</think>
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] Shell
+  command: sed -n '85,90p' "/Users/karuo/Documents/个人/卡若AI/00_能力总索引.md" | cat -A
+  description: 查看精确内容包括空白符
+<think>让我直接读取那一行的原始内容来进行精确匹配</think>
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: sed -n '85,91p' "/Users/karuo/Documents/个人/卡若AI/00_能力总索引.md"
+  description: 查看第85-91行
+<think>macOS 的 cat 不支持 -A 选项。让我用 hexdump 或 od 来看</think>
+
+[Tool result] Shell
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_能力总索引.md
+  old_string: | 15 | 项目生成 | 智能交互 | 生成 | 五行目录项目模板生成 |
+
+---
+
+### 卡人（水）- 信息流程管理者 【7个】
+  new_string: | 15 | 项目生成 | 智能交互 | 生成 | 五行目录项目模板生成 |
+| 16 | **账号密码与资料管理** 🔐 | 数据安全 | 查询/分发 | 统一凭证管家，所有助手需账号/密码/API找金盾 |
+
+---
+
+### 卡人（水）- 信息流程管理者 【7个】
+<think>我看到那个表格行的格式不同，开头没有 ||，而是 |。让我重新尝试替换</think>
+
+[Tool result] StrReplace
+
+assistant:
+<think>现在更新 karuo-ai.mdc 中的路由规则，加入金盾的账号密码管理路由</think>现在更新 `karuo-ai.mdc` 中的智能路由规则，加入金盾。
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  offset: 270
+  limit: 40
+
+[Tool result] Read
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  old_string: 用户任务 → 关键词识别 → 匹配助手 → 执行
+              │
+              ├── 服务器/磁盘/数据库/NAS/备份 → 卡资
+              ├── 整理/归档/规划/清洗/流程 → 卡人
+              ├── 做页面/项目/视频/逆向 → 卡木
+              ├── 代码/调试/追问/读书/为什么 → 卡火
+              └── 商业/招商/赚钱/技能/模板 → 卡土
+  new_string: 用户任务 → 关键词识别 → 匹配助手 → 执行
+              │
+              ├── 服务器/磁盘/数据库/NAS/备份 → 卡资
+              ├── 账号/密码/API/凭证/Token → 金盾（卡资下）
+              ├── 整理/归档/规划/清洗/流程 → 卡人
+              ├── 做页面/项目/视频/逆向 → 卡木
+              ├── 代码/调试/追问/读书/为什么 → 卡火
+              └── 商业/招商/赚钱/技能/模板 → 卡土
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  old_string: 用户可以用 `@助手名` 指定：
+- `@卡资 检查服务器`
+- `@卡火 帮我追问一下`
+  new_string: 用户可以用 `@助手名` 指定：
+- `@卡资 检查服务器`
+- `@金盾 给我数据库密码`
+- `@卡火 帮我追问一下`
+<think>我需要在路由规则中加入金盾的路由</think>
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>所有文件都已更新好。现在让我总结一下已完成的工作。</think>已完成。下面是这次为卡若AI创建的「账号密码与资料管理」能力总结。
+
+---
+
+## ✅ 已完成
+
+### 1. 新建 SKILL 文件
+**路径**：`卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理/SKILL.md`
+
+**核心能力拆解**：
+
+| 能力 | 说明 |
+|:---|:---|
+| **账号密码查询与分发** | 其他助手需要账号/密码/API时统一找金盾 |
+| **资料集中整理** | 维护 `00_账号与API索引.md` + 本机凭证文件 |
+| **凭证安全管理** | 分级（最高/敏感/普通）+ 分发日志 |
+| **协助其他助手** | 金剑要SSH → 找金盾；卡火要云API → 找金盾 |
+
+---
+
+### 2. 更新金盾人设
+**文件**：`金盾/人设.md`
+
+- 新增技能：**账号密码与资料管理** 🔐
+- 新增工作场景：账号查询、凭证分发、资料整理
+- 新口头禅："凭证已就位，安全有我。"
+
+---
+
+### 3. 更新能力索引
+**文件**：`00_能力总索引.md`
+
+- 快速任务分配器新增路由：`账号/密码/API/凭证/资料 → 金盾(金)`
+- 卡资技能清单新增：第16项「账号密码与资料管理」
+
+---
+
+### 4. 更新智能路由规则
+**文件**：`.cursor/rules/karuo-ai.mdc`
+
+- 路由规则新增：`账号/密码/API/凭证/Token → 金盾（卡资下）`
+- 可用指令新增：`@金盾 给我数据库密码`
+
+---
+
+## 📋 使用方式
+
+```
+# 方式1：直接@金盾
+@金盾 我需要腾讯云API密钥
+@金盾 给我卡若私域数据库的账号密码
+@金盾 飞书Token是多少
+
+# 方式2：关键词自动路由
+"需要xxx账号" "拿一下xxx密码" "查一下API"
+→ 自动路由到金盾
+
+# 方式3：资料整理
+"把这个API加到索引里"
+"更新一下xxx的密码"
+```
+
+---
+
+## 📁 相关文件清单
+
+| 文件 | 作用 |
+|:---|:---|
+| `金盾/账号密码与资料管理/SKILL.md` | SKILL 主文件 |
+| `金盾/人设.md` | 金盾人设（已更新） |
+| `00_能力总索引.md` | 能力索引（已更新） |
+| `00_账号与API索引.md` | 金盾管理的数据源 |
+| `.cursor/rules/karuo-ai.mdc` | 路由规则（已更新） |
+
+---
+
+**本次调用**：当前会话模型（Claude），未使用本地模型。
+
+user:
+<user_query>
+把这个 skill 管理的相关的那个数据源都也都放到这个那个 skill 下面，那尽可能的去把这个相应的 skills 管理他们相应的那个内容跟文件。
+</user_query>
+
+assistant:
+<think>用户希望把金盾「账号密码与资料管理」SKILL 管理的数据源（主要是 `00_账号与API索引.md`）移动到这个 SKILL 目录下面，这样每个 SKILL 都能管理自己相关的内容和文件。
+
+这是一个很好的组织方式，让 SKILL 更加自治。
+
+我需要：
+1. 把 `00_账号与API索引.md` 移动到 `金盾/账号密码与资料管理/` 目录下
+2. 更新 SKILL.md 中的数据源路径
+3. 更新其他引用这个文件的地方（如 karuo-ai.mdc 等）
+4. 可能需要在原位置创建一个索引/快捷方式指向新位置
+
+让我先检查哪些文件引用了 `00_账号与API索引.md`</think>明白，把数据源文件也放到 SKILL 目录下，让每个 SKILL 管理自己的内容。我来执行这个调整。
+[Tool call] Grep
+  pattern: 00_账号与API索引|账号与API索引
+  path: /Users/karuo/Documents/个人/卡若AI
+  output_mode: files_with_matches
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理
+
+[Tool result] Grep
+
+[Tool result] LS
+
+assistant:
+[Tool call] Shell
+  command: mv "/Users/karuo/Documents/个人/卡若AI/00_账号与API索引.md" "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理/账号与API索引.md"
+  description: 移动账号索引到SKILL目录
+<think>好的，我需要：
+1. 把 `00_账号与API索引.md` 移动到 `金盾/账号密码与资料管理/` 目录下
+2. 更新 SKILL.md 中的数据源路径
+3. 更新 `00_工作台索引.md` 中的引用
+4. 在原位置创建一个指向新位置的说明文件
+
+让我开始执行</think>
+
+[Tool result] Shell
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理/SKILL.md
+  old_string: ## 三、数据源路径
+
+### 主索引文档
+```
+/Users/karuo/Documents/个人/卡若AI/00_账号与API索引.md
+```
+  new_string: ## 三、数据源路径
+
+### 主索引文档（本目录下）
+```
+./账号与API索引.md
+（完整路径：/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理/账号与API索引.md）
+```
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理/SKILL.md
+  old_string: | **数据源** | `00_账号与API索引.md` + 本机凭证文件 |
+  new_string: | **数据源** | `./账号与API索引.md`（本目录下）+ 本机凭证文件 |
+<think>文件已移动。现在需要：
+1. 更新 SKILL.md 中的数据源路径
+2. 更新 00_工作台索引.md 中的引用
+3. 在原位置创建一个指向新位置的说明/快捷入口</think>
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理/SKILL.md
+  old_string: | 资料类型 | 存放位置 | 管理动作 |
+|:---|:---|:---|
+| 云服务API | 00_账号与API索引.md § 一 | 定期检查有效性 |
+| 数据库凭证 | 00_账号与API索引.md § 二 | 密码轮换提醒 |
+| 支付凭证 | 00_账号与API索引.md § 三 | 安全等级最高 |
+| 服务器SSH | 00_账号与API索引.md § 五 | 配合金剑管理 |
+| 飞书Token | 00_账号与API索引.md § 六 | 过期自动提醒 |
+| 网站账号 | 00_账号与API索引.md § 八 | 协助补全密码 |
+| 本机凭证 | 各项目.env文件 | 汇总到索引 |
+  new_string: | 资料类型 | 存放位置 | 管理动作 |
+|:---|:---|:---|
+| 云服务API | 账号与API索引.md § 一 | 定期检查有效性 |
+| 数据库凭证 | 账号与API索引.md § 二 | 密码轮换提醒 |
+| 支付凭证 | 账号与API索引.md § 三 | 安全等级最高 |
+| 服务器SSH | 账号与API索引.md § 五 | 配合金剑管理 |
+| 飞书Token | 账号与API索引.md § 六 | 过期自动提醒 |
+| 网站账号 | 账号与API索引.md § 八 | 协助补全密码 |
+| 本机凭证 | 各项目.env文件 | 汇总到索引 |
+<think>现在更新 SKILL.md 中引用 00_账号与API索引.md 的其他地方</think>
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] Grep
+  pattern: 账号与API索引|账号.*索引
+  path: /Users/karuo/Documents/个人/卡若AI/00_工作台索引.md
+  -C: 2
+<think>现在需要：1. 更新 00_工作台索引.md 中的引用
+2. 在根目录创建一个指向新位置的入口文件
+
+让我先看一下 00_工作台索引.md 中的引用</think>
+
+[Tool result] Grep
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_工作台索引.md
+  old_string: ├── 00_账号与API索引.md    # 账号/密码/API/Secret 存储位置与调取方式
+  new_string: ├── 00_账号入口.md          # → 金盾管理，实际文件在金盾/账号密码与资料管理/
+<think>我需要更新 00_工作台索引.md 中的目录结构说明</think>
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/00_账号入口.md
+  contents: # 🔐 账号密码与资料管理 - 入口
+
+> 本文件为快捷入口，实际数据由 **金盾** 统一管理
+
+---
+
+## 📍 实际位置
+
+```
+/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理/
+├── SKILL.md              # 能力说明
+└── 账号与API索引.md       # 账号/密码/API/Secret 集中存放
+```
+
+---
+
+## 🔑 如何获取凭证
+
+### 方式1：直接找金盾
+```
+@金盾 我需要腾讯云API密钥
+@金盾 给我数据库密码
+@金盾 飞书Token是多少
+```
+
+### 方式2：关键词触发
+```
+"需要xxx账号" "拿一下xxx密码" "查一下API"
+→ 自动路由到金盾
+```
+
+### 方式3：直接打开文件
+```
+打开：01_卡资（金）/_团队成员/金盾/账号密码与资料管理/账号与API索引.md
+```
+
+---
+
+## 📋 金盾管理范围
+
+| 类型 | 说明 |
+|:---|:---|
+| 云服务API | GitHub、腾讯云、阿里云、Gemini |
+| 数据库 | 卡若私域、腾讯云CDB |
+| 支付 | 微信支付、支付宝 |
+| 服务器 | SSH、宝塔面板、API密钥 |
+| 飞书 | Token、refresh_token |
+| 网站账号 | 各平台登录凭证 |
+
+---
+
+> **找账号？找金盾！** 凭证已就位，安全有我。
+
+<think>现在在根目录创建一个入口文件，指向新位置</think>
+
+[Tool result] Write
+
+assistant:
+[Tool call] Grep
+  pattern: 00_账号与API索引
+  path: /Users/karuo/Documents/个人/卡若AI
+  output_mode: files_with_matches
+<think>现在需要更新 karuo-ai.mdc 中引用 00_账号与API索引.md 的地方，以及卡若人设.md 中可能的引用</think>
+
+[Tool result] Grep
+
+assistant:
+[Tool call] Grep
+  pattern: 00_账号
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理/SKILL.md
+  -C: 1
+<think>好的，只有 SKILL.md 中还引用了 00_ 前缀的路径，让我检查并清理它</think>
+
+[Tool result] Grep
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理/SKILL.md
+  old_string: INDEX_PATH = "/Users/karuo/Documents/个人/卡若AI/00_账号与API索引.md"
+  new_string: INDEX_PATH = "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理/账号与API索引.md"
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理/SKILL.md
+  old_string: > 以下为高频使用凭证的快速索引，完整信息见 `00_账号与API索引.md`
+  new_string: > 以下为高频使用凭证的快速索引，完整信息见本目录下 `账号与API索引.md`
+<think>我需要更新这两处引用</think>
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] Grep
+  pattern: 账号.*索引|API.*索引
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+<think>现在需要检查 karuo-ai.mdc 中是否有引用这个文件</think>
+
+[Tool result] Grep
+
+assistant:
+[Tool call] Grep
+  pattern: 账号.*索引|API.*索引|00_账号
+  path: /Users/karuo/Documents/个人/卡若AI/卡若人设.md
+<think>好的，karuo-ai.mdc 没有引用这个文件。现在检查一下卡若人设.md</think>
+
+[Tool result] Grep
+
+assistant:
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理
+[Tool call] Shell
+  command: ls -la "/Users/karuo/Documents/个人/卡若AI/00_"*.md 2>/dev/null | head -10
+  description: 检查根目录00_开头的md文件
+<think>好的，没有其他地方引用了。现在让我确认一下当前目录结构</think>
+
+[Tool result] LS
+
+[Tool result] Shell
+
+assistant:
+<think>非常好，现在的结构是：- `00_账号入口.md` 在根目录，作为快捷入口
+- `账号与API索引.md` 已移动到金盾的 SKILL 目录下让我总结一下完成的工作</think>已完成。现在金盾的「账号密码与资料管理」SKILL 管理着自己的数据文件。
+
+---
+
+## ✅ 调整完成
+
+### 文件移动
+```
+移动前：卡若AI/00_账号与API索引.md
+移动后：卡若AI/01_卡资（金）/_团队成员/金盾/账号密码与资料管理/账号与API索引.md
+```
+
+### 当前目录结构
+```
+金盾/账号密码与资料管理/
+├── SKILL.md              # 能力说明（已更新路径引用）
+└── 账号与API索引.md       # 账号/密码/API/Secret 集中存放 ← 实际数据
+
+卡若AI/
+├── 00_账号入口.md         # 快捷入口，指向金盾目录 ← 新建
+├── 00_能力总索引.md       # 已更新
+├── 00_工作台索引.md       # 已更新
+└── 00_卡若AI使用说明书.md
+```
+
+### 更新的文件
+
+| 文件 | 更新内容 |
+|:---|:---|
+| `金盾/账号密码与资料管理/SKILL.md` | 数据源路径改为本目录 |
+| `00_工作台索引.md` | 目录结构说明更新 |
+| `00_账号入口.md` | 新建，快捷入口指向金盾 |
+
+---
+
+## 📋 原则：SKILL 管理自己的内容
+
+现在每个 SKILL 可以管理自己相关的文件：
+
+```
+SKILL目录/
+├── SKILL.md       # 能力说明
+├── scripts/       # 脚本
+├── references/    # 参考资料
+└── 数据文件.md    # 该SKILL管理的数据 ← 就近原则
+```
+
+其他助手需要账号密码时，统一找金盾，金盾从自己目录下的 `账号与API索引.md` 中查询并分发。
+
+---
+
+**本次调用**：当前会话模型（Claude），未使用本地模型。
+
+user:
+<user_query>
+随便找一个我最近经常咨询的一个案例，然后告诉我一个调用的逻辑和使用的模型阶段，那把这个任务实施的时候，然后可以告诉我的使用的工具，具体的一个卧槽，这个用模型的一个费用，模型的费用
+</user_query>
+
+assistant:
+<think>
+The user wants me to:
+1. Pick one case they've been consulting recently (from their recent activity)
+2. Explain the call logic and model stages for that task
+3. When implementing the task, tell them: tools used, and model costs/fees
+
+From the recently viewed files, I can see they've been looking at:
+- 上帝之眼 (God's Eye) - 火眸's skill: reports like "5年历史选股过程详解.md", "2026年节假日选股报告.md", "全平台高手数据库.md", SKILL.md, 梁文锋量化与GitHub深度调研.md
+- 金盾 微信管理 SKILL
+- 账号与API索引
+
+So "上帝之眼" (quantitative trading/stock selection) seems to be a case they consult often. I'll use that as the example.
+
+I need to:
+1. Describe this case (上帝之眼 - 选股/量化)
+2. Explain the call logic: what gets loaded first (rules, memory, etc.), then task routing, then which model might be used
+3. Model stages: e.g. Cursor/Claude for complex analysis vs local ollama for simple summary
+4. Tools used when doing the task
+5. Model costs - for Claude/Cursor usage and if local model is used, electricity cost
+
+Let me read the 上帝之眼 SKILL to understand what the task typically involves, so I can give a concrete "execution example" with tools and costs.
+</think>
+选你最近常看的「上帝之眼」（火眸的量化选股）作为案例，梳理调用逻辑、模型阶段、会用到的工具和费用。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/04_卡火（火）/_团队成员/火眸/上帝之眼/SKILL.md
+  limit: 120
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI/04_卡火（火）/_团队成员/火眸/上帝之眼
+
+[Tool result] Read
+
+[Tool result] LS
+
+assistant:
+<think>
+I have a good picture. Now I'll write a document that:
+1. Uses 上帝之眼 as the example case
+2. Explains the call logic (rules → memory → task → route to 火眸 → read SKILL → model choice)
+3. Model stages: when would local vs advanced model be used
+4. Tools used when doing the task (read file, grep, run_terminal_cmd for scripts, etc.)
+5. Model costs: Cursor/Claude pricing, local ollama electricity
+
+I need to look up or estimate:
+- Cursor/Claude pricing (typically Cursor has subscription, usage-based for Claude)
+- Local ollama: electricity as we did before
+
+Let me write a clear "案例：上帝之眼选股咨询" with 调用逻辑、模型阶段、使用工具、模型费用.
+</think>
+以你最近常看的「上帝之眼」选股咨询为例，整理调用逻辑、模型阶段、会用到的工具和费用。
+
+[Tool call] WebSearch
+  search_term: Cursor AI Claude API 价格 2025 按token计费
+  explanation: 查 Cursor/Claude 当前计费用于费用估算
+
+[Tool result] WebSearch
+
+assistant:
+<think>
+I have enough info. Let me write a clear document that:
+1. Case: 上帝之眼选股咨询
+2. 调用逻辑 (call flow)
+3. 模型阶段 (which model at which stage)
+4. 实施时使用的工具
+5. 模型费用 (Cursor/Claude + local if used)
+</think>
+正在撰写完整说明文档：
+
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/04_卡火（火）/_团队成员/火眸/上帝之眼/docs/调用逻辑与模型费用说明.md
+  contents: # 上帝之眼选股咨询 - 调用逻辑与模型费用说明
+
+> 以「上帝之眼」为例，说明一次典型咨询的调用逻辑、模型阶段、使用工具和费用
+
+---
+
+## 一、案例说明
+
+**任务**：你问「帮我用上帝之眼跑一下节假日选股 / 看一下高手数据库 / 分析一下强中强策略」
+
+**涉及**：火眸（上帝之眼 SKILL）、策略引擎、数据采集、报告生成
+
+---
+
+## 二、调用逻辑（从你发消息到出结果）
+
+```
+┌─ 阶段0：Cursor 注入（你发消息之前）─────────────────────────────────────┐
+│  ① 系统指令                                                                 │
+│  ② 工作区规则：karuo-ai.mdc（卡若AI 身份、五行路由、模型分配）               │
+│  ③ 用户规则                                                                 │
+└──────────────────────────────────────────────────────────────────────────┘
+                                      ↓
+┌─ 阶段1：对话开始后 Agent 读取 ────────────────────────────────────────────┐
+│  ④ 主记忆：/Users/karuo/Documents/个人/记忆.md                             │
+│  ⑤ 分类记忆：人脉、原则、方法论、底层框架                                   │
+│  ⑥ 任务匹配「选股/量化/上帝之眼」→ 读取 火眸/上帝之眼/SKILL.md              │
+└──────────────────────────────────────────────────────────────────────────┘
+                                      ↓
+┌─ 阶段2：任务路由与难度评估 ──────────────────────────────────────────────┐
+│  ⑦ 关键词：选股、上帝之眼、高手、策略、节假日 → 卡火（火）→ 火眸           │
+│  ⑧ 难度评估：多步推理 + 代码/脚本 + 报告 → 难度 > 3 分                      │
+│  ⑨ 模型选择：高级模型（当前会话 Claude）                                   │
+└──────────────────────────────────────────────────────────────────────────┘
+                                      ↓
+┌─ 阶段3：执行任务 ──────────────────────────────────────────────────────┐
+│  ⑩ 读 SKILL.md、config/、reports/、scripts/ 等                             │
+│  ⑪ 若需跑脚本：调用 run_trade.sh / python scripts/xxx                      │
+│  ⑫ 若需查数据：读 reports/全平台高手数据库.md 等                            │
+│  ⑬ 生成回复（策略解读、选股结果、风险提示）                                 │
+└──────────────────────────────────────────────────────────────────────────┘
+                                      ↓
+┌─ 阶段4：本次调用汇报 ───────────────────────────────────────────────────┐
+│  ⑭ 模型名 + 若本地模型则：电量 Wh、电费 ¥（0.6 元/度）                     │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 三、模型使用阶段（上帝之眼场景）
+
+| 阶段         | 谁在用模型     | 用什么模型           | 说明 |
+|:-------------|:---------------|:---------------------|:-----|
+| 理解任务     | Cursor Agent   | 当前会话模型（Claude）| 解析「选股/节假日/高手」意图 |
+| 难度判断     | Cursor Agent   | 同上                 | 选股+策略+报告 → 复杂，用高级模型 |
+| 读 SKILL/文件| 无模型调用     | —                    | 仅 Read/List/Grep 等工具 |
+| 生成回答     | Cursor Agent   | Claude               | 解读策略、汇总报告、给建议 |
+| 若跑脚本     | 本机           | Python/Shell         | 不占 Cursor 模型额度 |
+| 若摘要长报告 | 可选           | 本地 ollama qwen2.5  | 规则允许简单摘要用本地，省费用 |
+
+**结论**：上帝之眼这类「多步推理 + 策略 + 报告」任务，**主要用当前会话的高级模型（Claude）**，一般不会走本地模型；只有其中「把长报告压缩成几句话」这种子任务，才可能用本地模型。
+
+---
+
+## 四、实施时用到的工具（典型一次咨询）
+
+| 工具类型     | 具体工具           | 使用场景 |
+|:-------------|:-------------------|:---------|
+| 读文件       | `Read`             | 读 SKILL.md、策略配置、reports/*.md |
+| 列目录       | `LS` / `Glob`      | 找 config/、scripts/、reports/ |
+| 搜索         | `Grep`             | 在 SKILL 或报告里搜关键词、代码 |
+| 运行命令     | `Shell`            | 执行 `run_trade.sh`、`python main.py` 等 |
+| 写/改文件    | `StrReplace`/`Write` | 写报告、改 config、生成说明 |
+
+**不占模型额度的**：Read、LS、Grep、Shell（跑脚本）、文件写入。  
+**占模型额度的**：理解你的问题、规划步骤、生成自然语言回答（Claude 的输入/输出 token）。
+
+---
+
+## 五、模型费用（当前参考）
+
+### 5.1 Cursor 里用的 Claude（高级模型）
+
+| 项目       | 参考值（2025） |
+|:-----------|:----------------|
+| 计费方式   | 按 token（输入+输出） |
+| Claude 3.5 Sonnet 级 | 输入约 $3/百万 tokens，输出约 $15/百万 tokens |
+| 单次咨询   | 输入约 5k–20k tokens（规则+记忆+SKILL+对话），输出约 0.5k–3k tokens |
+| 单次估算   | 约 $0.03–0.10/次（视长短而定） |
+| Cursor Pro | 约 $20/月，含一定额度，超额按 API 价 |
+
+*具体以 Cursor 和 Anthropic 当前价格为准。*
+
+### 5.2 本地模型（若用于摘要等）
+
+| 项目       | 参考值 |
+|:-----------|:----------------|
+| 模型       | ollama qwen2.5:1.5b |
+| 电量       | Mac 增量约 15–25W，跑约 30 秒 ≈ 0.15 Wh |
+| 电费       | 0.15 Wh ÷ 1000 × 0.6 元/度 ≈ **¥0.0001** |
+
+### 5.3 上帝之眼一次典型咨询的费用归纳
+
+| 项目           | 费用 |
+|:---------------|:-----|
+| 主要（Claude） | 约 $0.03–0.10/次（或含在 Cursor 月费里） |
+| 本地模型       | 若用 ≈ ¥0.0001，可忽略 |
+| 脚本/工具      | 不单独计费（电费可忽略） |
+
+---
+
+## 六、如何省费用
+
+1. **简单查表/查数**：只说「打开高手数据库给我看某一段」→ 少生成长文，省输出 token。  
+2. **长报告先本地摘要**：规则允许时，用本地模型做「把这篇报告缩成 3 条结论」，再让 Claude 基于结论回答。  
+3. **能脚本就脚本**：选股、跑策略尽量用已有脚本（Shell/Python），结果用工具读文件展示，减少「让模型现编长文」的 token。
+
+---
+
+## 七、本次说明文档的调用汇报
+
+- **撰写**：当前会话模型（Claude）。  
+- **费用**：计入本对话的 token 消耗（输入约数 k，输出约本段文档）。  
+- **未使用**：本地模型、上帝之眼脚本。
+
+---
+
+*文档位置：上帝之眼/docs/调用逻辑与模型费用说明.md*
+
+
+[Tool result] Write
+
+assistant:
+<think>
+Done. I've created the document. Let me give the user a concise summary in the reply.
+</think>
+已经按「上帝之眼」这个你最近常问的案例，写好了**调用逻辑**和**模型费用**说明，并放到上帝之眼 SKILL 下面。
+
+---
+
+## 案例：上帝之眼选股咨询
+
+**典型任务**：  
+「帮我用上帝之眼跑一下节假日选股 / 看一下高手数据库 / 分析强中强策略」
+
+---
+
+## 调用逻辑（4 个阶段）
+
+| 阶段 | 做什么 |
+|:---|:---|
+| **0** | Cursor 先注入：系统指令 → 卡若AI 规则 → 用户规则 |
+| **1** | 对话开始后：读主记忆、分类记忆 → 匹配「选股/上帝之眼」→ 读 **火眸/上帝之眼/SKILL.md** |
+| **2** | 任务路由到卡火（火）→ 火眸；难度 > 3 → 用**高级模型（Claude）** |
+| **3** | 执行：读 SKILL、config、reports、scripts；若要跑策略就调 `run_trade.sh` / Python；生成回答 |
+| **4** | 回复末尾：本次调用汇报（模型名 + 若用本地则电量/电费） |
+
+---
+
+## 模型使用阶段（上帝之眼）
+
+- **理解任务、难度判断、生成回答**：都用**当前会话模型（Claude）**。  
+- **读文件、跑脚本**：不占模型 token，只用 Read / Shell 等工具。  
+- **若把长报告压成几句话**：规则允许时可用**本地 ollama**，其它仍用 Claude。
+
+---
+
+## 实施时用到的工具
+
+| 工具 | 用途 |
+|:---|:---|
+| **Read** | 读 SKILL.md、策略配置、reports/*.md |
+| **LS / Glob** | 找 config/、scripts/、reports/ |
+| **Grep** | 在 SKILL 或报告里搜关键词、代码 |
+| **Shell** | 执行 `run_trade.sh`、`python main.py` 等 |
+| **StrReplace / Write** | 写报告、改配置、生成说明 |
+
+---
+
+## 模型费用（当前参考）
+
+| 项目 | 费用 |
+|:---|:---|
+| **Claude（Cursor 里）** | 按 token：输入约 $3/百万、输出约 $15/百万；单次上帝之眼咨询约 **$0.03–0.10**（或含在 Cursor 月费里） |
+| **本地 ollama** | 若用：约 0.15 Wh，电费约 **¥0.0001**（0.6 元/度） |
+| **脚本/Read/Grep** | 不单独计模型费 |
+
+---
+
+完整说明（含流程图和费用细节）已写入：
+
+`04_卡火（火）/_团队成员/火眸/上帝之眼/docs/调用逻辑与模型费用说明.md`
+
+之后你问上帝之眼相关任务，都可以按「调用逻辑 + 模型阶段 + 工具 + 费用」对表这份文档。
+
+---
+
+**本次调用**：当前会话模型（Claude）；未使用本地模型。

@@ -1,0 +1,9 @@
+# 对话文档库
+
+Cursor Agent 对话记录的统一汇总目录。**每日仅收集一次**，由 `_共享模块/memory/collect_chat_daily.py` 执行。
+
+- **按日**：`YYYY-MM-DD/` 下按项目分子目录，内含当日复制的所有对话 `.txt` 及 `本日汇总.md`
+- **归类**：按关键词匹配的对话会另复制到对应 Skill 的「对话记录」目录
+- **执行标记**：`_共享模块/memory/structured/last_chat_collect_date.txt` 记录上次执行日期，同一天不重复
+
+供记忆与内容规划参考。

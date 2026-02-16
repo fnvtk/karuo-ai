@@ -1,0 +1,3311 @@
+user:
+<user_query>
+那个帮我制作一个管理微信的 skill，能快速的分析我本机的那个微信号，以及微信号的好友和聊天的内容，然后可以快速分析社群以及指定社群的了解和分析内容，还可以将指定社群跟指定微信号的一个内容提取出来，并且形成一个分析报告。但是主要内容是做这个事情以及微信的相关的一个内容，指定的一个内容的一个保存和插曲的一个分析和分析的一个功能，分析指定的一个人或者一个群，然后获得相应的人的朋友圈，指定人的朋友圈的一个内容，然后可以隔着这个。还可以，那个自动的给我的朋友圈去点赞和评论，给我的微信做点赞和评论的一些事情，然后还有一些那个主要分成了几个板块，内容管理跟行为操作跟 AI 分析，把这几个板块。然后，嗯，我本机的一个微信号的一个那个整体的管理和管理报告，然后并且有个自动化，每天我聊了什么，我指定的整个个人通分析微信号的个人的一个好友的一个 RF 价值评估体系，以你的逻辑进行一个分析的这么一个 skill 出来。然后把整个这个先做第一版出来，然后同时如果你觉得这个解决有困难的情况下，也在1号上面搜索相应相关的内容，来帮我把这个 skill 做出来。
+</user_query>
+
+assistant:
+我来帮你创建一个微信管理的 Skill。这是一个复杂的功能，需要分析技术可行性并规划模块。
+
+让我先了解当前技术环境和可用资源。
+[Tool call] WebSearch
+  search_term: macOS 微信聊天记录数据库解密分析 Python 2025
+  explanation: 搜索 macOS 上分析微信数据的技术方案
+[Tool call] WebSearch
+  search_term: WeChatMsg 微信聊天记录导出分析工具 GitHub 2025
+  explanation: 搜索开源的微信数据分析工具
+[Tool call] Glob
+  glob_pattern: **/01_系统管理/**/*.md
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/02_开发辅助/智能追问/SKILL.md
+
+[Tool result] WebSearch
+
+[Tool result] WebSearch
+
+[Tool result] Glob
+
+[Tool result] Read
+
+assistant:
+这是一个复杂的 Skill，需要仔细规划。让我先了解一下现有 Skill 的结构模板，然后创建微信管理 Skill。
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/01_系统管理/磁盘清理/SKILL.md
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI/01_系统管理
+
+[Tool result] Read
+
+[Tool result] LS
+
+assistant:
+现在我了解了 Skill 的结构。这个微信管理 Skill 功能复杂，我来创建一个完整的方案。
+[Tool call] Shell
+  command: mkdir -p "/Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理"/{scripts,references}
+  description: 创建微信管理 Skill 目录结构
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/SKILL.md
+  contents: ---
+name: 微信管理
+description: macOS 微信数据分析与自动化管理。触发词：微信分析、聊天记录、好友分析、社群分析、朋友圈、微信报告、RFM分析、微信自动化。提供聊天记录导出、好友RFM价值评估、社群内容分析、朋友圈互动等功能。
+version: 1.0
+updated: 2026-01-22
+---
+
+# 微信管理 v1.0
+
+> macOS 微信数据分析与智能管理，挖掘社交资产价值。
+
+---
+
+## 功能概览
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          微信管理系统架构                                  │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐  │
+│  │  数据采集    │ → │  内容管理    │ → │  AI 分析    │ → │  行为操作    │  │
+│  └─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘  │
+│        │                 │                 │                 │          │
+│        ▼                 ▼                 ▼                 ▼          │
+│  • 数据库解密       • 聊天记录导出     • RFM价值评估     • 朋友圈点赞    │
+│  • 好友列表         • 群聊内容提取     • 社群画像分析     • 自动评论      │
+│  • 群组信息         • 朋友圈保存       • 每日聊天摘要     • 消息提醒      │
+│  • 朋友圈数据       • 内容归档         • 个人关系分析     • 定时任务      │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 模块一：数据采集
+
+### 1.1 微信数据位置（macOS）
+
+```bash
+# 微信数据根目录
+~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/
+
+# 数据库文件（SQLCipher 加密）
+# 微信 3.x: SQLCipher v3 (Page Size = 1024)
+# 微信 4.x: SQLCipher v4 (Page Size = 4096)
+
+# 主要数据库
+├── Message/                    # 聊天记录
+│   └── *.db                   # 按联系人分表
+├── Contact/                    # 联系人信息
+├── Group/                      # 群组信息
+└── Moments/                    # 朋友圈数据
+```
+
+### 1.2 解密方案
+
+| 方法 | 工具 | 难度 | 适用场景 |
+|:-----|:-----|:-----|:---------|
+| **LLDB 断点** | 系统自带 | 中 | 一次性获取密钥 |
+| **DTrace 脚本** | wechat-decipher-macos | 中 | 自动化抓取 |
+| **开源工具** | PyWxDump / chatlog | 低 | 推荐使用 |
+
+> ⚠️ 注意：macOS 需要关闭 SIP 或授予调试权限才能获取密钥
+
+### 1.3 快速检查微信状态
+
+```bash
+# 检查微信进程
+ps aux | grep -i wechat | grep -v grep
+
+# 检查微信数据目录大小
+du -sh ~/Library/Containers/com.tencent.xinWeChat 2>/dev/null
+
+# 查看数据库文件数量
+find ~/Library/Containers/com.tencent.xinWeChat -name "*.db" 2>/dev/null | wc -l
+
+# 检查微信版本
+defaults read /Applications/WeChat.app/Contents/Info.plist CFBundleShortVersionString 2>/dev/null
+```
+
+---
+
+## 模块二：内容管理
+
+### 2.1 导出功能清单
+
+| 内容类型 | 导出格式 | 用途 |
+|:---------|:---------|:-----|
+| 聊天记录 | CSV / JSON / HTML | 备份、分析 |
+| 好友列表 | CSV | 客户管理 |
+| 群成员 | CSV | 社群运营 |
+| 朋友圈 | JSON + 图片 | 内容归档 |
+| 收藏夹 | Markdown | 知识管理 |
+
+### 2.2 聊天记录结构
+
+```python
+# 聊天记录字段
+{
+    "msg_id": "消息唯一ID",
+    "create_time": "发送时间戳",
+    "talker": "发送者wxid",
+    "content": "消息内容",
+    "type": "消息类型(1=文本,3=图片,34=语音,47=表情...)",
+    "is_send": "0=收到,1=发出",
+    "room_name": "群聊ID(如有)"
+}
+```
+
+### 2.3 导出配置
+
+```yaml
+# wechat_export_config.yaml
+export:
+  # 导出范围
+  contacts: true        # 导出联系人
+  groups: true          # 导出群聊
+  moments: true         # 导出朋友圈
+  
+  # 时间范围
+  start_date: "2024-01-01"
+  end_date: null        # null = 至今
+  
+  # 过滤条件
+  include_groups:       # 指定导出的群
+    - "创业者交流群"
+    - "私域运营群"
+  
+  include_contacts:     # 指定导出的联系人
+    - "夏茜"
+    - "李冰"
+  
+  # 输出设置
+  output_dir: "~/Documents/微信备份"
+  format: "json"        # json / csv / html
+  include_media: false  # 是否包含图片视频
+```
+
+---
+
+## 模块三：AI 分析
+
+### 3.1 RFM 价值评估模型
+
+基于聊天记录自动计算好友价值等级：
+
+| 维度 | 指标 | 计算方式 | 权重 |
+|:-----|:-----|:---------|:-----|
+| **R** (Recency) | 最近联系 | 距今天数 | 30% |
+| **F** (Frequency) | 联系频率 | 月均消息数 | 40% |
+| **M** (Monetary) | 价值潜力 | 关键词打分 | 30% |
+
+**价值等级定义：**
+
+| 等级 | RFM分数 | 特征 | 建议动作 |
+|:-----|:--------|:-----|:---------|
+| ⭐⭐⭐⭐⭐ | 5-5-5 | 高频高价值 | 重点维护，优先响应 |
+| ⭐⭐⭐⭐ | 4-4-4+ | 活跃用户 | 定期互动，转化潜力 |
+| ⭐⭐⭐ | 3-3-3+ | 普通好友 | 节日问候，保持联系 |
+| ⭐⭐ | 2-2-2+ | 沉默好友 | 激活计划 |
+| ⭐ | 1-1-1+ | 僵尸好友 | 考虑清理 |
+
+**关键词价值打分：**
+
+```python
+VALUE_KEYWORDS = {
+    # 高价值关键词 (+3分)
+    "合作": 3, "投资": 3, "采购": 3, "签约": 3, "付款": 3,
+    
+    # 中价值关键词 (+2分)
+    "咨询": 2, "了解": 2, "推荐": 2, "介绍": 2, "需求": 2,
+    
+    # 低价值关键词 (+1分)
+    "谢谢": 1, "感谢": 1, "帮忙": 1, "请教": 1,
+    
+    # 负面关键词 (-1分)
+    "广告": -1, "推销": -1, "砍价": -1
+}
+```
+
+### 3.2 社群画像分析
+
+```markdown
+## 社群分析报告模板
+
+### 基本信息
+- 群名称：
+- 成员数：
+- 建群时间：
+- 群主/管理员：
+
+### 活跃度分析
+| 指标 | 数值 | 评级 |
+|:-----|:-----|:-----|
+| 日均消息数 | | |
+| 活跃成员占比 | | |
+| 高峰活跃时段 | | |
+
+### 成员画像
+| 类型 | 占比 | 代表人物 |
+|:-----|:-----|:---------|
+| 核心活跃者 | | |
+| 普通成员 | | |
+| 沉默成员 | | |
+
+### 内容分析
+| 主题 | 占比 | 热门关键词 |
+|:-----|:-----|:-----------|
+| 业务讨论 | | |
+| 资源分享 | | |
+| 闲聊 | | |
+
+### 运营建议
+1. 
+2. 
+3. 
+```
+
+### 3.3 每日聊天摘要
+
+每天自动生成聊天摘要报告：
+
+```markdown
+## 📊 每日微信摘要 - 2026-01-22
+
+### 今日概览
+- 总消息数：156 条
+- 活跃联系人：23 人
+- 活跃群聊：8 个
+
+### 重要对话
+| 联系人 | 消息数 | 关键词 | 需要跟进 |
+|:-------|:-------|:-------|:---------|
+| 夏茜 | 15 | 合作、方案 | ✅ |
+| 李冰 | 8 | 项目、进度 | ✅ |
+
+### 群聊动态
+| 群名 | 消息数 | 今日热点 |
+|:-----|:-------|:---------|
+| 创业交流群 | 45 | 讨论融资话题 |
+| 私域运营群 | 32 | 分享工具资源 |
+
+### 待办事项
+- [ ] 回复夏茜的合作方案
+- [ ] 群内分享昨天的案例
+
+### AI 洞察
+> 本周与"夏茜"互动频繁，建议主动推进合作事宜。
+```
+
+### 3.4 个人关系分析
+
+```markdown
+## 🔍 联系人分析报告 - 夏茜
+
+### 基本信息
+- 微信号：xiaqian_xxx
+- 备注名：夏茜-XX公司
+- 首次联系：2024-03-15
+- 最近联系：2026-01-22
+
+### 互动统计
+| 维度 | 数据 |
+|:-----|:-----|
+| 累计消息 | 1,234 条 |
+| 我发送 | 567 条 (46%) |
+| 对方发送 | 667 条 (54%) |
+| 月均互动 | 52 条 |
+
+### RFM 评分
+| R (最近) | F (频率) | M (价值) | 综合等级 |
+|:---------|:---------|:---------|:---------|
+| 5 | 4 | 5 | ⭐⭐⭐⭐⭐ |
+
+### 话题分布
+| 话题 | 占比 | 示例关键词 |
+|:-----|:-----|:-----------|
+| 业务合作 | 45% | 方案、报价、合同 |
+| 日常问候 | 30% | 早安、周末、节日 |
+| 资源分享 | 25% | 推荐、工具、资料 |
+
+### 互动趋势
+- 🟢 互动频率稳定增长
+- 🟢 对方响应及时
+- 🟡 建议增加面对面沟通
+
+### 关系建议
+1. 高价值联系人，建议保持每周至少1次深度沟通
+2. 可考虑推进合作项目
+3. 节日/生日主动问候
+```
+
+---
+
+## 模块四：行为操作
+
+### 4.1 朋友圈自动化
+
+| 功能 | 描述 | 风险等级 |
+|:-----|:-----|:---------|
+| 浏览朋友圈 | 自动滚动加载 | 🟢 低 |
+| 自动点赞 | 对指定好友点赞 | 🟡 中 |
+| 自动评论 | 预设评论模板 | 🟠 高 |
+| 内容采集 | 保存朋友圈图文 | 🟢 低 |
+
+**点赞评论配置：**
+
+```yaml
+# moments_config.yaml
+auto_like:
+  enabled: true
+  targets:
+    - "夏茜"           # 指定好友
+    - "创业交流群"     # 群友全部点赞
+  frequency: 
+    max_per_day: 50   # 每日最多点赞数
+    interval: 60-180  # 随机间隔秒数
+
+auto_comment:
+  enabled: false      # 默认关闭，风险较高
+  templates:
+    - "👍"
+    - "学习了"
+    - "太棒了！"
+    - "感谢分享"
+  targets:
+    - "夏茜"          # 仅对指定好友评论
+```
+
+### 4.2 自动化任务
+
+```python
+# 每日自动化任务配置
+DAILY_TASKS = {
+    "07:00": "生成昨日聊天摘要",
+    "08:00": "检查未读消息提醒",
+    "12:00": "同步朋友圈内容",
+    "18:00": "执行朋友圈点赞任务",
+    "23:00": "更新RFM评分数据"
+}
+```
+
+### 4.3 消息提醒
+
+```yaml
+# 重要消息提醒配置
+alerts:
+  # 关键词提醒
+  keywords:
+    - "付款"
+    - "签约"
+    - "紧急"
+    - "@我"
+  
+  # VIP联系人提醒
+  vip_contacts:
+    - "夏茜"
+    - "李冰"
+    - "王诚鹏"
+  
+  # 提醒方式
+  notify:
+    system: true      # 系统通知
+    sound: true       # 声音提醒
+    email: false      # 邮件提醒
+```
+
+---
+
+## 快速使用
+
+### 命令清单
+
+```bash
+# 1. 检查微信状态
+python scripts/wechat_manager.py status
+
+# 2. 导出聊天记录
+python scripts/wechat_manager.py export --contact "夏茜" --format json
+
+# 3. 导出群聊
+python scripts/wechat_manager.py export --group "创业交流群" --format csv
+
+# 4. 生成RFM报告
+python scripts/wechat_manager.py rfm --all
+
+# 5. 分析指定联系人
+python scripts/wechat_manager.py analyze --contact "夏茜"
+
+# 6. 分析社群
+python scripts/wechat_manager.py analyze --group "创业交流群"
+
+# 7. 生成每日摘要
+python scripts/wechat_manager.py summary --date today
+
+# 8. 朋友圈点赞
+python scripts/wechat_manager.py like --target "夏茜" --count 5
+
+# 9. 同步朋友圈
+python scripts/wechat_manager.py moments --sync
+
+# 10. 生成管理报告
+python scripts/wechat_manager.py report
+```
+
+### 使用流程
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                            使用流程                                       │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│   1. 环境准备        2. 数据解密        3. 功能使用        4. 定期维护    │
+│       │                  │                  │                  │         │
+│       ▼                  ▼                  ▼                  ▼         │
+│   安装依赖           获取密钥            选择功能            每日摘要      │
+│   配置参数           解密数据库          导出/分析            RFM更新      │
+│   检查权限           验证数据            执行自动化           数据备份      │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 安装配置
+
+### 依赖安装
+
+```bash
+# 安装 SQLCipher
+brew install sqlcipher
+
+# 安装 Python 依赖
+pip install pysqlcipher3 pandas jieba wordcloud matplotlib schedule
+
+# 可选：安装 chatlog 工具（推荐）
+# https://github.com/sjzar/chatlog
+```
+
+### 配置文件
+
+```yaml
+# ~/.config/wechat_manager/config.yaml
+
+# 微信数据路径（自动检测）
+wechat_data_path: auto
+
+# 输出目录
+output_dir: ~/Documents/微信管理
+
+# 数据库密钥（从解密工具获取）
+db_key: ""  # 首次使用需要获取
+
+# RFM 配置
+rfm:
+  recency_days: [7, 30, 90, 180, 365]  # R值分段
+  frequency_count: [50, 20, 10, 5, 1]   # F值分段
+  value_weight: 
+    keywords: 0.3
+    frequency: 0.4
+    recency: 0.3
+
+# 自动化配置
+automation:
+  daily_summary: true
+  rfm_update: true
+  moments_sync: false
+  auto_like: false
+
+# 安全配置
+security:
+  backup_before_change: true
+  max_auto_actions: 100  # 每日自动操作上限
+  dry_run: true          # 试运行模式（不实际执行）
+```
+
+---
+
+## 技术架构
+
+### 技术栈
+
+| 组件 | 技术 | 说明 |
+|:-----|:-----|:-----|
+| 数据解密 | SQLCipher + pysqlcipher3 | 解密微信数据库 |
+| 数据处理 | Pandas | 数据分析和导出 |
+| 文本分析 | jieba + wordcloud | 中文分词和词云 |
+| AI 分析 | OpenAI / Gemini API | 智能摘要和洞察 |
+| 自动化 | schedule + threading | 定时任务 |
+| 可视化 | matplotlib | 图表生成 |
+
+### 文件结构
+
+```
+微信管理/
+├── SKILL.md                    # 技能说明文档
+├── scripts/
+│   ├── wechat_manager.py       # 主程序入口
+│   ├── db_decryptor.py         # 数据库解密模块
+│   ├── data_exporter.py        # 数据导出模块
+│   ├── rfm_analyzer.py         # RFM 分析模块
+│   ├── group_analyzer.py       # 社群分析模块
+│   ├── contact_analyzer.py     # 联系人分析模块
+│   ├── moments_handler.py      # 朋友圈处理模块
+│   ├── daily_summary.py        # 每日摘要模块
+│   └── automation.py           # 自动化任务模块
+├── references/
+│   ├── 数据库结构.md           # 微信数据库表结构
+│   ├── RFM模型说明.md          # RFM价值评估详解
+│   └── 开源工具对比.md         # 相关工具对比
+└── templates/
+    ├── rfm_report.html         # RFM报告模板
+    ├── group_report.html       # 社群报告模板
+    └── daily_summary.html      # 每日摘要模板
+```
+
+---
+
+## 安全与合规
+
+### ⚠️ 重要提示
+
+1. **仅限个人数据**：只能分析自己的微信账号数据
+2. **隐私保护**：导出的数据需妥善保管，避免泄露
+3. **合规使用**：遵守微信服务协议，避免滥用
+4. **风险操作**：自动化功能（点赞/评论）可能触发风控
+
+### 安全原则
+
+| 类型 | 处理方式 |
+|:-----|:---------|
+| ⛔ 他人数据 | 绝不访问 |
+| ⛔ 批量操作 | 需要确认，有频率限制 |
+| ⚠️ 自动化 | 默认关闭，需手动启用 |
+| ⚠️ 数据备份 | 操作前自动备份 |
+| ✅ 只读分析 | 安全，推荐使用 |
+| ✅ 本地处理 | 数据不上传云端 |
+
+---
+
+## 常见问题
+
+### Q1: 如何获取数据库密钥？
+
+```bash
+# 方法1：使用 chatlog 工具（推荐）
+# 下载：https://github.com/sjzar/chatlog
+chatlog decrypt
+
+# 方法2：使用 LLDB（需关闭 SIP）
+lldb -p $(pgrep -x WeChat)
+(lldb) br s -n sqlite3_key
+(lldb) c
+# 登录微信后读取寄存器
+(lldb) register read rsi
+```
+
+### Q2: 数据库解密失败？
+
+- 检查微信版本（3.x vs 4.x 加密方式不同）
+- 确认密钥是否正确
+- 尝试使用 `PRAGMA cipher_compatibility = 3;` 兼容旧版
+
+### Q3: 如何安全使用自动化功能？
+
+1. 先开启 `dry_run: true` 试运行
+2. 设置合理的频率限制
+3. 避免批量操作，分散执行
+4. 关注微信官方的风控提示
+
+---
+
+## 版本记录
+
+| 版本 | 日期 | 变更内容 |
+|:-----|:-----|:---------|
+| **1.0** | **2026-01-22** | 初版，包含数据采集、内容管理、AI分析、行为操作四大模块 |
+
+---
+
+## 下一步计划
+
+- [ ] v1.1: 完善数据库解密自动化流程
+- [ ] v1.2: 增加 Web UI 可视化界面
+- [ ] v1.3: 支持多账号管理
+- [ ] v1.4: 集成 AI 智能回复建议
+- [ ] v2.0: 支持 Windows 版微信数据
+
+---
+
+> "社交即资产，数据即洞察。" —— 卡若AI
+
+
+[Tool result] Write
+
+assistant:
+现在创建核心脚本文件。
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/scripts/wechat_manager.py
+  contents: #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+微信管理主程序
+提供微信数据分析、导出、RFM评估、自动化等功能
+
+使用方法:
+    python wechat_manager.py status          # 检查微信状态
+    python wechat_manager.py export          # 导出数据
+    python wechat_manager.py rfm             # RFM分析
+    python wechat_manager.py analyze         # 分析联系人/群组
+    python wechat_manager.py summary         # 生成每日摘要
+    python wechat_manager.py report          # 生成管理报告
+"""
+
+import os
+import sys
+import argparse
+import subprocess
+import json
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Optional, Dict, List, Any
+
+# 微信数据路径
+WECHAT_CONTAINER = os.path.expanduser(
+    "~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support"
+)
+
+# 输出目录
+OUTPUT_DIR = os.path.expanduser("~/Documents/微信管理")
+
+# RFM 配置
+RFM_CONFIG = {
+    "recency_days": [7, 30, 90, 180, 365],  # R值分段天数
+    "frequency_count": [50, 20, 10, 5, 1],   # F值分段消息数
+    "value_keywords": {
+        # 高价值关键词 (+3分)
+        "合作": 3, "投资": 3, "采购": 3, "签约": 3, "付款": 3,
+        "项目": 3, "需求": 3, "预算": 3, "订单": 3,
+        # 中价值关键词 (+2分)
+        "咨询": 2, "了解": 2, "推荐": 2, "介绍": 2, "报价": 2,
+        "方案": 2, "沟通": 2, "交流": 2,
+        # 低价值关键词 (+1分)
+        "谢谢": 1, "感谢": 1, "帮忙": 1, "请教": 1, "学习": 1,
+        # 负面关键词 (-1分)
+        "广告": -1, "推销": -1, "砍价": -1, "免费": -1
+    }
+}
+
+
+class WeChatManager:
+    """微信管理器主类"""
+    
+    def __init__(self):
+        self.wechat_path = self._find_wechat_data()
+        self.output_dir = Path(OUTPUT_DIR)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        
+    def _find_wechat_data(self) -> Optional[Path]:
+        """查找微信数据目录"""
+        container = Path(WECHAT_CONTAINER)
+        if not container.exists():
+            return None
+            
+        # 查找消息数据库目录
+        for item in container.iterdir():
+            if item.is_dir() and len(item.name) == 32:  # 微信用户目录是32位hash
+                return item
+        return None
+    
+    def check_status(self) -> Dict[str, Any]:
+        """检查微信状态"""
+        status = {
+            "wechat_running": False,
+            "data_found": False,
+            "data_size": "0",
+            "db_count": 0,
+            "wechat_version": "未知",
+            "last_modified": None
+        }
+        
+        # 检查微信进程
+        try:
+            result = subprocess.run(
+                ["pgrep", "-x", "WeChat"],
+                capture_output=True, text=True
+            )
+            status["wechat_running"] = result.returncode == 0
+        except Exception:
+            pass
+        
+        # 检查微信版本
+        try:
+            result = subprocess.run(
+                ["defaults", "read", "/Applications/WeChat.app/Contents/Info.plist", 
+                 "CFBundleShortVersionString"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                status["wechat_version"] = result.stdout.strip()
+        except Exception:
+            pass
+        
+        # 检查数据目录
+        container = Path(WECHAT_CONTAINER)
+        if container.exists():
+            status["data_found"] = True
+            
+            # 计算数据大小
+            try:
+                result = subprocess.run(
+                    ["du", "-sh", str(container.parent)],
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    status["data_size"] = result.stdout.split()[0]
+            except Exception:
+                pass
+            
+            # 统计数据库文件
+            try:
+                db_files = list(container.rglob("*.db"))
+                status["db_count"] = len(db_files)
+                
+                # 获取最后修改时间
+                if db_files:
+                    latest = max(db_files, key=lambda x: x.stat().st_mtime)
+                    status["last_modified"] = datetime.fromtimestamp(
+                        latest.stat().st_mtime
+                    ).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+        
+        return status
+    
+    def print_status(self):
+        """打印微信状态"""
+        status = self.check_status()
+        
+        print("\n📱 微信状态检查")
+        print("=" * 50)
+        
+        # 微信进程
+        running = "✅ 运行中" if status["wechat_running"] else "❌ 未运行"
+        print(f"微信进程：{running}")
+        
+        # 版本信息
+        print(f"微信版本：{status['wechat_version']}")
+        
+        # 数据目录
+        if status["data_found"]:
+            print(f"数据目录：✅ 已找到")
+            print(f"数据大小：{status['data_size']}")
+            print(f"数据库数量：{status['db_count']} 个")
+            print(f"最后更新：{status['last_modified']}")
+        else:
+            print(f"数据目录：❌ 未找到")
+        
+        print("=" * 50)
+        
+        # 提示
+        if not status["data_found"]:
+            print("\n⚠️  未找到微信数据，请确认：")
+            print("   1. 微信是否已安装并登录过")
+            print("   2. 数据目录是否在默认位置")
+        elif status["wechat_version"].startswith("4"):
+            print("\n📌 检测到微信 4.x 版本")
+            print("   使用 SQLCipher v4 加密（Page Size = 4096）")
+        else:
+            print("\n📌 检测到微信 3.x 版本")
+            print("   使用 SQLCipher v3 加密（Page Size = 1024）")
+    
+    def calculate_rfm(self, contact_data: Dict) -> Dict[str, Any]:
+        """
+        计算联系人 RFM 评分
+        
+        参数:
+            contact_data: {
+                "name": "联系人名称",
+                "last_contact": datetime,  # 最近联系时间
+                "messages": List[Dict],     # 消息列表
+            }
+        """
+        now = datetime.now()
+        
+        # R - Recency (最近联系天数)
+        last_contact = contact_data.get("last_contact", now)
+        if isinstance(last_contact, str):
+            last_contact = datetime.fromisoformat(last_contact)
+        days_since = (now - last_contact).days
+        
+        r_score = 1
+        for i, threshold in enumerate(RFM_CONFIG["recency_days"]):
+            if days_since <= threshold:
+                r_score = 5 - i
+                break
+        
+        # F - Frequency (月均消息数)
+        messages = contact_data.get("messages", [])
+        total_messages = len(messages)
+        
+        # 假设统计最近30天
+        f_score = 1
+        for i, threshold in enumerate(RFM_CONFIG["frequency_count"]):
+            if total_messages >= threshold:
+                f_score = 5 - i
+                break
+        
+        # M - Monetary (价值评分，基于关键词)
+        value_score = 0
+        for msg in messages:
+            content = msg.get("content", "")
+            for keyword, score in RFM_CONFIG["value_keywords"].items():
+                if keyword in content:
+                    value_score += score
+        
+        # 归一化 M 值到 1-5
+        if value_score >= 50:
+            m_score = 5
+        elif value_score >= 30:
+            m_score = 4
+        elif value_score >= 15:
+            m_score = 3
+        elif value_score >= 5:
+            m_score = 2
+        else:
+            m_score = 1
+        
+        # 计算综合评分
+        total_score = r_score + f_score + m_score
+        
+        # 确定等级
+        if total_score >= 13:
+            level = "⭐⭐⭐⭐⭐"
+            level_name = "高价值"
+        elif total_score >= 10:
+            level = "⭐⭐⭐⭐"
+            level_name = "活跃"
+        elif total_score >= 7:
+            level = "⭐⭐⭐"
+            level_name = "普通"
+        elif total_score >= 4:
+            level = "⭐⭐"
+            level_name = "沉默"
+        else:
+            level = "⭐"
+            level_name = "僵尸"
+        
+        return {
+            "name": contact_data.get("name", "未知"),
+            "R": r_score,
+            "F": f_score,
+            "M": m_score,
+            "total": total_score,
+            "level": level,
+            "level_name": level_name,
+            "days_since_contact": days_since,
+            "message_count": total_messages,
+            "value_score": value_score
+        }
+    
+    def generate_daily_summary(self, date: Optional[str] = None) -> str:
+        """
+        生成每日聊天摘要
+        
+        参数:
+            date: 日期字符串，默认为今天
+        """
+        if date is None or date == "today":
+            target_date = datetime.now().strftime("%Y-%m-%d")
+        else:
+            target_date = date
+        
+        # 摘要模板
+        summary = f"""
+# 📊 每日微信摘要 - {target_date}
+
+## 今日概览
+
+| 指标 | 数值 |
+|:-----|:-----|
+| 总消息数 | 待分析 |
+| 活跃联系人 | 待分析 |
+| 活跃群聊 | 待分析 |
+
+> ⚠️ 需要先解密数据库才能生成完整报告
+
+## 使用说明
+
+1. 获取数据库密钥（参考 SKILL.md）
+2. 配置密钥到 config.yaml
+3. 重新运行 `python wechat_manager.py summary`
+
+---
+
+生成时间：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+"""
+        
+        # 保存摘要
+        output_file = self.output_dir / f"daily_summary_{target_date}.md"
+        output_file.write_text(summary, encoding="utf-8")
+        
+        print(f"✅ 每日摘要已生成：{output_file}")
+        return str(output_file)
+    
+    def generate_rfm_report(self, contacts: Optional[List[str]] = None) -> str:
+        """
+        生成 RFM 分析报告
+        
+        参数:
+            contacts: 指定联系人列表，None 表示全部
+        """
+        report_date = datetime.now().strftime("%Y-%m-%d")
+        
+        # 报告模板
+        report = f"""
+# 📈 RFM 价值评估报告 - {report_date}
+
+## 评估模型说明
+
+| 维度 | 指标 | 权重 |
+|:-----|:-----|:-----|
+| **R** (Recency) | 最近联系天数 | 30% |
+| **F** (Frequency) | 月均消息数 | 40% |
+| **M** (Monetary) | 关键词价值分 | 30% |
+
+## 等级定义
+
+| 等级 | 分数范围 | 建议动作 |
+|:-----|:---------|:---------|
+| ⭐⭐⭐⭐⭐ | 13-15 | 重点维护，优先响应 |
+| ⭐⭐⭐⭐ | 10-12 | 定期互动，转化潜力 |
+| ⭐⭐⭐ | 7-9 | 节日问候，保持联系 |
+| ⭐⭐ | 4-6 | 激活计划 |
+| ⭐ | 1-3 | 考虑清理 |
+
+## 分析结果
+
+> ⚠️ 需要先解密数据库才能生成完整报告
+
+| 联系人 | R | F | M | 总分 | 等级 |
+|:-------|:--|:--|:--|:-----|:-----|
+| (待分析) | - | - | - | - | - |
+
+## 使用说明
+
+1. 获取数据库密钥（参考 SKILL.md）
+2. 配置密钥到 config.yaml
+3. 重新运行 `python wechat_manager.py rfm`
+
+---
+
+生成时间：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+"""
+        
+        # 保存报告
+        output_file = self.output_dir / f"rfm_report_{report_date}.md"
+        output_file.write_text(report, encoding="utf-8")
+        
+        print(f"✅ RFM 报告已生成：{output_file}")
+        return str(output_file)
+    
+    def analyze_contact(self, contact_name: str) -> str:
+        """分析指定联系人"""
+        report_date = datetime.now().strftime("%Y-%m-%d")
+        
+        report = f"""
+# 🔍 联系人分析报告 - {contact_name}
+
+## 基本信息
+
+| 字段 | 值 |
+|:-----|:---|
+| 备注名 | {contact_name} |
+| 分析日期 | {report_date} |
+
+> ⚠️ 需要先解密数据库才能生成完整报告
+
+## 待分析内容
+
+- [ ] 互动统计
+- [ ] RFM 评分
+- [ ] 话题分布
+- [ ] 互动趋势
+- [ ] 关系建议
+
+---
+
+生成时间：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+"""
+        
+        output_file = self.output_dir / f"contact_{contact_name}_{report_date}.md"
+        output_file.write_text(report, encoding="utf-8")
+        
+        print(f"✅ 联系人分析报告已生成：{output_file}")
+        return str(output_file)
+    
+    def analyze_group(self, group_name: str) -> str:
+        """分析指定群组"""
+        report_date = datetime.now().strftime("%Y-%m-%d")
+        
+        report = f"""
+# 👥 社群分析报告 - {group_name}
+
+## 基本信息
+
+| 字段 | 值 |
+|:-----|:---|
+| 群名称 | {group_name} |
+| 分析日期 | {report_date} |
+
+> ⚠️ 需要先解密数据库才能生成完整报告
+
+## 待分析内容
+
+- [ ] 成员数量
+- [ ] 活跃度分析
+- [ ] 成员画像
+- [ ] 内容分析
+- [ ] 运营建议
+
+---
+
+生成时间：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+"""
+        
+        output_file = self.output_dir / f"group_{group_name}_{report_date}.md"
+        output_file.write_text(report, encoding="utf-8")
+        
+        print(f"✅ 社群分析报告已生成：{output_file}")
+        return str(output_file)
+    
+    def generate_management_report(self) -> str:
+        """生成综合管理报告"""
+        report_date = datetime.now().strftime("%Y-%m-%d")
+        status = self.check_status()
+        
+        report = f"""
+# 📋 微信管理报告 - {report_date}
+
+## 系统状态
+
+| 项目 | 状态 |
+|:-----|:-----|
+| 微信进程 | {"✅ 运行中" if status["wechat_running"] else "❌ 未运行"} |
+| 微信版本 | {status["wechat_version"]} |
+| 数据目录 | {"✅ 已找到" if status["data_found"] else "❌ 未找到"} |
+| 数据大小 | {status["data_size"]} |
+| 数据库数量 | {status["db_count"]} 个 |
+| 最后更新 | {status["last_modified"] or "未知"} |
+
+## 功能模块状态
+
+| 模块 | 状态 | 说明 |
+|:-----|:-----|:-----|
+| 数据采集 | ⏳ 待配置 | 需要获取数据库密钥 |
+| 内容管理 | ⏳ 待配置 | 需要先完成数据采集 |
+| AI 分析 | ⏳ 待配置 | 需要配置 AI API |
+| 行为操作 | ⏳ 待启用 | 默认关闭，需手动启用 |
+
+## 下一步行动
+
+1. [ ] 获取数据库解密密钥
+2. [ ] 配置 config.yaml
+3. [ ] 测试数据导出功能
+4. [ ] 生成首份 RFM 报告
+
+## 输出目录
+
+所有报告保存在：`{self.output_dir}`
+
+---
+
+生成时间：{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+"""
+        
+        output_file = self.output_dir / f"management_report_{report_date}.md"
+        output_file.write_text(report, encoding="utf-8")
+        
+        print(f"✅ 管理报告已生成：{output_file}")
+        return str(output_file)
+
+
+def main():
+    """主函数"""
+    parser = argparse.ArgumentParser(
+        description="微信管理工具",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用示例:
+  python wechat_manager.py status                    # 检查微信状态
+  python wechat_manager.py export --contact "夏茜"   # 导出指定联系人
+  python wechat_manager.py rfm                       # 生成RFM报告
+  python wechat_manager.py analyze --contact "夏茜" # 分析联系人
+  python wechat_manager.py analyze --group "创业群" # 分析群组
+  python wechat_manager.py summary                   # 生成每日摘要
+  python wechat_manager.py report                    # 生成管理报告
+        """
+    )
+    
+    subparsers = parser.add_subparsers(dest="command", help="可用命令")
+    
+    # status 命令
+    subparsers.add_parser("status", help="检查微信状态")
+    
+    # export 命令
+    export_parser = subparsers.add_parser("export", help="导出数据")
+    export_parser.add_argument("--contact", help="指定联系人")
+    export_parser.add_argument("--group", help="指定群组")
+    export_parser.add_argument("--format", choices=["json", "csv", "html"], 
+                               default="json", help="输出格式")
+    
+    # rfm 命令
+    rfm_parser = subparsers.add_parser("rfm", help="RFM价值分析")
+    rfm_parser.add_argument("--all", action="store_true", help="分析全部联系人")
+    rfm_parser.add_argument("--contact", help="指定联系人")
+    
+    # analyze 命令
+    analyze_parser = subparsers.add_parser("analyze", help="分析联系人/群组")
+    analyze_parser.add_argument("--contact", help="分析指定联系人")
+    analyze_parser.add_argument("--group", help="分析指定群组")
+    
+    # summary 命令
+    summary_parser = subparsers.add_parser("summary", help="生成每日摘要")
+    summary_parser.add_argument("--date", default="today", help="日期 (默认: today)")
+    
+    # report 命令
+    subparsers.add_parser("report", help="生成管理报告")
+    
+    # like 命令
+    like_parser = subparsers.add_parser("like", help="朋友圈点赞")
+    like_parser.add_argument("--target", required=True, help="目标联系人")
+    like_parser.add_argument("--count", type=int, default=5, help="点赞数量")
+    
+    # moments 命令
+    moments_parser = subparsers.add_parser("moments", help="朋友圈操作")
+    moments_parser.add_argument("--sync", action="store_true", help="同步朋友圈")
+    
+    args = parser.parse_args()
+    
+    # 初始化管理器
+    manager = WeChatManager()
+    
+    # 执行命令
+    if args.command == "status":
+        manager.print_status()
+        
+    elif args.command == "export":
+        print("⚠️  导出功能需要先配置数据库密钥")
+        print("   请参考 SKILL.md 中的解密方案")
+        
+    elif args.command == "rfm":
+        manager.generate_rfm_report()
+        
+    elif args.command == "analyze":
+        if args.contact:
+            manager.analyze_contact(args.contact)
+        elif args.group:
+            manager.analyze_group(args.group)
+        else:
+            print("❌ 请指定 --contact 或 --group 参数")
+            
+    elif args.command == "summary":
+        manager.generate_daily_summary(args.date)
+        
+    elif args.command == "report":
+        manager.generate_management_report()
+        
+    elif args.command == "like":
+        print("⚠️  朋友圈点赞功能暂未实现")
+        print("   此功能风险较高，建议谨慎使用")
+        
+    elif args.command == "moments":
+        print("⚠️  朋友圈同步功能需要先配置数据库密钥")
+        
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()
+
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/references/数据库结构.md
+  contents: # 微信数据库结构参考
+
+> macOS 微信本地数据库表结构说明
+
+---
+
+## 数据库文件位置
+
+```
+~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/
+└── [32位用户hash]/
+    ├── Message/
+    │   ├── msg_0.db         # 消息数据库 (按hash分片)
+    │   ├── msg_1.db
+    │   └── ...
+    ├── Contact/
+    │   └── wccontact_new2.db  # 联系人数据库
+    ├── Group/
+    │   └── group_new.db       # 群组数据库
+    └── Favorites/
+        └── favorites.db       # 收藏夹数据库
+```
+
+---
+
+## 消息表结构 (Message)
+
+### Chat_xxx 表
+
+每个联系人/群聊一个表，表名格式：`Chat_[md5hash]`
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| mesLocalID | INTEGER | 本地消息ID (主键) |
+| mesMesSvrID | INTEGER | 服务端消息ID |
+| msgCreateTime | INTEGER | 消息创建时间戳 (秒) |
+| msgContent | TEXT | 消息内容 |
+| msgType | INTEGER | 消息类型 |
+| msgStatus | INTEGER | 消息状态 |
+| msgImgStatus | INTEGER | 图片状态 |
+| mesDes | INTEGER | 消息方向 (0=发出, 1=收到) |
+| msgSource | TEXT | 消息来源 (XML格式) |
+
+### 消息类型 (msgType)
+
+| 值 | 类型 | 说明 |
+|:---|:-----|:-----|
+| 1 | 文本 | 普通文字消息 |
+| 3 | 图片 | 图片消息 |
+| 34 | 语音 | 语音消息 |
+| 42 | 名片 | 个人/公众号名片 |
+| 43 | 视频 | 视频消息 |
+| 47 | 表情 | 动态表情 |
+| 48 | 位置 | 地理位置 |
+| 49 | 链接 | 文章/小程序/文件等 |
+| 10000 | 系统 | 系统消息 |
+| 10002 | 撤回 | 撤回消息 |
+
+### 子类型 (用于 msgType=49)
+
+| 子类型 | 说明 |
+|:-------|:-----|
+| 1 | 链接 |
+| 3 | 音乐 |
+| 4 | 视频 |
+| 5 | 文章 |
+| 6 | 文件 |
+| 8 | 表情包 |
+| 19 | 聊天记录 |
+| 24 | 收藏笔记 |
+| 33/36 | 小程序 |
+| 57 | 引用消息 |
+| 63 | 视频号 |
+
+---
+
+## 联系人表结构 (Contact)
+
+### Friend 表
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| userName | TEXT | 微信ID (主键) |
+| alias | TEXT | 微信号 |
+| conRemark | TEXT | 备注名 |
+| nickName | TEXT | 昵称 |
+| pyInitial | TEXT | 拼音首字母 |
+| quanPin | TEXT | 全拼 |
+| type | INTEGER | 联系人类型 |
+| verifyFlag | INTEGER | 认证标志 |
+| imgStatus | INTEGER | 头像状态 |
+
+### 联系人类型 (type)
+
+| 值 | 说明 |
+|:---|:-----|
+| 1 | 好友 |
+| 2 | 群聊 |
+| 3 | 公众号 |
+| 4 | 服务号 |
+
+---
+
+## 群组表结构 (Group)
+
+### GroupMember 表
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| chatroomName | TEXT | 群ID |
+| memberName | TEXT | 成员微信ID |
+| displayName | TEXT | 群内昵称 |
+| inviterUserName | TEXT | 邀请者 |
+| memberFlag | INTEGER | 成员标志 |
+
+### ChatRoom 表
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| chatroomName | TEXT | 群ID (主键) |
+| memberList | TEXT | 成员列表 (分号分隔) |
+| roomOwner | TEXT | 群主微信ID |
+| memberCount | INTEGER | 成员数量 |
+| selfDisplayName | TEXT | 自己的群昵称 |
+| reserved1 | TEXT | 群公告 |
+
+---
+
+## 朋友圈表结构 (Moments)
+
+### Moment 表
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| snsId | INTEGER | 朋友圈ID (主键) |
+| userName | TEXT | 发布者微信ID |
+| createTime | INTEGER | 发布时间戳 |
+| content | TEXT | 内容 (JSON格式) |
+| mediaList | TEXT | 媒体列表 (JSON格式) |
+| likeList | TEXT | 点赞列表 |
+| commentList | TEXT | 评论列表 |
+
+### Comment 结构
+
+```json
+{
+    "commentId": "评论ID",
+    "createTime": 1642000000,
+    "userName": "评论者wxid",
+    "content": "评论内容",
+    "replyUserName": "回复对象wxid"
+}
+```
+
+---
+
+## 收藏夹表结构 (Favorites)
+
+### FavItems 表
+
+| 字段 | 类型 | 说明 |
+|:-----|:-----|:-----|
+| localId | INTEGER | 本地ID (主键) |
+| serverId | INTEGER | 服务器ID |
+| type | INTEGER | 收藏类型 |
+| localStatus | INTEGER | 本地状态 |
+| updateTime | INTEGER | 更新时间 |
+| xml | TEXT | 内容 (XML格式) |
+
+### 收藏类型
+
+| 值 | 说明 |
+|:---|:-----|
+| 1 | 文本 |
+| 2 | 图片 |
+| 3 | 语音 |
+| 4 | 视频 |
+| 5 | 链接/文章 |
+| 6 | 位置 |
+| 14 | 聊天记录 |
+| 17 | 笔记 |
+
+---
+
+## 查询示例
+
+### 获取所有聊天记录表
+
+```sql
+SELECT name FROM sqlite_master 
+WHERE type='table' AND name LIKE 'Chat_%';
+```
+
+### 查询指定时间范围消息
+
+```sql
+SELECT * FROM Chat_xxx 
+WHERE msgCreateTime BETWEEN 1640000000 AND 1650000000
+ORDER BY msgCreateTime DESC;
+```
+
+### 统计消息数量
+
+```sql
+SELECT COUNT(*) as count, 
+       DATE(msgCreateTime, 'unixepoch') as date
+FROM Chat_xxx
+GROUP BY date
+ORDER BY date DESC;
+```
+
+### 查询群成员
+
+```sql
+SELECT m.memberName, m.displayName, c.nickName
+FROM GroupMember m
+LEFT JOIN Friend c ON m.memberName = c.userName
+WHERE m.chatroomName = '群ID';
+```
+
+---
+
+## 加密参数
+
+### 微信 3.x (SQLCipher v3)
+
+```sql
+PRAGMA cipher_page_size = 1024;
+PRAGMA kdf_iter = 64000;
+PRAGMA cipher_hmac_algorithm = HMAC_SHA1;
+```
+
+### 微信 4.x (SQLCipher v4)
+
+```sql
+PRAGMA cipher_page_size = 4096;
+PRAGMA kdf_iter = 256000;
+PRAGMA cipher_hmac_algorithm = HMAC_SHA256;
+PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA256;
+```
+
+---
+
+## 参考资源
+
+- [wechat-decipher-macos](https://github.com/nalzok/wechat-decipher-macos) - macOS 微信解密工具
+- [chatlog](https://github.com/sjzar/chatlog) - 跨平台聊天记录工具
+- [PyWxDump](https://github.com/xaoyaoo/PyWxDump) - Python 微信导出工具
+
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/references/RFM模型说明.md
+  contents: # RFM 价值评估模型
+
+> 基于聊天记录的好友价值评估体系
+
+---
+
+## 模型概述
+
+RFM 模型源自营销领域，用于评估客户价值。我们将其适配到微信好友管理场景：
+
+| 维度 | 原义 | 微信场景含义 |
+|:-----|:-----|:-------------|
+| **R** (Recency) | 最近购买时间 | 最近联系时间 |
+| **F** (Frequency) | 购买频率 | 联系频率 |
+| **M** (Monetary) | 消费金额 | 潜在价值 |
+
+---
+
+## 评分规则
+
+### R - Recency（最近联系）
+
+衡量好友与你最近一次互动的时间距离。
+
+| 分值 | 天数 | 说明 |
+|:-----|:-----|:-----|
+| 5 | ≤7天 | 本周活跃 |
+| 4 | 8-30天 | 本月活跃 |
+| 3 | 31-90天 | 近期有联系 |
+| 2 | 91-180天 | 半年内联系 |
+| 1 | >180天 | 超过半年未联系 |
+
+### F - Frequency（联系频率）
+
+统计最近30天内的消息互动数量。
+
+| 分值 | 消息数 | 说明 |
+|:-----|:-------|:-----|
+| 5 | ≥50条 | 高频互动 |
+| 4 | 20-49条 | 经常联系 |
+| 3 | 10-19条 | 偶尔联系 |
+| 2 | 5-9条 | 很少联系 |
+| 1 | <5条 | 几乎不联系 |
+
+### M - Monetary（潜在价值）
+
+基于聊天内容中的关键词计算价值分。
+
+**高价值关键词 (+3分)**
+
+```
+合作、投资、采购、签约、付款、项目、需求、预算、订单
+```
+
+**中价值关键词 (+2分)**
+
+```
+咨询、了解、推荐、介绍、报价、方案、沟通、交流
+```
+
+**低价值关键词 (+1分)**
+
+```
+谢谢、感谢、帮忙、请教、学习
+```
+
+**负面关键词 (-1分)**
+
+```
+广告、推销、砍价、免费
+```
+
+**M值归一化**
+
+| 分值 | 关键词累计分 | 说明 |
+|:-----|:-------------|:-----|
+| 5 | ≥50分 | 极高价值 |
+| 4 | 30-49分 | 高价值 |
+| 3 | 15-29分 | 中价值 |
+| 2 | 5-14分 | 低价值 |
+| 1 | <5分 | 无明显价值 |
+
+---
+
+## 价值等级
+
+根据 R+F+M 总分（3-15分）划分等级：
+
+### ⭐⭐⭐⭐⭐ 钻石好友（13-15分）
+
+**特征**：
+- 近期频繁联系
+- 有明确合作意向或已合作
+- 高价值对话内容多
+
+**建议动作**：
+- 优先响应消息
+- 定期维护关系
+- 主动提供价值
+- 节日特别关怀
+
+### ⭐⭐⭐⭐ 黄金好友（10-12分）
+
+**特征**：
+- 定期保持联系
+- 有潜在合作可能
+- 互动质量较高
+
+**建议动作**：
+- 及时响应
+- 适时深化关系
+- 挖掘合作机会
+
+### ⭐⭐⭐ 普通好友（7-9分）
+
+**特征**：
+- 偶尔联系
+- 关系一般
+- 互动较少
+
+**建议动作**：
+- 正常响应
+- 节日问候
+- 保持基本联系
+
+### ⭐⭐ 沉默好友（4-6分）
+
+**特征**：
+- 长期不联系
+- 曾有互动但已减少
+- 可能有激活价值
+
+**建议动作**：
+- 定期激活尝试
+- 分析沉默原因
+- 考虑分组管理
+
+### ⭐ 僵尸好友（1-3分）
+
+**特征**：
+- 超长时间未联系
+- 几乎无互动
+- 价值关键词为零
+
+**建议动作**：
+- 评估是否保留
+- 考虑清理
+- 或归入备用池
+
+---
+
+## 实施步骤
+
+### 1. 数据采集
+
+```python
+# 从微信数据库提取
+contact_data = {
+    "name": "联系人名称",
+    "last_contact": "2026-01-20 15:30:00",
+    "messages": [
+        {"content": "合作方案收到了", "time": "2026-01-20"},
+        {"content": "好的，我们下周沟通", "time": "2026-01-19"},
+        # ...
+    ]
+}
+```
+
+### 2. 计算评分
+
+```python
+def calculate_rfm(contact_data):
+    # R 分计算
+    days_since = (now - last_contact).days
+    r_score = 5 if days_since <= 7 else 4 if days_since <= 30 else ...
+    
+    # F 分计算
+    msg_count = len(messages)
+    f_score = 5 if msg_count >= 50 else 4 if msg_count >= 20 else ...
+    
+    # M 分计算
+    value_score = sum(keyword_scores)
+    m_score = 5 if value_score >= 50 else 4 if value_score >= 30 else ...
+    
+    return {"R": r_score, "F": f_score, "M": m_score}
+```
+
+### 3. 生成报告
+
+```markdown
+## RFM 分析结果
+
+| 联系人 | R | F | M | 总分 | 等级 | 建议 |
+|:-------|:--|:--|:--|:-----|:-----|:-----|
+| 夏茜 | 5 | 4 | 5 | 14 | ⭐⭐⭐⭐⭐ | 重点维护 |
+| 李冰 | 4 | 3 | 4 | 11 | ⭐⭐⭐⭐ | 定期互动 |
+| 张三 | 2 | 1 | 1 | 4 | ⭐⭐ | 激活计划 |
+```
+
+---
+
+## 进阶应用
+
+### 1. 动态权重
+
+根据业务场景调整 R/F/M 权重：
+
+| 场景 | R权重 | F权重 | M权重 |
+|:-----|:------|:------|:------|
+| 销售型 | 30% | 30% | 40% |
+| 社交型 | 40% | 40% | 20% |
+| 合作型 | 20% | 30% | 50% |
+
+### 2. 分群策略
+
+```
+           高 M
+            │
+    沉睡大客户 ← → 重点维护
+            │
+低 R ───────┼─────── 高 R
+            │
+    考虑清理  ← → 潜在培养
+            │
+           低 M
+```
+
+### 3. 预警机制
+
+- **流失预警**：R值从5降到3，提醒主动联系
+- **降级预警**：总分下降超过3分，分析原因
+- **机会预警**：M值突然上升，可能有合作机会
+
+---
+
+## 自定义配置
+
+### 关键词配置
+
+```yaml
+# rfm_keywords.yaml
+high_value:  # +3分
+  - 合作
+  - 投资
+  - 签约
+  - 自定义关键词...
+
+medium_value:  # +2分
+  - 咨询
+  - 方案
+  - 自定义关键词...
+
+low_value:  # +1分
+  - 感谢
+  - 学习
+  - 自定义关键词...
+
+negative:  # -1分
+  - 广告
+  - 推销
+  - 自定义关键词...
+```
+
+### 分段配置
+
+```yaml
+# rfm_config.yaml
+recency:
+  - {days: 7, score: 5}
+  - {days: 30, score: 4}
+  - {days: 90, score: 3}
+  - {days: 180, score: 2}
+  - {days: 365, score: 1}
+
+frequency:
+  - {count: 50, score: 5}
+  - {count: 20, score: 4}
+  - {count: 10, score: 3}
+  - {count: 5, score: 2}
+  - {count: 0, score: 1}
+```
+
+---
+
+## 参考文献
+
+- [RFM 模型在客户价值分析中的应用](https://zh.wikipedia.org/wiki/RFM%E6%A8%A1%E5%9E%8B)
+- [私域运营的客户分层方法](https://mp.weixin.qq.com)
+
+
+[Tool result] Write
+
+[Tool result] Write
+
+[Tool result] Write
+
+assistant:
+现在创建开源工具对比文档和配置模板。
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/references/开源工具对比.md
+  contents: # 微信数据分析开源工具对比
+
+> 截至 2025/2026 年活跃的微信数据导出与分析工具
+
+---
+
+## 核心工具对比
+
+| 工具 | 平台 | 功能特点 | 推荐场景 | GitHub |
+|:-----|:-----|:---------|:---------|:-------|
+| **chatlog** | macOS/Windows | 自动解密、HTTP API、支持4.0 | ✅ macOS 首选 | sjzar/chatlog |
+| **wechat-decipher-macos** | macOS | DTrace脚本抓密钥 | 密钥获取 | nalzok/wechat-decipher-macos |
+| **WeChatMsg** | Windows | 界面还原、年报生成 | Windows 用户 | LC044/WeChatMsg |
+| **PyWxDump** | Windows | Python脚本、可定制 | 开发者 | xaoyaoo/PyWxDump |
+| **WechatBakTool** | Windows | C#应用、解密备份 | Windows 用户 | SuxueCode/WechatBakTool |
+
+---
+
+## macOS 推荐方案
+
+### 方案一：chatlog（推荐）
+
+**优点**：
+- 支持 macOS 和 Windows
+- 支持微信 3.x 和 4.x
+- 自动解密数据库
+- 提供命令行 UI 和 HTTP API
+- 活跃维护中
+
+**安装**：
+
+```bash
+# macOS
+brew install chatlog
+
+# 或下载二进制
+# https://github.com/sjzar/chatlog/releases
+```
+
+**使用**：
+
+```bash
+# 启动 HTTP API 服务
+chatlog server
+
+# 命令行模式
+chatlog cli
+```
+
+### 方案二：wechat-decipher-macos
+
+**优点**：
+- 专为 macOS 设计
+- 使用 DTrace 抓取密钥
+- 开源脚本可定制
+
+**缺点**：
+- 需要关闭 SIP
+- 需要手动操作
+
+**使用**：
+
+```bash
+# 1. 关闭 SIP（需重启到恢复模式）
+csrutil disable
+
+# 2. 运行 DTrace 脚本
+sudo dtrace -s dbcracker.d
+
+# 3. 登录微信，等待抓取密钥
+
+# 4. 使用密钥解密数据库
+```
+
+---
+
+## Windows 工具详情
+
+### WeChatMsg
+
+**功能亮点**：
+- 支持所有消息类型导出
+- 界面还原度高（类似微信聊天界面）
+- 生成年度聊天报告
+- 支持 Word/HTML/CSV/TXT 格式
+- MIT 开源协议
+
+**系统要求**：
+- Windows 64位
+- 微信 4.0+
+
+**使用限制**：
+- 不支持 macOS
+- 无法恢复已删除消息
+
+### PyWxDump
+
+**功能亮点**：
+- Python 编写，可移植性好
+- 支持多账户
+- 适合二次开发
+- 可用于 AI 训练数据
+
+**适合人群**：
+- 开发者
+- 需要自定义分析的用户
+
+---
+
+## 解密技术对比
+
+### 密钥获取方法
+
+| 方法 | 工具 | 难度 | 说明 |
+|:-----|:-----|:-----|:-----|
+| **LLDB 断点** | 系统自带 | ⭐⭐⭐ | 在 sqlite3_key 设断点 |
+| **DTrace 脚本** | wechat-decipher-macos | ⭐⭐ | 监控文件操作抓取 |
+| **内存扫描** | chatlog | ⭐ | 自动化处理 |
+
+### SQLCipher 版本
+
+| 微信版本 | SQLCipher | Page Size | KDF 迭代 |
+|:---------|:----------|:----------|:---------|
+| 3.x | v3 | 1024 | 64000 |
+| 4.x | v4 | 4096 | 256000 |
+
+---
+
+## 功能对比矩阵
+
+| 功能 | chatlog | WeChatMsg | PyWxDump |
+|:-----|:--------|:----------|:---------|
+| macOS 支持 | ✅ | ❌ | ❌ |
+| Windows 支持 | ✅ | ✅ | ✅ |
+| 自动解密 | ✅ | ✅ | ✅ |
+| 微信 4.x | ✅ | ✅ | ✅ |
+| 导出 JSON | ✅ | ✅ | ✅ |
+| 导出 HTML | ✅ | ✅ | ✅ |
+| 导出 Word | ❌ | ✅ | ❌ |
+| 年度报告 | ❌ | ✅ | ❌ |
+| HTTP API | ✅ | ❌ | ❌ |
+| 图片导出 | ✅ | ✅ | ✅ |
+| 语音导出 | ✅ | ✅ | ✅ |
+| 开发友好 | ✅ | ⚠️ | ✅ |
+
+---
+
+## 选择建议
+
+### macOS 用户
+
+```
+推荐路径：chatlog → 自动解密 → API 对接
+备选路径：wechat-decipher-macos → 手动解密 → 自定义脚本
+```
+
+### Windows 用户
+
+```
+推荐路径：WeChatMsg → 一键导出 → 年报生成
+开发路径：PyWxDump → 数据处理 → 自定义分析
+```
+
+### 跨平台需求
+
+```
+推荐工具：chatlog
+原因：同时支持 macOS/Windows，API 接口统一
+```
+
+---
+
+## 注意事项
+
+### 法律合规
+
+1. **仅限个人数据**：只能导出自己的微信数据
+2. **隐私保护**：导出数据需妥善保管
+3. **合规使用**：遵守微信服务协议
+
+### 技术风险
+
+1. **版本兼容**：微信更新可能导致工具失效
+2. **SIP 关闭**：降低系统安全性
+3. **密钥变化**：重新登录后密钥可能变化
+
+### 数据安全
+
+1. 导出的数据库包含敏感信息
+2. 建议加密存储
+3. 避免上传到公共云端
+
+---
+
+## 资源链接
+
+### GitHub 仓库
+
+- [chatlog](https://github.com/sjzar/chatlog)
+- [wechat-decipher-macos](https://github.com/nalzok/wechat-decipher-macos)
+- [WeChatMsg](https://github.com/LC044/WeChatMsg)
+- [PyWxDump](https://github.com/xaoyaoo/PyWxDump)
+- [WechatBakTool](https://github.com/SuxueCode/WechatBakTool)
+
+### 技术文档
+
+- [SQLCipher 官方文档](https://www.zetetic.net/sqlcipher/)
+- [微信数据库加密分析](https://cn-sec.com/archives/4197043.html)
+
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/scripts/config_template.yaml
+  contents: # 微信管理配置文件模板
+# 复制此文件到 ~/.config/wechat_manager/config.yaml 并修改
+
+# ============================================
+# 基础配置
+# ============================================
+
+# 微信数据路径（auto = 自动检测）
+wechat_data_path: auto
+
+# 输出目录
+output_dir: ~/Documents/微信管理
+
+# 数据库密钥（从解密工具获取，如 chatlog）
+# 格式：64位十六进制字符串
+db_key: ""
+
+# ============================================
+# RFM 配置
+# ============================================
+rfm:
+  # R值分段（天数）
+  recency_days:
+    - 7      # 5分：7天内
+    - 30     # 4分：30天内
+    - 90     # 3分：90天内
+    - 180    # 2分：180天内
+    - 365    # 1分：365天内
+
+  # F值分段（消息数）
+  frequency_count:
+    - 50     # 5分：50条以上
+    - 20     # 4分：20条以上
+    - 10     # 3分：10条以上
+    - 5      # 2分：5条以上
+    - 1      # 1分：1条以上
+
+  # 价值权重
+  value_weight:
+    recency: 0.3
+    frequency: 0.4
+    monetary: 0.3
+
+  # 关键词配置
+  keywords:
+    high_value:     # +3分
+      - 合作
+      - 投资
+      - 采购
+      - 签约
+      - 付款
+      - 项目
+      - 需求
+      - 预算
+      - 订单
+
+    medium_value:   # +2分
+      - 咨询
+      - 了解
+      - 推荐
+      - 介绍
+      - 报价
+      - 方案
+      - 沟通
+      - 交流
+
+    low_value:      # +1分
+      - 谢谢
+      - 感谢
+      - 帮忙
+      - 请教
+      - 学习
+
+    negative:       # -1分
+      - 广告
+      - 推销
+      - 砍价
+      - 免费
+
+# ============================================
+# 导出配置
+# ============================================
+export:
+  # 默认导出格式
+  default_format: json  # json / csv / html
+
+  # 是否包含媒体文件
+  include_media: false
+
+  # 时间范围（null = 全部）
+  start_date: null
+  end_date: null
+
+  # 指定导出的群
+  include_groups: []
+    # - "创业者交流群"
+    # - "私域运营群"
+
+  # 指定导出的联系人
+  include_contacts: []
+    # - "夏茜"
+    # - "李冰"
+
+# ============================================
+# 自动化配置
+# ============================================
+automation:
+  # 每日摘要
+  daily_summary:
+    enabled: true
+    time: "07:00"
+
+  # RFM 更新
+  rfm_update:
+    enabled: true
+    time: "23:00"
+
+  # 朋友圈同步
+  moments_sync:
+    enabled: false
+    time: "12:00"
+
+  # 自动点赞
+  auto_like:
+    enabled: false
+    targets: []
+    max_per_day: 50
+    interval_seconds: [60, 180]  # 随机间隔
+
+  # 自动评论
+  auto_comment:
+    enabled: false
+    templates:
+      - "👍"
+      - "学习了"
+      - "太棒了！"
+      - "感谢分享"
+    targets: []
+
+# ============================================
+# 提醒配置
+# ============================================
+alerts:
+  # 关键词提醒
+  keywords:
+    - 付款
+    - 签约
+    - 紧急
+    - "@我"
+
+  # VIP联系人提醒
+  vip_contacts:
+    # - "夏茜"
+    # - "李冰"
+
+  # 提醒方式
+  notify:
+    system: true      # 系统通知
+    sound: true       # 声音提醒
+    email: false      # 邮件提醒
+
+# ============================================
+# AI 配置
+# ============================================
+ai:
+  # 使用的 AI 服务
+  provider: gemini  # openai / gemini / local
+
+  # API 密钥
+  api_key: ""
+
+  # 模型选择
+  model: gemini-pro
+
+  # 功能开关
+  features:
+    daily_summary: true    # AI 生成每日摘要
+    chat_insights: true    # AI 聊天洞察
+    reply_suggest: false   # AI 回复建议
+
+# ============================================
+# 安全配置
+# ============================================
+security:
+  # 操作前自动备份
+  backup_before_change: true
+
+  # 每日自动操作上限
+  max_auto_actions: 100
+
+  # 试运行模式（不实际执行）
+  dry_run: true
+
+  # 敏感词过滤（导出时隐藏）
+  sensitive_words: []
+
+# ============================================
+# 调试配置
+# ============================================
+debug:
+  enabled: false
+  log_level: INFO  # DEBUG / INFO / WARNING / ERROR
+  log_file: ~/Documents/微信管理/logs/wechat_manager.log
+
+
+[Tool result] Write
+
+[Tool result] Write
+
+assistant:
+现在测试一下主脚本能否正常运行。
+[Tool call] Shell
+  command: cd "/Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/scripts" && python3 wechat_manager.py status
+  description: 测试微信管理脚本状态检查
+
+[Tool result] Shell
+
+assistant:
+脚本运行正常。检测到你的微信是 4.1.5 版本，正在运行中。现在生成一份管理报告试试。
+[Tool call] Shell
+  command: cd "/Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/scripts" && python3 wechat_manager.py report
+  description: 生成微信管理报告
+
+[Tool result] Shell
+
+assistant:
+现在更新工作台索引，把这个新技能加进去。
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/00_工作台索引.md
+
+[Tool result] Read
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_工作台索引.md
+  old_string: # 卡若AI 工作台
+
+> 卡若的个人 MacBook 智能管家 | 16个Skills全覆盖
+  new_string: # 卡若AI 工作台
+
+> 卡若的个人 MacBook 智能管家 | 17个Skills全覆盖
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_工作台索引.md
+  old_string: │ │系统  │      │开发  │       │知识  │       │效率  │       │安全  │   │
+│ │管理层│      │辅助层│       │管理层│       │工具层│       │保障层│   │
+│ │ 5个  │      │ 3个  │       │ 3个  │       │ 3个  │       │ 1个  │   │
+  new_string: │ │系统  │      │开发  │       │知识  │       │效率  │       │安全  │   │
+│ │管理层│      │辅助层│       │管理层│       │工具层│       │保障层│   │
+│ │ 6个  │      │ 3个  │       │ 3个  │       │ 3个  │       │ 2个  │   │
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_工作台索引.md
+  old_string: | **系统监控** | 系统状态、杀进程、端口占用 | 监控诊断、进程管理 |
+
+### 💻 开发辅助层
+  new_string: | **系统监控** | 系统状态、杀进程、端口占用 | 监控诊断、进程管理 |
+| **微信管理** | 微信分析、聊天记录、RFM分析 | 好友价值评估、社群分析、朋友圈自动化 |
+
+### 💻 开发辅助层
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_工作台索引.md
+  old_string: | **容灾备份** | 备份代码、创建快照、git stash | 大改动前自动Git快照 |
+
+---
+
+## ⚡ 快速指令示例
+  new_string: | **容灾备份** | 备份代码、创建快照、git stash | 大改动前自动Git快照 |
+| **局域网控制** | 设备管理、局域网扫描 | 局域网设备发现与管理 |
+
+---
+
+## ⚡ 快速指令示例
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_工作台索引.md
+  old_string: ### 系统管理
+```
+帮我清理磁盘空间
+优化 iCloud 同步
+查看系统状态
+杀死占用端口3000的进程
+```
+  new_string: ### 系统管理
+```
+帮我清理磁盘空间
+优化 iCloud 同步
+查看系统状态
+杀死占用端口3000的进程
+分析我的微信好友
+生成微信RFM报告
+```
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_工作台索引.md
+  old_string: || 日期 | 操作 |
+||------|------|
+|| 2026-01-21 | Skills扩展到16个：新增网站逆向分析（基于存客宝技术架构，自动分析网站接口，生成SDK和API服务） |
+  new_string: || 日期 | 操作 |
+||------|------|
+|| 2026-01-22 | Skills扩展到17个：新增微信管理（聊天记录导出、好友RFM价值评估、社群分析、朋友圈自动化） |
+|| 2026-01-21 | Skills扩展到16个：新增网站逆向分析（基于存客宝技术架构，自动分析网站接口，生成SDK和API服务） |
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_工作台索引.md
+  old_string: | 日期 | 操作 |
+|------|------|
+| 2026-01-21 | Skills扩展到16个：新增网站逆向分析（基于存客宝技术架构，自动分析网站接口，生成SDK和API服务） |
+| 2026-01-21 | Skills扩展到15个：新增流量自动化（整合优酷顶贴器、LKD.RESETCOMPUTER、百度SEO三个历史项目） |
+  new_string: | 日期 | 操作 |
+|------|------|
+| 2026-01-22 | Skills扩展到17个：新增微信管理（聊天记录导出、好友RFM价值评估、社群分析、朋友圈自动化） |
+| 2026-01-21 | Skills扩展到16个：新增网站逆向分析（基于存客宝技术架构，自动分析网站接口，生成SDK和API服务） |
+| 2026-01-21 | Skills扩展到15个：新增流量自动化（整合优酷顶贴器、LKD.RESETCOMPUTER、百度SEO三个历史项目） |
+
+[Tool result] StrReplace
+
+assistant:
+微信管理 Skill v1.0 已创建完成。我来展示一下目录结构和功能概览。
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理
+
+[Tool result] LS
+
+assistant:
+微信管理 Skill v1.0 已创建完成！
+
+## 功能架构
+
+```
+微信管理 Skill
+├── 数据采集 ──────────── 解密数据库、获取好友列表、群组信息
+├── 内容管理 ──────────── 聊天记录导出、朋友圈保存、内容归档
+├── AI 分析 ───────────── RFM价值评估、社群画像、每日摘要
+└── 行为操作 ──────────── 朋友圈点赞、自动评论（风险较高，默认关闭）
+```
+
+## 创建的文件
+
+| 文件 | 说明 |
+|:-----|:-----|
+| `SKILL.md` | 技能主文档，完整说明四大模块功能 |
+| `scripts/wechat_manager.py` | 主程序脚本，已测试可运行 |
+| `scripts/config_template.yaml` | 配置文件模板 |
+| `references/数据库结构.md` | 微信数据库表结构参考 |
+| `references/RFM模型说明.md` | RFM价值评估模型详解 |
+| `references/开源工具对比.md` | macOS/Windows 工具对比 |
+
+## 测试结果
+
+```
+📱 微信状态检查
+==================================================
+微信进程：✅ 运行中
+微信版本：4.1.5
+数据目录：✅ 已找到
+数据大小：18M
+==================================================
+📌 检测到微信 4.x 版本，使用 SQLCipher v4 加密
+```
+
+## 下一步
+
+要完整使用此功能，需要：
+
+1. **获取数据库密钥**：推荐使用 `chatlog` 工具（`brew install chatlog`）
+2. **配置密钥**：复制 `config_template.yaml` 到 `~/.config/wechat_manager/config.yaml` 并填入密钥
+3. **运行分析**：`python wechat_manager.py rfm` 生成 RFM 报告
+
+触发词：`微信分析`、`聊天记录`、`好友分析`、`RFM分析`、`社群分析`
+
+user:
+<user_query>
+下一步
+</user_query>
+
+assistant:
+我来帮你执行下一步：安装 `chatlog` 工具并获取数据库密钥。
+[Tool call] Shell
+  command: which chatlog 2>/dev/null || echo "未安装"
+  description: 检查 chatlog 是否已安装
+[Tool call] Shell
+  command: brew search chatlog 2>/dev/null | head -5
+  description: 搜索 homebrew 中的 chatlog
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+assistant:
+`chatlog` 不在 homebrew 默认仓库中，需要从 GitHub 下载。
+[Tool call] WebSearch
+  search_term: chatlog sjzar github releases macOS arm64 download 2025
+  explanation: 搜索 chatlog 工具的下载地址
+
+[Tool result] WebSearch
+
+assistant:
+`chatlog` 项目已下架。让我搜索其他可用的 macOS 微信解密工具。
+[Tool call] WebSearch
+  search_term: macOS 微信数据库解密工具 wechat-decipher-macos 2025 2026
+  explanation: 搜索其他可用的 macOS 微信解密工具
+[Tool call] WebSearch
+  search_term: PyWxDump macOS 微信 聊天记录导出 2025
+  explanation: 搜索 PyWxDump 是否支持 macOS
+
+[Tool result] WebSearch
+
+[Tool result] WebSearch
+
+user:
+<user_query>
+继续
+</user_query>
+
+assistant:
+好的，主流工具（chatlog、PyWxDump）都已下架。现在使用 `wechat-decipher-macos` 方案，通过 LLDB 获取密钥。
+[Tool call] Shell
+  command: csrutil status
+  description: 检查 SIP 状态
+[Tool call] Shell
+  command: which lldb
+  description: 检查 lldb 是否可用
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+assistant:
+SIP 已启用，这会限制 LLDB 调试微信进程。让我创建一个解密指南脚本，并检查是否有替代方案。
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/scripts/get_wechat_key.py
+  contents: #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+微信数据库密钥获取脚本
+
+由于 SIP 保护，直接通过脚本获取密钥比较困难。
+本脚本提供引导式操作流程。
+
+使用方法:
+    python get_wechat_key.py
+"""
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+# ANSI 颜色
+GREEN = '\033[92m'
+YELLOW = '\033[93m'
+RED = '\033[91m'
+BLUE = '\033[94m'
+RESET = '\033[0m'
+BOLD = '\033[1m'
+
+
+def print_step(num, text):
+    print(f"\n{BLUE}{BOLD}[步骤 {num}]{RESET} {text}")
+
+
+def print_info(text):
+    print(f"  {GREEN}✓{RESET} {text}")
+
+
+def print_warn(text):
+    print(f"  {YELLOW}⚠{RESET} {text}")
+
+
+def print_error(text):
+    print(f"  {RED}✗{RESET} {text}")
+
+
+def check_sip_status():
+    """检查 SIP 状态"""
+    try:
+        result = subprocess.run(
+            ["csrutil", "status"],
+            capture_output=True, text=True
+        )
+        return "enabled" in result.stdout.lower()
+    except Exception:
+        return True
+
+
+def check_wechat_running():
+    """检查微信是否运行"""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-x", "WeChat"],
+            capture_output=True, text=True
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def get_wechat_pid():
+    """获取微信进程 PID"""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-x", "WeChat"],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return None
+
+
+def main():
+    print(f"""
+{BOLD}╔══════════════════════════════════════════════════════════════╗
+║           微信数据库密钥获取指南 (macOS)                      ║
+╚══════════════════════════════════════════════════════════════╝{RESET}
+""")
+
+    # 检查环境
+    print(f"{BOLD}环境检查:{RESET}")
+    
+    sip_enabled = check_sip_status()
+    if sip_enabled:
+        print_warn("SIP 已启用 - 需要特殊权限才能调试微信进程")
+    else:
+        print_info("SIP 已禁用 - 可以使用 LLDB 调试")
+    
+    wechat_running = check_wechat_running()
+    if wechat_running:
+        pid = get_wechat_pid()
+        print_info(f"微信正在运行 (PID: {pid})")
+    else:
+        print_warn("微信未运行")
+
+    # 方案选择
+    print(f"""
+{BOLD}可用方案:{RESET}
+
+  {GREEN}方案 A{RESET}: LLDB 断点法 (推荐，需要 SIP 关闭或开发者权限)
+  {YELLOW}方案 B{RESET}: 签名微信应用 (无需关闭 SIP，但较复杂)
+  {BLUE}方案 C{RESET}: 使用已解密数据库 (如果之前导出过)
+""")
+
+    if sip_enabled:
+        print(f"""
+{YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{RESET}
+{BOLD}当前 SIP 已启用，推荐使用方案 B 或先尝试方案 A{RESET}
+{YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{RESET}
+""")
+
+    # 方案 A 详细步骤
+    print(f"""
+{BOLD}══════════════════════════════════════════════════════════════
+方案 A: LLDB 断点法
+══════════════════════════════════════════════════════════════{RESET}
+""")
+
+    print_step(1, "完全退出微信")
+    print("""
+    在 Dock 栏右键微信 → 退出
+    或终端执行: killall WeChat
+""")
+
+    print_step(2, "重新打开微信，但不要登录")
+    print("""
+    打开微信应用，停留在登录界面，不要扫码或输入密码
+""")
+
+    print_step(3, "打开新终端窗口，附加 LLDB 调试器")
+    print(f"""
+    {BLUE}# 复制以下命令到终端执行:{RESET}
+    lldb -p $(pgrep -x WeChat)
+    
+    {YELLOW}# 如果提示权限不足，可能需要:{RESET}
+    sudo lldb -p $(pgrep -x WeChat)
+""")
+
+    print_step(4, "在 LLDB 中设置断点")
+    print(f"""
+    {BLUE}# 在 LLDB 提示符 (lldb) 下输入:{RESET}
+    (lldb) br set -n sqlite3_key
+    
+    {GREEN}# 应该看到类似输出:{RESET}
+    Breakpoint 1: where = libsqlcipher.dylib`sqlite3_key ...
+""")
+
+    print_step(5, "继续执行并登录微信")
+    print(f"""
+    {BLUE}# 在 LLDB 中输入:{RESET}
+    (lldb) c
+    
+    然后在微信界面扫码登录
+""")
+
+    print_step(6, "断点触发后读取密钥")
+    print(f"""
+    {GREEN}# 登录成功后，LLDB 会自动暂停，显示类似:{RESET}
+    Process XXXXX stopped
+    * thread #1 ...
+    
+    {BLUE}# 然后输入以下命令读取密钥:{RESET}
+    (lldb) memory read --size 1 --format x --count 32 $rsi
+    
+    {GREEN}# 输出示例 (这就是你的密钥):{RESET}
+    0x12345678: 0xab 0xcd 0xef 0x12 0x34 0x56 0x78 0x9a
+    0x12345680: 0xbc 0xde 0xf0 0x12 0x34 0x56 0x78 0x9a
+    0x12345688: 0xcd 0xef 0x01 0x23 0x45 0x67 0x89 0xab
+    0x12345690: 0xde 0xf0 0x12 0x34 0x56 0x78 0x9a 0xbc
+""")
+
+    print_step(7, "保存密钥并退出")
+    print(f"""
+    {BLUE}# 将上面的十六进制值去掉 0x 和空格，拼接成一个字符串:{RESET}
+    abcdef123456789abcdef0123456789abcdef0123456789abcdef0123456789abc
+    
+    {BLUE}# 退出 LLDB:{RESET}
+    (lldb) quit
+    
+    {GREEN}# 将密钥保存到配置文件:{RESET}
+    复制密钥到 ~/.config/wechat_manager/config.yaml 的 db_key 字段
+""")
+
+    # 方案 B
+    print(f"""
+{BOLD}══════════════════════════════════════════════════════════════
+方案 B: 重签名微信 (无需关闭 SIP)
+══════════════════════════════════════════════════════════════{RESET}
+""")
+
+    print_step(1, "创建签名文件")
+    print(f"""
+    {BLUE}# 创建 entitlements.plist 文件:{RESET}
+    
+    cat > /tmp/entitlements.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.get-task-allow</key>
+    <true/>
+</dict>
+</plist>
+EOF
+""")
+
+    print_step(2, "备份并重签名微信")
+    print(f"""
+    {BLUE}# 备份原版微信:{RESET}
+    cp -r /Applications/WeChat.app /Applications/WeChat_backup.app
+    
+    {BLUE}# 重签名 (需要 Xcode Command Line Tools):{RESET}
+    codesign --force --deep --sign - --entitlements /tmp/entitlements.plist /Applications/WeChat.app
+    
+    {YELLOW}# 注意: 重签名后微信可能无法自动更新，需要时可恢复备份{RESET}
+""")
+
+    print_step(3, "按方案 A 步骤 3-7 操作")
+    print("""
+    重签名后，LLDB 调试应该不再需要关闭 SIP
+""")
+
+    # 验证密钥
+    print(f"""
+{BOLD}══════════════════════════════════════════════════════════════
+验证密钥是否正确
+══════════════════════════════════════════════════════════════{RESET}
+""")
+
+    print(f"""
+    获取密钥后，可以用以下方式验证:
+    
+    {BLUE}# 1. 安装 sqlcipher{RESET}
+    brew install sqlcipher
+    
+    {BLUE}# 2. 找到微信数据库文件{RESET}
+    find ~/Library/Containers/com.tencent.xinWeChat -name "*.db" 2>/dev/null | head -5
+    
+    {BLUE}# 3. 尝试解密打开{RESET}
+    sqlcipher /path/to/your/wechat.db
+    
+    {GREEN}# 在 sqlcipher 提示符下输入:{RESET}
+    PRAGMA key = "x'你的64位十六进制密钥'";
+    PRAGMA cipher_page_size = 4096;  -- 微信 4.x
+    PRAGMA kdf_iter = 256000;
+    PRAGMA cipher_hmac_algorithm = HMAC_SHA256;
+    PRAGMA cipher_kdf_algorithm = PBKDF2_HMAC_SHA256;
+    
+    {GREEN}# 测试是否解密成功:{RESET}
+    SELECT name FROM sqlite_master WHERE type='table' LIMIT 5;
+    
+    {GREEN}# 如果显示表名，说明密钥正确！{RESET}
+""")
+
+    # 常见问题
+    print(f"""
+{BOLD}══════════════════════════════════════════════════════════════
+常见问题
+══════════════════════════════════════════════════════════════{RESET}
+
+{YELLOW}Q: LLDB 提示 "attach failed" 或权限不足?{RESET}
+A: 1. 确保使用 sudo lldb
+   2. 考虑使用方案 B 重签名微信
+   3. 或在恢复模式下关闭 SIP: csrutil disable
+
+{YELLOW}Q: 断点没有触发?{RESET}
+A: 1. 确保微信是先打开再附加 LLDB
+   2. 断点设置后要输入 c 继续
+   3. 登录时才会调用 sqlite3_key
+
+{YELLOW}Q: 密钥解密失败?{RESET}
+A: 1. 确认微信版本 (3.x 用 v3 参数，4.x 用 v4 参数)
+   2. 检查密钥长度是否为 64 位十六进制
+   3. 确保没有多余的空格或字符
+
+{YELLOW}Q: 如何恢复重签名的微信?{RESET}
+A: rm -rf /Applications/WeChat.app
+   mv /Applications/WeChat_backup.app /Applications/WeChat.app
+""")
+
+    print(f"""
+{BOLD}══════════════════════════════════════════════════════════════{RESET}
+完成后，运行以下命令生成报告:
+  python wechat_manager.py report
+{BOLD}══════════════════════════════════════════════════════════════{RESET}
+""")
+
+
+if __name__ == "__main__":
+    main()
+
+
+[Tool result] Write
+
+assistant:
+[Tool call] Shell
+  command: python3 "/Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/scripts/get_wechat_key.py"
+  description: 运行密钥获取指南脚本
+  timeout: 60000
+
+[Tool result] Shell
+
+assistant:
+指南已生成。现在检查 sqlcipher 是否已安装，并创建配置目录。
+[Tool call] Shell
+  command: which sqlcipher 2>/dev/null || echo "未安装"
+  description: 检查 sqlcipher 是否已安装
+[Tool call] Shell
+  command: mkdir -p ~/.config/wechat_manager && cp "/Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/scripts/config_template.yaml" ~/.config/wechat_manager/config.yaml && echo "配置文件已创建"
+  description: 创建配置目录并复制模板
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: brew install sqlcipher
+  description: 安装 sqlcipher 数据库解密工具
+  timeout: 120000
+
+[Tool result] Shell
+
+assistant:
+sqlcipher 已安装。现在查找微信数据库文件位置。
+[Tool call] Shell
+  command: find ~/Library/Containers/com.tencent.xinWeChat -name "*.db" 2>/dev/null | head -10
+  description: 查找微信数据库文件
+
+[Tool result] Shell
+
+assistant:
+这些都是小程序相关的数据库。让我查找消息数据库（通常在 Message 目录）。
+[Tool call] Shell
+  command: find ~/Library/Containers/com.tencent.xinWeChat -type d -name "Message" 2>/dev/null
+  description: 查找 Message 目录
+[Tool call] Shell
+  command: ls -la ~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application\ Support/ 2>/dev/null | head -10
+  description: 查看 Application Support 目录
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+assistant:
+找到了 Message 目录。让我查看里面有什么文件。
+[Tool call] Shell
+  command: ls -la "/Users/karuo/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support/com.tencent.xinWeChat/2.0b4.0.9/d41d8cd98f00b204e9800998ecf8427e/Message/" 2>/dev/null | head -20
+  description: 查看 Message 目录内容
+
+[Tool result] Shell
+
+assistant:
+看起来消息数据库文件可能在登录用户目录下。让我进一步查找。
+[Tool call] Shell
+  command: find ~/Library/Containers/com.tencent.xinWeChat -name "msg*.db" -o -name "wccontact*.db" -o -name "*Chat*.db" 2>/dev/null | head -20
+  description: 查找消息和联系人数据库
+[Tool call] Shell
+  command: ls -la ~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application\ Support/com.tencent.xinWeChat/ 2>/dev/null
+  description: 查看微信数据目录结构
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: ls -la ~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application\ Support/com.tencent.xinWeChat/2.0b4.0.9/ 2>/dev/null
+  description: 查看微信用户数据目录
+
+[Tool result] Shell
+
+assistant:
+`d41d8cd98f00b204e9800998ecf8427e` 这个目录名是空字符串的 MD5 值，说明这个微信可能没有登录过或数据还没有同步。让我检查这个目录。
+[Tool call] Shell
+  command: ls -laR ~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application\ Support/com.tencent.xinWeChat/2.0b4.0.9/d41d8cd98f00b204e9800998ecf8427e/ 2>/dev/null | head -50
+  description: 查看用户数据目录详情
+
+[Tool result] Shell
+
+assistant:
+看来这台电脑的微信数据目录结构不太标准，数据库文件可能在其他位置。让我全面搜索一下。
+[Tool call] Shell
+  command: find ~/Library/Containers/com.tencent.xinWeChat -type f -name "*.db" -size +100k 2>/dev/null | head -20
+  description: 搜索大于 100KB 的数据库文件
+[Tool call] Shell
+  command: du -sh ~/Library/Containers/com.tencent.xinWeChat/Data/ 2>/dev/null
+  description: 查看微信数据总大小
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+assistant:
+太好了！找到了真实的数据库文件！微信 4.x 的数据结构在 `xwechat_files` 目录下。让我查看详细信息。
+[Tool call] Shell
+  command: ls -lh ~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/udbfnvtk_6a33/db_storage/
+  description: 查看数据库存储目录结构
+[Tool call] Shell
+  command: ls -lh ~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/udbfnvtk_6a33/db_storage/message/
+  description: 查看消息数据库文件大小
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+assistant:
+完美！找到了丰富的微信数据：
+- **message_0.db - message_6.db**：聊天记录数据库（最大 2.3GB）
+- **contact.db**：联系人数据库
+- **sns.db**：朋友圈数据库
+- **message_fts.db**：全文搜索索引
+
+现在更新脚本，记录正确的数据库路径。
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/scripts/wechat_manager.py
+  old_string: # 微信数据路径
+WECHAT_CONTAINER = os.path.expanduser(
+    "~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support"
+)
+  new_string: # 微信数据路径
+WECHAT_CONTAINER = os.path.expanduser(
+    "~/Library/Containers/com.tencent.xinWeChat/Data/Library/Application Support"
+)
+
+# 微信 4.x 新数据路径
+WECHAT_DATA_V4 = os.path.expanduser(
+    "~/Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files"
+)
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/scripts/wechat_manager.py
+  old_string:     def _find_wechat_data(self) -> Optional[Path]:
+        """查找微信数据目录"""
+        container = Path(WECHAT_CONTAINER)
+        if not container.exists():
+            return None
+            
+        # 查找消息数据库目录
+        for item in container.iterdir():
+            if item.is_dir() and len(item.name) == 32:  # 微信用户目录是32位hash
+                return item
+        return None
+  new_string:     def _find_wechat_data(self) -> Optional[Path]:
+        """查找微信数据目录"""
+        # 优先查找 4.x 版本数据路径
+        v4_path = Path(WECHAT_DATA_V4)
+        if v4_path.exists():
+            for item in v4_path.iterdir():
+                if item.is_dir() and item.name.startswith("udbfnvtk"):
+                    db_storage = item / "db_storage"
+                    if db_storage.exists():
+                        return db_storage
+        
+        # 回退到旧版本路径
+        container = Path(WECHAT_CONTAINER)
+        if not container.exists():
+            return None
+            
+        # 查找消息数据库目录
+        for item in container.iterdir():
+            if item.is_dir() and len(item.name) == 32:  # 微信用户目录是32位hash
+                return item
+        return None
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+现在更新状态检查函数，添加更详细的数据库信息。
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/scripts/wechat_manager.py
+  old_string:     def check_status(self) -> Dict[str, Any]:
+        """检查微信状态"""
+        status = {
+            "wechat_running": False,
+            "data_found": False,
+            "data_size": "0",
+            "db_count": 0,
+            "wechat_version": "未知",
+            "last_modified": None
+        }
+        
+        # 检查微信进程
+        try:
+            result = subprocess.run(
+                ["pgrep", "-x", "WeChat"],
+                capture_output=True, text=True
+            )
+            status["wechat_running"] = result.returncode == 0
+        except Exception:
+            pass
+        
+        # 检查微信版本
+        try:
+            result = subprocess.run(
+                ["defaults", "read", "/Applications/WeChat.app/Contents/Info.plist", 
+                 "CFBundleShortVersionString"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                status["wechat_version"] = result.stdout.strip()
+        except Exception:
+            pass
+        
+        # 检查数据目录
+        container = Path(WECHAT_CONTAINER)
+        if container.exists():
+            status["data_found"] = True
+            
+            # 计算数据大小
+            try:
+                result = subprocess.run(
+                    ["du", "-sh", str(container.parent)],
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    status["data_size"] = result.stdout.split()[0]
+            except Exception:
+                pass
+            
+            # 统计数据库文件
+            try:
+                db_files = list(container.rglob("*.db"))
+                status["db_count"] = len(db_files)
+                
+                # 获取最后修改时间
+                if db_files:
+                    latest = max(db_files, key=lambda x: x.stat().st_mtime)
+                    status["last_modified"] = datetime.fromtimestamp(
+                        latest.stat().st_mtime
+                    ).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+        
+        return status
+  new_string:     def check_status(self) -> Dict[str, Any]:
+        """检查微信状态"""
+        status = {
+            "wechat_running": False,
+            "data_found": False,
+            "data_size": "0",
+            "db_count": 0,
+            "wechat_version": "未知",
+            "last_modified": None,
+            "message_dbs": [],
+            "contact_db": None,
+            "sns_db": None,
+            "data_path": None
+        }
+        
+        # 检查微信进程
+        try:
+            result = subprocess.run(
+                ["pgrep", "-x", "WeChat"],
+                capture_output=True, text=True
+            )
+            status["wechat_running"] = result.returncode == 0
+        except Exception:
+            pass
+        
+        # 检查微信版本
+        try:
+            result = subprocess.run(
+                ["defaults", "read", "/Applications/WeChat.app/Contents/Info.plist", 
+                 "CFBundleShortVersionString"],
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                status["wechat_version"] = result.stdout.strip()
+        except Exception:
+            pass
+        
+        # 检查 4.x 版本数据目录
+        v4_path = Path(WECHAT_DATA_V4)
+        if v4_path.exists():
+            for item in v4_path.iterdir():
+                if item.is_dir() and item.name.startswith("udbfnvtk"):
+                    db_storage = item / "db_storage"
+                    if db_storage.exists():
+                        status["data_found"] = True
+                        status["data_path"] = str(db_storage)
+                        
+                        # 计算数据大小
+                        try:
+                            result = subprocess.run(
+                                ["du", "-sh", str(item)],
+                                capture_output=True, text=True
+                            )
+                            if result.returncode == 0:
+                                status["data_size"] = result.stdout.split()[0]
+                        except Exception:
+                            pass
+                        
+                        # 查找消息数据库
+                        msg_dir = db_storage / "message"
+                        if msg_dir.exists():
+                            msg_dbs = sorted(msg_dir.glob("message_*.db"))
+                            status["message_dbs"] = [
+                                {"name": db.name, "size": f"{db.stat().st_size / 1024 / 1024:.1f}MB"}
+                                for db in msg_dbs if not db.name.endswith("fts.db")
+                            ]
+                            status["db_count"] = len(msg_dbs)
+                        
+                        # 查找联系人数据库
+                        contact_db = db_storage / "contact" / "contact.db"
+                        if contact_db.exists():
+                            status["contact_db"] = str(contact_db)
+                        
+                        # 查找朋友圈数据库
+                        sns_db = db_storage / "sns" / "sns.db"
+                        if sns_db.exists():
+                            status["sns_db"] = str(sns_db)
+                        
+                        # 获取最后修改时间
+                        try:
+                            db_files = list(db_storage.rglob("*.db"))
+                            if db_files:
+                                latest = max(db_files, key=lambda x: x.stat().st_mtime)
+                                status["last_modified"] = datetime.fromtimestamp(
+                                    latest.stat().st_mtime
+                                ).strftime("%Y-%m-%d %H:%M:%S")
+                        except Exception:
+                            pass
+                        break
+        
+        # 回退检查旧版本
+        if not status["data_found"]:
+            container = Path(WECHAT_CONTAINER)
+            if container.exists():
+                status["data_found"] = True
+                try:
+                    result = subprocess.run(
+                        ["du", "-sh", str(container.parent)],
+                        capture_output=True, text=True
+                    )
+                    if result.returncode == 0:
+                        status["data_size"] = result.stdout.split()[0]
+                except Exception:
+                    pass
+                
+                try:
+                    db_files = list(container.rglob("*.db"))
+                    status["db_count"] = len(db_files)
+                    if db_files:
+                        latest = max(db_files, key=lambda x: x.stat().st_mtime)
+                        status["last_modified"] = datetime.fromtimestamp(
+                            latest.stat().st_mtime
+                        ).strftime("%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    pass
+        
+        return status
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/scripts/wechat_manager.py
+  old_string:     def print_status(self):
+        """打印微信状态"""
+        status = self.check_status()
+        
+        print("\n📱 微信状态检查")
+        print("=" * 50)
+        
+        # 微信进程
+        running = "✅ 运行中" if status["wechat_running"] else "❌ 未运行"
+        print(f"微信进程：{running}")
+        
+        # 版本信息
+        print(f"微信版本：{status['wechat_version']}")
+        
+        # 数据目录
+        if status["data_found"]:
+            print(f"数据目录：✅ 已找到")
+            print(f"数据大小：{status['data_size']}")
+            print(f"数据库数量：{status['db_count']} 个")
+            print(f"最后更新：{status['last_modified']}")
+        else:
+            print(f"数据目录：❌ 未找到")
+        
+        print("=" * 50)
+        
+        # 提示
+        if not status["data_found"]:
+            print("\n⚠️  未找到微信数据，请确认：")
+            print("   1. 微信是否已安装并登录过")
+            print("   2. 数据目录是否在默认位置")
+        elif status["wechat_version"].startswith("4"):
+            print("\n📌 检测到微信 4.x 版本")
+            print("   使用 SQLCipher v4 加密（Page Size = 4096）")
+        else:
+            print("\n📌 检测到微信 3.x 版本")
+            print("   使用 SQLCipher v3 加密（Page Size = 1024）")
+  new_string:     def print_status(self):
+        """打印微信状态"""
+        status = self.check_status()
+        
+        print("\n📱 微信状态检查")
+        print("=" * 60)
+        
+        # 微信进程
+        running = "✅ 运行中" if status["wechat_running"] else "❌ 未运行"
+        print(f"微信进程：{running}")
+        
+        # 版本信息
+        print(f"微信版本：{status['wechat_version']}")
+        
+        # 数据目录
+        if status["data_found"]:
+            print(f"数据目录：✅ 已找到")
+            print(f"数据大小：{status['data_size']}")
+            print(f"最后更新：{status['last_modified']}")
+            
+            if status.get("data_path"):
+                print(f"\n📂 数据路径：")
+                print(f"   {status['data_path']}")
+            
+            # 显示消息数据库
+            if status.get("message_dbs"):
+                print(f"\n📨 消息数据库 ({len(status['message_dbs'])} 个):")
+                for db in status["message_dbs"][:5]:  # 只显示前5个
+                    print(f"   • {db['name']}: {db['size']}")
+                if len(status["message_dbs"]) > 5:
+                    print(f"   ... 还有 {len(status['message_dbs']) - 5} 个")
+            
+            # 联系人和朋友圈
+            if status.get("contact_db"):
+                print(f"\n👥 联系人数据库：✅ 已找到")
+            if status.get("sns_db"):
+                print(f"📷 朋友圈数据库：✅ 已找到")
+        else:
+            print(f"数据目录：❌ 未找到")
+        
+        print("\n" + "=" * 60)
+        
+        # 提示
+        if not status["data_found"]:
+            print("\n⚠️  未找到微信数据，请确认：")
+            print("   1. 微信是否已安装并登录过")
+            print("   2. 数据目录是否在默认位置")
+        elif status["wechat_version"].startswith("4"):
+            print("\n📌 检测到微信 4.x 版本")
+            print("   使用 SQLCipher v4 加密（Page Size = 4096）")
+            print("\n🔑 下一步：运行 get_wechat_key.py 获取解密密钥")
+        else:
+            print("\n📌 检测到微信 3.x 版本")
+            print("   使用 SQLCipher v3 加密（Page Size = 1024）")
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] Shell
+  command: cd "/Users/karuo/Documents/个人/卡若AI/01_系统管理/微信管理/scripts" && python3 wechat_manager.py status
+  description: 测试更新后的状态检查
+
+[Tool result] Shell
+
+assistant:
+完美！现在能检测到完整的微信数据了：
+
+## 当前状态汇总
+
+| 项目 | 状态 |
+|:-----|:-----|
+| 微信版本 | 4.1.5 ✅ |
+| 数据大小 | 27GB |
+| 消息数据库 | 8 个（最大 2.3GB） |
+| 联系人数据库 | ✅ 已找到 |
+| 朋友圈数据库 | ✅ 已找到 |
+| sqlcipher | ✅ 已安装 |
+| 配置文件 | ✅ 已创建 |
+
+## 下一步：获取解密密钥
+
+由于 SIP 已启用，你有两个选择：
+
+**选项 A**：尝试直接用 LLDB（可能需要输入密码）
+```bash
+# 1. 先退出微信
+killall WeChat
+
+# 2. 重新打开微信（不登录）
+open /Applications/WeChat.app
+
+# 3. 附加调试器
+sudo lldb -p $(pgrep -x WeChat)
+```
+
+**选项 B**：重签名微信（无需关闭 SIP，一次性操作）
+
+你想用哪个方案？或者我可以先帮你执行方案 B 的准备工作（备份微信 + 创建签名文件）？
+
+user:
+<user_query>
+b
+</user_query>
+
+assistant:
+好，执行方案 B：重签名微信。这是一次性操作，之后就可以用 LLDB 获取密钥了。
+[Tool call] Shell
+  command: ls -la /Applications/WeChat_backup.app 2>/dev/null && echo "备份已存在" || echo "需要创建备份"
+  description: 检查微信备份是否存在
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: cat > /tmp/wechat_entitlements.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+    <key>com.apple.security.get-task-allow</key>
+    <true/>
+</dict>
+</plist>
+EOF
+echo "✅ 签名文件已创建"
+  description: 创建签名权限文件
+
+[Tool result] Shell
+
+assistant:
+现在需要你确认：我将执行以下操作：
+
+1. **备份微信** → `/Applications/WeChat_backup.app`
+2. **重签名微信** → 添加调试权限
+
+这需要管理员密码。确认执行吗？输入 `y` 继续。
+
+user:
+<user_query>
+y
+</user_query>
+
+assistant:
+[Tool call] Shell
+  command: killall WeChat 2>/dev/null; sleep 2; echo "✅ 微信已退出"
+  description: 退出微信进程
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: sudo cp -R /Applications/WeChat.app /Applications/WeChat_backup.app && echo "✅ 微信已备份到 /Applications/WeChat_backup.app"
+  description: 备份微信应用
+  timeout: 120000
+
+[Tool result] Shell
+
+assistant:
+需要在终端手动执行。我创建一个一键脚本给你。
+[Tool call] Write
+
+[Tool result] Write

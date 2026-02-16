@@ -1,0 +1,1862 @@
+user:
+<user_query>
+那个以你的视角对整个卡洛 AI 进行整体的那个。整体的一个优化跟规划，确保他能让普通的那个大模型都有清晰的达到整个卡罗亚里面的所有的 skill 的一个那个。所以的能协同以及相应的内容和功能进行那个调整和那个合并，确保整个那个卡路亚相应的人都可以直接互相调用以及关联的能力互相的使用，整体的作为一个优化。
+</user_query>
+
+assistant:
+[Thinking] **Planning overall optimization strategy**
+我理解你的目标是：从全局重构`卡若AI`的协同机制，让“普通大模型”也能稳定找到并调用全部`skill`，并且成员能力能互相联动。  
+我先快速读取你现有的总索引、Skill路由和执行规则，基于现状给你一版可直接落地的“架构优化+合并规划”。
+[Tool call] ReadFile
+  path: /Users/karuo/Documents/个人/卡若AI/00_卡若AI总索引.md
+[Tool call] ReadFile
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/SKILL_INDEX.md
+[Tool call] ReadFile
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI
+
+[Tool result] ReadFile
+
+[Tool result] ReadFile
+
+[Tool result] ReadFile
+
+[Tool result] LS
+
+assistant:
+[Thinking] **Planning optimization documentation**
+我已经看完核心索引，发现你现在“信息很全”，但“给普通模型的机器可读入口不够统一”。  
+下一步我会先补一套最小可用的统一协议（路由规范+协同协议+落地里程碑），让任何模型进来都能按同一条路径调度全部 Skill。
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router
+[Tool call] Glob
+  target_directory: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router
+  glob_pattern: **/*
+[Tool call] ReadFile
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/sync_index.py
+
+[Tool result] LS
+
+[Tool result] Glob
+
+[Tool result] ReadFile
+
+assistant:
+[Thinking] **Inspecting skill rules for sync index**
+[Tool call] ReadFile
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/SKILL_RULES.md
+[Tool call] ReadFile
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/optimize_all_skills.py
+[Tool call] ReadFile
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/merge_references.py
+
+[Tool result] ReadFile
+
+[Tool result] ReadFile
+
+[Tool result] ReadFile
+
+assistant:
+[Thinking] **Planning skill index sync**
+我准备直接落地三项关键补丁：  
+1) 补上缺失的`sync_index.py`（你文档里写了但文件不存在）；2) 生成机器可读`skills_manifest.json`的机制；3) 新增一份全局协同优化方案文档，明确“普通模型→全Skill调用”的统一协议与分阶段改造路径。
+[Tool call] ApplyPatch*** Begin Patch
+*** Add File: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/sync_index.py
++#!/usr/bin/env python3
++# -*- coding: utf-8 -*-
++"""
++卡若AI Skill 路由同步脚本
++
++目标：
++1) 扫描全仓库的 SKILL.md
++2) 生成机器可读清单 skills_manifest.json（给普通模型直接消费）
++3) 校验 SKILL_INDEX.md 里登记路径是否真实存在
++
++用法：
++  python3 _共享模块/skill_router/sync_index.py
++"""
++
++from __future__ import annotations
++
++import json
++import re
++from pathlib import Path
++from typing import Dict, List, Tuple
++
++ROOT = Path(__file__).resolve().parent.parent.parent
++ROUTER_DIR = Path(__file__).resolve().parent
++INDEX_MD = ROUTER_DIR / "SKILL_INDEX.md"
++MANIFEST_JSON = ROUTER_DIR / "skills_manifest.json"
++
++SKIP_KEYWORDS = [
++    ".git",
++    "node_modules",
++    "__pycache__",
++    ".venv",
++    "_归档",
++    "_合并前备份",
++    "存客宝备份",
++]
++
++GROUP_MAP = {
++    "01_卡资（金）": "金",
++    "02_卡人（水）": "水",
++    "03_卡木（木）": "木",
++    "04_卡火（火）": "火",
++    "05_卡土（土）": "土",
++    "_共享模块": "共享",
++}
++
++GROUP_LABEL = {
++    "金": "卡资（金）",
++    "水": "卡人（水）",
++    "木": "卡木（木）",
++    "火": "卡火（火）",
++    "土": "卡土（土）",
++    "共享": "共享模块",
++    "未知": "未知",
++}
++
++LEADER_BY_GROUP = {
++    "金": "卡资",
++    "水": "卡人",
++    "木": "卡木",
++    "火": "卡火",
++    "土": "卡土",
++    "共享": "卡若AI",
++    "未知": "未知",
++}
++
++
++def should_skip(path: Path) -> bool:
++    p = str(path)
++    return any(k in p for k in SKIP_KEYWORDS)
++
++
++def split_triggers(raw: str) -> List[str]:
++    if not raw:
++        return []
++    normalized = re.sub(r"[，、|/]+", ",", raw)
++    normalized = re.sub(r"\s+", ",", normalized.strip())
++    parts = [p.strip() for p in normalized.split(",")]
++    # 去重但保序
++    seen = set()
++    out: List[str] = []
++    for p in parts:
++        if not p:
++            continue
++        if p not in seen:
++            seen.add(p)
++            out.append(p)
++    return out
++
++
++def parse_frontmatter(content: str) -> Dict[str, str]:
++    match = re.match(r"^---\s*\n(.*?)\n---\s*\n?", content, re.DOTALL)
++    if not match:
++        return {}
++    text = match.group(1)
++    meta: Dict[str, str] = {}
++    for line in text.splitlines():
++        if ":" not in line:
++            continue
++        key, value = line.split(":", 1)
++        meta[key.strip()] = value.strip()
++    return meta
++
++
++def infer_owner_group(skill_path: Path) -> Tuple[str, str]:
++    rel = skill_path.relative_to(ROOT)
++    parts = list(rel.parts)
++    group = "未知"
++    owner = "未知"
++
++    for part in parts:
++        for prefix, g in GROUP_MAP.items():
++            if part == prefix or part.startswith(prefix):
++                group = g
++                break
++
++    for i, part in enumerate(parts):
++        if part == "_团队成员" and i + 1 < len(parts):
++            owner = parts[i + 1]
++            break
++
++    if owner == "未知":
++        owner = LEADER_BY_GROUP.get(group, "未知")
++    return owner, group
++
++
++def collect_skills() -> List[Dict[str, object]]:
++    rows: List[Dict[str, object]] = []
++    all_skills = sorted(ROOT.rglob("SKILL.md"))
++    counter = 0
++
++    for skill_file in all_skills:
++        if should_skip(skill_file):
++            continue
++
++        counter += 1
++        content = skill_file.read_text(encoding="utf-8", errors="ignore")
++        meta = parse_frontmatter(content)
++        owner_infer, group_infer = infer_owner_group(skill_file)
++
++        rel = skill_file.relative_to(ROOT).as_posix()
++        skill_name = meta.get("name") or skill_file.parent.name
++        description = meta.get("description", "")
++        owner = meta.get("owner") or owner_infer
++        group = meta.get("group") or group_infer
++        triggers = split_triggers(meta.get("triggers", ""))
++        skill_id = f"S{counter:03d}"
++
++        rows.append(
++            {
++                "id": skill_id,
++                "name": skill_name,
++                "owner": owner,
++                "group": group,
++                "group_label": GROUP_LABEL.get(group, "未知"),
++                "path": rel,
++                "description": description,
++                "triggers": triggers,
++            }
++        )
++    return rows
++
++
++def validate_index_paths() -> Tuple[int, int, List[str]]:
++    if not INDEX_MD.exists():
++        return 0, 0, [f"缺少文件：{INDEX_MD}"]
++
++    content = INDEX_MD.read_text(encoding="utf-8", errors="ignore")
++    # 提取 markdown 反引号里的路径
++    candidates = re.findall(r"`([^`]*?/SKILL\.md)`", content)
++    total = len(candidates)
++    missing: List[str] = []
++    for p in candidates:
++        target = ROOT / p
++        if not target.exists():
++            missing.append(p)
++    return total, len(missing), missing
++
++
++def write_manifest(rows: List[Dict[str, object]]) -> None:
++    out = {
++        "version": "v1",
++        "generated_from": str(ROOT),
++        "total_skills": len(rows),
++        "groups": {
++            g: len([r for r in rows if r["group"] == g])
++            for g in ["金", "水", "木", "火", "土", "共享", "未知"]
++        },
++        "skills": rows,
++    }
++    MANIFEST_JSON.write_text(
++        json.dumps(out, ensure_ascii=False, indent=2),
++        encoding="utf-8",
++    )
++
++
++def main() -> None:
++    skills = collect_skills()
++    write_manifest(skills)
++    total, missing_count, missing_paths = validate_index_paths()
++
++    print("=== 卡若AI Skill 路由同步完成 ===")
++    print(f"扫描 SKILL.md：{len(skills)}")
++    print(f"生成清单：{MANIFEST_JSON.relative_to(ROOT)}")
++    print(f"校验 SKILL_INDEX 路径：{total} 条")
++    if missing_count == 0:
++        print("路径校验：全部通过")
++    else:
++        print(f"路径校验：发现 {missing_count} 条失效路径")
++        for item in missing_paths:
++            print(f"  - {item}")
++
++
++if __name__ == "__main__":
++    main()
+*** End Patch
+
+
+[Tool result] ApplyPatch
+
+assistant:
+[Tool call] ApplyPatch*** Begin Patch
+*** Add File: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/卡若AI全局协同优化方案_v1.md
++# 卡若AI 全局协同优化方案（v1）
++
++> 目标：让普通大模型也能稳定调用卡若AI全部 Skill，并实现跨成员协同与能力复用。
++
++## 一、当前问题（从路由视角）
++
++1. `SKILL_INDEX.md`是人类可读为主，机器可读结构不足。  
++2. 文档里提到`sync_index.py`，但历史上文件缺失，导致“增删Skill后自动同步”断链。  
++3. Skill间“协同规则”分散在多处，普通模型难以形成固定调用路径。  
++4. 组级与成员级能力边界清晰，但跨组接力缺少统一协议（输入输出未标准化）。
++
++## 二、优化总原则
++
++1. **双索引并行**：人类看`SKILL_INDEX.md`，模型看`skills_manifest.json`。  
++2. **统一路由入口**：所有模型先读`00_卡若AI总索引.md` + `_共享模块/skill_router/skills_manifest.json`。  
++3. **标准协同协议**：每次任务都按“主Skill + 协同Skill”执行，不再只靠关键词硬匹配。  
++4. **增量改造**：先保稳定，再做合并，不一次性重构全部Skill正文。
++
++## 三、统一协同协议（建议立即执行）
++
++### 1) 路由协议
++
++- Step1：识别用户意图（业务域/风险级别/是否跨组）  
++- Step2：在`skills_manifest.json`按`triggers + group + owner`匹配主Skill  
++- Step3：如果主Skill不闭环，自动追加协同Skill  
++- Step4：执行后把结果按统一格式回写（结果、状态、下一跳）
++
++### 2) 协同策略（主Skill→协同Skill）
++
++- **金→水**：基础设施落地后，水组做流程编排与汇报沉淀  
++- **水→火**：流程明确后，火组补自动化与系统实现  
++- **火→土**：技术能力完成后，土组做ROI和商业化验证  
++- **土→木**：商业确定后，木组做内容分发和增长放大
++
++### 3) 输出标准（最小字段）
++
++```json
++{
++  "task_id": "auto-generated",
++  "primary_skill": "技能名",
++  "collaboration_skills": ["技能A", "技能B"],
++  "status": "done|partial|blocked",
++  "result": "核心结果",
++  "next_action": "下一步动作",
++  "risk_level": "green|yellow|red"
++}
++```
++
++## 四、内容与功能合并建议（避免重复）
++
++1. **规则合并**：所有“必守规则”只在`SKILL_RULES.md`维护，Skill正文只引用。  
++2. **references合并**：沿用`merge_references.py`，每个Skill的`references/`控制在20以内。  
++3. **能力合并优先级**：先合并同义触发词，再合并重复流程，最后合并正文模板。  
++4. **保留角色，不保留重复描述**：角色人格可以保留，执行流程尽量统一字段。
++
++## 五、3阶段落地路线图
++
++### 阶段A（今天可完成）
++
++1. 建立机器可读清单：`skills_manifest.json`（由`sync_index.py`生成）  
++2. 每次新增Skill后跑一次：`python3 _共享模块/skill_router/sync_index.py`  
++3. 在主入口明确“模型先读manifest再决策”
++
++### 阶段B（3-7天）
++
++1. 给所有高频Skill补齐frontmatter字段：`name/description/triggers/owner/group`  
++2. 用`optimize_all_skills.py`清理重复规则段落  
++3. 建立“跨组接力模板”（主Skill输出可直接成为下一个Skill输入）
++
++### 阶段C（7-14天）
++
++1. 建立“协同成功率”指标：一次命中率、跨组完成率、人工回退率  
++2. 对低命中Skill补充触发词和反例  
++3. 固化自动巡检：路径失效、触发词空缺、references超限
++
++## 六、验收标准（DoD）
++
++1. 普通模型在不读全仓库的情况下，能在10秒内定位目标Skill。  
++2. 任意跨组任务可自动给出“主Skill + 至少1个协同Skill”。  
++3. `SKILL_INDEX.md`登记路径失效数为0。  
++4. 高优先级任务（技术、财务、流量）首轮路由命中率>85%。
++
++## 七、你这套系统的最终形态
++
++从“角色驱动”升级为“角色 + 协议 + 数据清单”三层架构：  
++
++1. 角色层：五行团队负责风格与专业判断  
++2. 协议层：统一路由和协同字段，保证任何模型都能执行  
++3. 数据层：`skills_manifest.json`做机器入口，`SKILL_INDEX.md`做人类入口
++
++这样你就不依赖某一个强模型，普通模型也能跑通全链路协同。
+*** End Patch
+
+
+[Tool result] ApplyPatch
+
+assistant:
+[Thinking] **Checking terminals folder contents**
+我先执行一次同步脚本，生成`skills_manifest.json`并顺便做路径体检，这样你立刻就有“普通模型可读”的统一技能清单。  
+先看一下当前终端状态，避免和已有进程冲突。
+[Tool call] LS
+  target_directory: /Users/karuo/.cursor/projects/Users-karuo-Documents-AI/terminals
+
+[Tool result] LS
+
+assistant:
+[Thinking] **Executing short shell command**
+[Tool call] Shell
+  command: python3 "卡若AI/_共享模块/skill_router/sync_index.py"
+  working_directory: /Users/karuo/Documents/个人
+  description: Generate skill manifest and validate index paths
+
+[Tool result] Shell
+
+assistant:
+[Thinking] **Reviewing manifest content**
+[Tool call] ReadFile
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/skills_manifest.json
+  offset: 1
+  limit: 120
+
+[Tool result] ReadFile
+
+assistant:
+[Thinking] **Improving trigger parsing heuristics**
+我发现一个可立即提升命中率的小问题：部分Skill的触发词被写成长句，普通模型检索会“噪声偏高”。  
+我正在把同步脚本再增强一版：自动从`description`精准提取“触发词：...”片段，并清洗无效长句。
+[Tool call] ApplyPatch*** Begin Patch
+*** Update File: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/sync_index.py
+@@
+-def split_triggers(raw: str) -> List[str]:
++def split_triggers(raw: str) -> List[str]:
+     if not raw:
+         return []
+-    normalized = re.sub(r"[，、|/]+", ",", raw)
+-    normalized = re.sub(r"\s+", ",", normalized.strip())
++    normalized = re.sub(r"[，、|/;；]+", ",", raw)
+     parts = [p.strip() for p in normalized.split(",")]
+     # 去重但保序
+     seen = set()
+     out: List[str] = []
+     for p in parts:
++        p = p.strip(" .。!！?？:：\"'()（）[]【】")
+         if not p:
+             continue
++        # 排除明显不是关键词的长句
++        if len(p) > 28 and ("。" in p or "，" in p):
++            continue
+         if p not in seen:
+             seen.add(p)
+             out.append(p)
+     return out
++
++
++def extract_triggers_from_description(desc: str) -> List[str]:
++    if not desc:
++        return []
++    match = re.search(r"触发词[：:]\s*([^\n]+)", desc)
++    if not match:
++        return []
++    chunk = match.group(1)
++    # 常见写法是“触发词：A、B、C。后面还有能力说明”，只取第一句
++    chunk = chunk.split("。", 1)[0].strip()
++    return split_triggers(chunk)
+@@
+-        triggers = split_triggers(meta.get("triggers", ""))
++        triggers = split_triggers(meta.get("triggers", ""))
++        if not triggers:
++            triggers = extract_triggers_from_description(description)
+*** End Patch
+
+
+[Tool result] ApplyPatch
+
+assistant:
+[Thinking] **Rerunning script with commentary**
+[Tool call] Shell
+  command: python3 "卡若AI/_共享模块/skill_router/sync_index.py"
+  working_directory: /Users/karuo/Documents/个人
+  description: Regenerate cleaned machine-readable skill manifest
+
+[Tool result] Shell
+
+assistant:
+[Thinking] 
+[Tool call] ReadFile
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/skills_manifest.json
+  offset: 15
+  limit: 70
+
+[Tool result] ReadFile
+
+assistant:
+[Thinking] **Sanitizing trigger phrase tails**
+[Tool call] ApplyPatch*** Begin Patch
+*** Update File: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/sync_index.py
+@@
+     for p in parts:
+         p = p.strip(" .。!！?？:：\"'()（）[]【】")
+         if not p:
+             continue
++        if "。" in p:
++            p = p.split("。", 1)[0].strip()
++        if not p:
++            continue
+         # 排除明显不是关键词的长句
+         if len(p) > 28 and ("。" in p or "，" in p):
+             continue
+*** End Patch
+
+
+[Tool result] ApplyPatch
+
+assistant:
+[Tool call] Shell
+  command: python3 "卡若AI/_共享模块/skill_router/sync_index.py"
+  working_directory: /Users/karuo/Documents/个人
+  description: Rebuild manifest after trigger cleanup
+
+[Tool result] Shell
+
+assistant:
+[Tool call] ReadFile
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/skills_manifest.json
+  offset: 21
+  limit: 40
+
+[Tool result] ReadFile
+
+assistant:
+[Thinking] **Checking lint compliance**
+[Tool call] ReadLints
+  paths: ["/Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/sync_index.py","/Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/卡若AI全局协同优化方案_v1.md"]
+
+[Tool result] ReadLints
+
+assistant:
+[Thinking] 
+已按“让普通模型也能全量调用卡若AI Skill”的目标，先把**底层路由能力和全局规划**落地了一版可执行方案，不只是建议。
+
+- 新增自动同步脚本：`卡若AI/_共享模块/skill_router/sync_index.py`  
+  - 自动扫描全部`SKILL.md`（当前扫描到 75 个）  
+  - 生成机器可读清单：`卡若AI/_共享模块/skill_router/skills_manifest.json`  
+  - 自动校验`SKILL_INDEX.md`中的路径是否失效（当前 72 条，全部通过）
+- 新增全局优化文档：`卡若AI/_共享模块/skill_router/卡若AI全局协同优化方案_v1.md`  
+  - 定义了“普通模型 -> 主Skill -> 协同Skill”的统一协议  
+  - 给出 3 阶段改造路线（今天 / 3-7天 / 7-14天）  
+  - 明确验收标准（命中率、跨组完成率、失效路径数等）
+- 已实际执行同步，产出可直接被模型读取的能力索引：`skills_manifest.json`  
+  - 按`group/owner/triggers/path`结构化，方便小模型快速路由  
+  - 触发词做了清洗，减少长句噪声，提高匹配稳定性
+
+你现在可以直接把这套作为“统一入口规则”：
+1. 先读 `00_卡若AI总索引.md`  
+2. 再读 `_共享模块/skill_router/skills_manifest.json`  
+3. 按 `primary_skill + collaboration_skills` 执行接力
+
+建议你下一步我继续直接做（我可以马上落地）：
+- 给所有高频 Skill 批量补齐 frontmatter（尤其`triggers`标准化）
+- 增加“跨组接力模板”到各组长 Skill，让互相调用自动化
+- 做一版“路由命中率日报”脚本，持续量化优化效果
+
+user:
+<user_query>
+继续全亮，帮我那个完成整个的一个卡罗 AI 的一个优化。
+</user_query>
+
+assistant:
+[Thinking] 用户要求我继续完成卡若AI的全面优化。根据之前的方案，我需要：
+
+1. 给所有Skill批量补齐frontmatter（尤其triggers标准化）
+2. 优化主入口文档，明确"模型先读manifest再决策"
+3. 建立跨组接力模板
+4. 清理重复规则块
+5. 统一协同协议落地
+
+让我先创建任务清单，然后按步骤执行。
+
+首先我需要：
+1. 运行 optimize_all_skills.py 预览，看哪些Skill需要优化
+
+
+2. 抽样检查几个Skill的frontmatter状态，然后批量执行优化
+3. 更新主入口文档和 karuo-ai.mdc 规则文件
+4. 建立跨组接力协议
+
+让我开始执行。
+好，直接全量落地。我先拉全局状态，然后按步骤一个个推完。
+[Tool call] TodoWrite
+  todos: [{"id":"t1","content":"运行 optimize_all_skills.py 预览，找出需要补 frontmatter 和清理规则块的 Skill","status":"in_progress"},{"id":"t2","content":"批量执行 optimize_all_skills.py --apply，清理重复规则块+补齐 frontmatter","status":"pending"},{"id":"t3","content":"修复 triggers 解析：让 manifest 的触发词更干净精准","status":"pending"},{"id":"t4","content":"更新主入口 00_卡若AI总索引.md，新增模型统一读取协议段落","status":"pending"},{"id":"t5","content":"更新 karuo-ai.mdc 规则，加入 manifest 路由指令","status":"pending"},{"id":"t6","content":"新建跨组接力模板，写入各组长 Skill","status":"pending"},{"id":"t7","content":"重新生成 skills_manifest.json（最终版）+ 全量校验","status":"pending"},{"id":"t8","content":"统一 SKILL_INDEX.md 和 manifest 数据一致性检查","status":"pending"}]
+  merge: false
+
+[Tool result] TodoWrite
+
+assistant:
+[Tool call] Shell
+  command: cd "卡若AI" && python3 "_共享模块/skill_router/optimize_all_skills.py" 2>&1
+  working_directory: /Users/karuo/Documents/个人
+  description: Preview skill optimization report
+
+[Tool result] Shell
+
+assistant:
+[Tool call] TodoWrite
+  todos: [{"id":"t1","status":"completed"}]
+  merge: true
+
+[Tool result] TodoWrite
+
+assistant:
+报告出来了，75个Skill，50个超过150行限制。先执行批量优化，同时我要增强 optimize 脚本让它更精准地拆分超大 Skill 的规则块。
+[Tool call] TodoWrite
+  todos: [{"id":"t2","status":"in_progress"}]
+  merge: true
+
+[Tool result] TodoWrite
+
+assistant:
+先看几个关键超大Skill的实际内容，判断能清多少冗余，再执行apply。
+[Tool call] Task
+  description: Analyze top oversized SKILLs
+  prompt: 读取以下3个最大的 SKILL.md 文件的前100行和后50行，告诉我：
+1. 是否有重复的"必守规则"块
+2. frontmatter是否完整（name/description/triggers/owner/group）
+3. 正文中是否有大段可以拆到 references/ 的内容（比如API文档、配置清单等）
+
+文件路径（基于 /Users/karuo/Documents/个人/卡若AI/）：
+- 02_卡人（水）/_团队成员/水桥/小程序管理/SKILL.md (1797行)
+- 04_卡火（火）/_团队成员/火炬/全栈开发/SKILL.md (1561行)
+- 04_卡火（火）/_团队成员/火种/本地模型/SKILL.md (1029行)
+
+对每个文件给出：有无必守规则块、frontmatter字段情况、建议拆出哪些大段到references。
+  subagent_type: explore
+  readonly: true
+[Tool call] Task
+  description: Analyze more oversized SKILLs
+  prompt: 读取以下4个较大的 SKILL.md 文件的前80行和后30行，告诉我：
+1. 是否有重复的"必守规则"块（含"⚠️ 必守规则"关键词）
+2. frontmatter是否完整（需要有 name/description/triggers/owner/group）
+3. 正文中是否有大段可拆出到 references/ 的内容
+
+文件路径（基于 /Users/karuo/Documents/个人/卡若AI/）：
+- 01_卡资（金）/_团队成员/金链/局域网控制/SKILL.md (921行)
+- 03_卡木（木）/_团队成员/木根/网站逆向分析/SKILL.md (801行)
+- 01_卡资（金）/_团队成员/金仓/群晖NAS管理/SKILL.md (779行)
+- 02_卡人（水）/_团队成员/水泉/需求拆解与计划制定/SKILL.md (756行)
+
+对每个文件给出简洁的：有无必守规则块、frontmatter缺什么字段、建议拆出什么。
+  subagent_type: explore
+  readonly: true
+
+[Tool result] Task
+
+[Tool result] Task
+
+assistant:
+好消息：没有重复的"必守规则"块了（之前已清理过），主要问题是 **frontmatter 缺字段** + **正文太长需要拆 references**。
+
+现在直接批量执行：1) apply优化 2) 给缺失 frontmatter 的关键Skill补齐 3) 拆超大Skill的内容到references。
+[Tool call] Shell
+  command: cd "卡若AI" && python3 "_共享模块/skill_router/optimize_all_skills.py" --apply 2>&1
+  working_directory: /Users/karuo/Documents/个人
+  description: Apply batch optimization to all SKILLs
+
+[Tool result] Shell
+
+assistant:
+批量优化执行完了（7个文件已更新），现在写一个**自动拆分超大Skill到references**的脚本，一次性处理Top 10的超大文件。这是最大的性能瓶颈——超大Skill会占爆模型上下文。
+[Tool call] TodoWrite
+  todos: [{"id":"t2","status":"completed"},{"id":"t2b","content":"自动拆分 Top10 超大 Skill 的内容到 references/","status":"in_progress"}]
+  merge: true
+
+[Tool result] TodoWrite
+
+assistant:
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/split_large_skills.py
+  contents: #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+自动拆分超大 SKILL.md 到 references/
+
+规则：
+1. 扫描全部 SKILL.md，找出 >300 行的文件
+2. 将正文中的"大段代码块""大段表格""大段API文档"等自动识别为可拆段
+3. 拆出到同级 references/ 目录下
+4. 在 SKILL.md 原位保留简短引用行
+
+用法：
+  python3 split_large_skills.py          # 预览
+  python3 split_large_skills.py --apply  # 执行
+"""
+
+import re
+import sys
+from pathlib import Path
+from datetime import datetime
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+THRESHOLD = 300  # 超过此行数才拆
+TARGET_MAX = 150  # 拆后目标行数
+
+SKIP = ['.git', 'node_modules', '__pycache__', '.venv', '_归档', '_合并前备份', '存客宝备份']
+
+
+def should_skip(p: Path) -> bool:
+    return any(k in str(p) for k in SKIP)
+
+
+def find_splittable_sections(lines: list[str]) -> list[dict]:
+    """
+    识别可拆出的段落：
+    - 连续代码块（```...```）>20行
+    - 连续表格（|...|）>15行
+    - 以 ## 开头的大段（>40行的二级标题段）
+    """
+    sections = []
+    i = 0
+    n = len(lines)
+
+    while i < n:
+        line = lines[i]
+
+        # 1) 代码块
+        if line.strip().startswith('```') and not line.strip().startswith('```\n'):
+            start = i
+            i += 1
+            while i < n and not (lines[i].strip().startswith('```') and len(lines[i].strip()) <= 10):
+                i += 1
+            end = min(i + 1, n)
+            block_len = end - start
+            if block_len > 20:
+                # 往上找最近的标题作为段名
+                title = _find_nearest_heading(lines, start)
+                sections.append({
+                    'type': 'code_block',
+                    'start': start,
+                    'end': end,
+                    'length': block_len,
+                    'title': title,
+                })
+            i = end
+            continue
+
+        # 2) 表格段
+        if '|' in line and line.strip().startswith('|'):
+            start = i
+            while i < n and '|' in lines[i] and lines[i].strip().startswith('|'):
+                i += 1
+            block_len = i - start
+            if block_len > 15:
+                title = _find_nearest_heading(lines, start)
+                sections.append({
+                    'type': 'table',
+                    'start': start,
+                    'end': i,
+                    'length': block_len,
+                    'title': title,
+                })
+            continue
+
+        # 3) 大段二级标题
+        if line.startswith('## ') and not line.startswith('## ⚠'):
+            start = i
+            heading = line.strip().lstrip('#').strip()
+            i += 1
+            while i < n and not (lines[i].startswith('## ') or lines[i].startswith('# ')):
+                i += 1
+            block_len = i - start
+            if block_len > 40:
+                sections.append({
+                    'type': 'section',
+                    'start': start,
+                    'end': i,
+                    'length': block_len,
+                    'title': heading,
+                })
+            continue
+
+        i += 1
+
+    return sections
+
+
+def _find_nearest_heading(lines, idx):
+    for j in range(idx - 1, max(idx - 10, -1), -1):
+        if j >= 0 and lines[j].strip().startswith('#'):
+            return lines[j].strip().lstrip('#').strip()
+    return f"段落_{idx}"
+
+
+def sanitize_filename(name: str) -> str:
+    name = re.sub(r'[/\\:*?"<>|]', '_', name)
+    name = re.sub(r'\s+', '_', name)
+    return name[:60]
+
+
+def process_skill(skill_path: Path, apply: bool = False) -> dict:
+    content = skill_path.read_text(encoding='utf-8', errors='ignore')
+    lines = content.split('\n')
+    total = len(lines)
+
+    if total <= THRESHOLD:
+        return {'path': str(skill_path.relative_to(ROOT)), 'total': total, 'action': 'skip', 'splits': []}
+
+    sections = find_splittable_sections(lines)
+    if not sections:
+        return {'path': str(skill_path.relative_to(ROOT)), 'total': total, 'action': 'no_splittable', 'splits': []}
+
+    # 按从大到小排序，优先拆大的
+    sections.sort(key=lambda s: -s['length'])
+
+    refs_dir = skill_path.parent / 'references'
+    splits_done = []
+    removed_lines = 0
+
+    # 计算需要拆多少才能接近 TARGET_MAX
+    lines_to_remove = total - TARGET_MAX
+
+    # 从最大的段开始拆，直到总行数降到合理范围
+    selected = []
+    cumulative = 0
+    for sec in sections:
+        if cumulative >= lines_to_remove:
+            break
+        selected.append(sec)
+        cumulative += sec['length']
+
+    if not selected:
+        return {'path': str(skill_path.relative_to(ROOT)), 'total': total, 'action': 'no_splittable', 'splits': []}
+
+    # 按位置从后往前拆（避免偏移）
+    selected.sort(key=lambda s: -s['start'])
+
+    for sec in selected:
+        safe_title = sanitize_filename(sec['title'])
+        ref_filename = f"拆分_{safe_title}.md"
+        ref_content = '\n'.join(lines[sec['start']:sec['end']])
+
+        # 替换原文为引用行
+        ref_line = f"> **详细内容**：见 `references/{ref_filename}`\n"
+        lines[sec['start']:sec['end']] = [ref_line]
+        removed_lines += sec['length'] - 1
+
+        splits_done.append({
+            'title': sec['title'],
+            'type': sec['type'],
+            'length': sec['length'],
+            'filename': ref_filename,
+        })
+
+        if apply:
+            refs_dir.mkdir(exist_ok=True)
+            (refs_dir / ref_filename).write_text(
+                f"# {sec['title']}\n\n"
+                f"> 从 SKILL.md 自动拆分，{datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+                f"{ref_content}\n",
+                encoding='utf-8'
+            )
+
+    if apply:
+        skill_path.write_text('\n'.join(lines), encoding='utf-8')
+
+    return {
+        'path': str(skill_path.relative_to(ROOT)),
+        'total': total,
+        'new_total': total - removed_lines,
+        'action': 'split',
+        'splits': splits_done,
+    }
+
+
+def main():
+    apply = '--apply' in sys.argv
+    mode = "执行" if apply else "预览"
+    print(f"=== 超大 Skill 拆分（{mode}模式） ===\n")
+
+    all_skills = sorted(ROOT.rglob("SKILL.md"))
+    results = []
+
+    for sp in all_skills:
+        if should_skip(sp):
+            continue
+        result = process_skill(sp, apply=apply)
+        if result['action'] != 'skip':
+            results.append(result)
+
+    if not results:
+        print("所有 SKILL.md 均 ≤300 行，无需拆分。")
+        return
+
+    for r in results:
+        if r['action'] == 'split':
+            print(f"📦 {r['path']}：{r['total']}→{r['new_total']}行")
+            for s in r['splits']:
+                print(f"   ↳ [{s['type']}] {s['title']} ({s['length']}行) → references/{s['filename']}")
+        elif r['action'] == 'no_splittable':
+            print(f"⚠️  {r['path']}：{r['total']}行，未找到可拆段")
+
+    split_count = sum(1 for r in results if r['action'] == 'split')
+    total_splits = sum(len(r['splits']) for r in results if r['action'] == 'split')
+    print(f"\n📊 统计：{split_count}个Skill被拆分，共拆出{total_splits}个段落到references")
+
+    if not apply:
+        print("\n加 --apply 执行实际拆分。")
+
+
+if __name__ == "__main__":
+    main()
+
+
+[Tool result] Write
+
+assistant:
+[Tool call] Shell
+  command: cd "卡若AI" && python3 "_共享模块/skill_router/split_large_skills.py" 2>&1
+  working_directory: /Users/karuo/Documents/个人
+  description: Preview large skill splitting plan
+
+[Tool result] Shell
+
+assistant:
+预览效果很好，21个超大Skill会被拆分，94个段落拆到references，很多Skill能从500-1000+行降到200-300行。现在执行。
+[Tool call] Shell
+  command: cd "卡若AI" && python3 "_共享模块/skill_router/split_large_skills.py" --apply 2>&1
+  working_directory: /Users/karuo/Documents/个人
+  description: Execute large skill splitting
+
+[Tool result] Shell
+
+assistant:
+21个Skill拆分完成，94个段落已移入references。现在推进下一步：更新主入口+规则文件+跨组协议。
+[Tool call] TodoWrite
+  todos: [{"id":"t2b","status":"completed"},{"id":"t3","status":"in_progress"}]
+  merge: true
+
+[Tool result] TodoWrite
+
+assistant:
+增强 sync_index.py 的 trigger 解析能力，让它更精确地从 SKILL.md 的 frontmatter 和 description 中提取关键词。
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/sync_index.py
+
+[Tool result] Read
+
+assistant:
+现在增强 sync_index.py：1）更好地清洗触发词 2）增加一致性报告 3）增加缺失frontmatter检测。然后同步更新主入口和规则文件。
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/sync_index.py
+  old_string: def split_triggers(raw: str) -> List[str]:
+    if not raw:
+        return []
+    normalized = re.sub(r"[，、|/;；]+", ",", raw)
+    parts = [p.strip() for p in normalized.split(",")]
+    # 去重但保序
+    seen = set()
+    out: List[str] = []
+    for p in parts:
+        p = p.strip(" .。!！?？:：\"'()（）[]【】")
+        if not p:
+            continue
+        if "。" in p:
+            p = p.split("。", 1)[0].strip()
+        if not p:
+            continue
+        # 排除明显不是关键词的长句
+        if len(p) > 28 and ("。" in p or "，" in p):
+            continue
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
+  new_string: def split_triggers(raw: str) -> List[str]:
+    """清洗触发词列表，去噪去重"""
+    if not raw:
+        return []
+    # 统一分隔符
+    normalized = re.sub(r"[，、|/;；]+", ",", raw)
+    parts = [p.strip() for p in normalized.split(",")]
+    seen = set()
+    out: List[str] = []
+    for p in parts:
+        # 去掉首尾标点
+        p = p.strip(" .。!！?？:：\"'()（）[]【】>")
+        if not p:
+            continue
+        # 截断句号后内容（触发词不应含完整句子）
+        if "。" in p:
+            p = p.split("。", 1)[0].strip()
+        if not p:
+            continue
+        # 排除超长描述性句子（不是关键词）
+        if len(p) > 20:
+            continue
+        # 排除纯数字
+        if p.isdigit():
+            continue
+        lp = p.lower()
+        if lp not in seen:
+            seen.add(lp)
+            out.append(p)
+    return out
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/sync_index.py
+  old_string: def write_manifest(rows: List[Dict[str, object]]) -> None:
+    out = {
+        "version": "v1",
+        "generated_from": str(ROOT),
+        "total_skills": len(rows),
+        "groups": {
+            g: len([r for r in rows if r["group"] == g])
+            for g in ["金", "水", "木", "火", "土", "共享", "未知"]
+        },
+        "skills": rows,
+    }
+    MANIFEST_JSON.write_text(
+        json.dumps(out, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+  new_string: def write_manifest(rows: List[Dict[str, object]]) -> None:
+    # 构建按组归类的快速查找表
+    by_group: Dict[str, List[Dict]] = {}
+    for r in rows:
+        g = r["group"]
+        by_group.setdefault(g, []).append({"id": r["id"], "name": r["name"], "owner": r["owner"]})
+
+    out = {
+        "version": "v2",
+        "description": "卡若AI全量Skill机器可读清单。模型优先读此文件进行路由决策。",
+        "usage": "1.按triggers关键词匹配主Skill 2.按group找协同Skill 3.读取path下的SKILL.md获取执行细节",
+        "generated_from": str(ROOT),
+        "total_skills": len(rows),
+        "groups_summary": {
+            g: {"count": len([r for r in rows if r["group"] == g]),
+                "leader": LEADER_BY_GROUP.get(g, "未知")}
+            for g in ["金", "水", "木", "火", "土", "共享"]
+        },
+        "collaboration_protocol": {
+            "金→水": "基础设施就绪后，水组编排流程与汇报",
+            "水→火": "流程明确后，火组实现自动化与系统",
+            "火→土": "技术完成后，土组做ROI验证与商业化",
+            "土→木": "商业确定后，木组做内容分发与增长",
+            "木→金": "规模增长后，金组扩容基础设施",
+        },
+        "skills": rows,
+    }
+    MANIFEST_JSON.write_text(
+        json.dumps(out, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/sync_index.py
+  old_string: def main() -> None:
+    skills = collect_skills()
+    write_manifest(skills)
+    total, missing_count, missing_paths = validate_index_paths()
+
+    print("=== 卡若AI Skill 路由同步完成 ===")
+    print(f"扫描 SKILL.md：{len(skills)}")
+    print(f"生成清单：{MANIFEST_JSON.relative_to(ROOT)}")
+    print(f"校验 SKILL_INDEX 路径：{total} 条")
+    if missing_count == 0:
+        print("路径校验：全部通过")
+    else:
+        print(f"路径校验：发现 {missing_count} 条失效路径")
+        for item in missing_paths:
+            print(f"  - {item}")
+  new_string: def check_frontmatter_quality(rows: List[Dict[str, object]]) -> List[str]:
+    """检查 frontmatter 完整度"""
+    issues: List[str] = []
+    for r in rows:
+        missing = []
+        if not r.get("description"):
+            missing.append("description")
+        if not r.get("triggers"):
+            missing.append("triggers")
+        if missing:
+            issues.append(f"  {r['owner']}/{r['name']}：缺 {', '.join(missing)} → {r['path']}")
+    return issues
+
+
+def main() -> None:
+    skills = collect_skills()
+    write_manifest(skills)
+    total, missing_count, missing_paths = validate_index_paths()
+    fm_issues = check_frontmatter_quality(skills)
+
+    print("=== 卡若AI Skill 路由同步完成 ===")
+    print(f"扫描 SKILL.md：{len(skills)}")
+    print(f"生成清单（v2）：{MANIFEST_JSON.relative_to(ROOT)}")
+    print(f"校验 SKILL_INDEX 路径：{total} 条")
+    if missing_count == 0:
+        print("路径校验：全部通过 ✅")
+    else:
+        print(f"路径校验：发现 {missing_count} 条失效路径 ❌")
+        for item in missing_paths:
+            print(f"  - {item}")
+
+    if fm_issues:
+        print(f"\nFrontmatter 质量检查：{len(fm_issues)} 个Skill缺字段 ⚠️")
+        for issue in fm_issues:
+            print(issue)
+    else:
+        print("Frontmatter 质量检查：全部完整 ✅")
+
+    # 统计触发词覆盖
+    with_triggers = sum(1 for s in skills if s.get("triggers"))
+    print(f"\n触发词覆盖：{with_triggers}/{len(skills)}（{with_triggers/len(skills)*100:.0f}%）")
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] Shell
+  command: cd "卡若AI" && python3 "_共享模块/skill_router/sync_index.py" 2>&1
+  working_directory: /Users/karuo/Documents/个人
+  description: Regenerate manifest v2 with quality check
+
+[Tool result] Shell
+
+assistant:
+触发词覆盖只有51%，37个Skill缺字段。我现在写一个脚本批量根据 SKILL_INDEX.md 的已有触发词和Skill名称，自动为这37个Skill补齐frontmatter。
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/patch_frontmatter.py
+  contents: #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+批量补齐缺失的 frontmatter（description + triggers）
+
+策略：
+1. 从 SKILL_INDEX.md 读取已登记的关键词和 Skill 名称
+2. 从 SKILL.md 正文提取 # 标题 和 ## 能力说明 段落
+3. 自动生成 description 和 triggers
+4. 写回 SKILL.md 的 frontmatter
+
+用法：
+  python3 patch_frontmatter.py          # 预览
+  python3 patch_frontmatter.py --apply  # 执行
+"""
+
+import re
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+INDEX_MD = Path(__file__).resolve().parent / "SKILL_INDEX.md"
+
+SKIP = ['.git', 'node_modules', '__pycache__', '.venv', '_归档', '_合并前备份', '存客宝备份']
+
+# 从 SKILL_INDEX.md 建立 path → keywords 映射
+def build_index_keywords() -> dict:
+    """解析 SKILL_INDEX.md，提取每个 SKILL 的关键词"""
+    if not INDEX_MD.exists():
+        return {}
+    content = INDEX_MD.read_text(encoding='utf-8', errors='ignore')
+    mapping = {}
+    # 匹配表格行：| ID | 关键词 | 执行人 | Skill | SKILL.md 路径 |
+    for line in content.split('\n'):
+        if '|' not in line or 'SKILL.md' not in line:
+            continue
+        cols = [c.strip() for c in line.split('|')]
+        if len(cols) < 6:
+            continue
+        # cols: ['', ID, 关键词, 执行人, Skill, 路径, '']
+        keywords_str = cols[2] if len(cols) > 2 else ''
+        skill_name = cols[4] if len(cols) > 4 else ''
+        path_str = cols[5] if len(cols) > 5 else ''
+        # 提取 path
+        path_match = re.search(r'`([^`]*SKILL\.md)`', path_str)
+        if path_match:
+            path = path_match.group(1)
+            mapping[path] = {
+                'keywords': keywords_str,
+                'skill_name': skill_name,
+            }
+    return mapping
+
+
+def extract_first_heading(content: str) -> str:
+    """提取第一个 # 标题"""
+    for line in content.split('\n'):
+        if line.startswith('# ') and not line.startswith('## '):
+            return line.lstrip('#').strip()
+    return ''
+
+
+def extract_ability_section(content: str) -> str:
+    """提取 ## 能力说明 段落的第一段文字"""
+    match = re.search(r'## 能力说明\s*\n(.*?)(?=\n## |\Z)', content, re.DOTALL)
+    if match:
+        text = match.group(1).strip()
+        # 取第一段非空行
+        for line in text.split('\n'):
+            line = line.strip().lstrip('- ').strip()
+            if line and not line.startswith('|') and not line.startswith('>'):
+                return line[:100]
+    return ''
+
+
+def parse_frontmatter(content: str):
+    """解析已有 frontmatter"""
+    match = re.match(r'^---\s*\n(.*?)\n---\s*\n?', content, re.DOTALL)
+    if not match:
+        return {}, content
+    fm_text = match.group(1)
+    fm = {}
+    for line in fm_text.split('\n'):
+        if ':' in line:
+            key, val = line.split(':', 1)
+            fm[key.strip()] = val.strip()
+    rest = content[match.end():]
+    return fm, rest
+
+
+def rebuild_frontmatter(fm: dict, body: str) -> str:
+    """重建文件内容"""
+    lines = ['---']
+    order = ['name', 'description', 'triggers', 'owner', 'group']
+    for k in order:
+        if k in fm:
+            lines.append(f'{k}: {fm[k]}')
+    for k, v in fm.items():
+        if k not in order:
+            lines.append(f'{k}: {v}')
+    lines.append('---')
+    return '\n'.join(lines) + '\n\n' + body.lstrip('\n')
+
+
+GROUP_MAP = {
+    '01_卡资（金）': '金', '02_卡人（水）': '水', '03_卡木（木）': '木',
+    '04_卡火（火）': '火', '05_卡土（土）': '土', '_共享模块': '共享',
+}
+
+LEADER_BY_GROUP = {
+    '金': '卡资', '水': '卡人', '木': '卡木', '火': '卡火', '土': '卡土',
+    '共享': '卡若AI', '未知': '未知',
+}
+
+
+def infer_owner_group(skill_path: Path):
+    rel = skill_path.relative_to(ROOT)
+    parts = list(rel.parts)
+    group = '未知'
+    owner = '未知'
+    for part in parts:
+        for prefix, g in GROUP_MAP.items():
+            if part == prefix or part.startswith(prefix):
+                group = g
+                break
+    for i, part in enumerate(parts):
+        if part == '_团队成员' and i + 1 < len(parts):
+            owner = parts[i + 1]
+            break
+    if owner == '未知':
+        owner = LEADER_BY_GROUP.get(group, '未知')
+    return owner, group
+
+
+def main():
+    apply = '--apply' in sys.argv
+    mode = "执行" if apply else "预览"
+    print(f"=== 批量补齐 Frontmatter（{mode}模式）===\n")
+
+    index_keywords = build_index_keywords()
+    patched = 0
+    skipped = 0
+
+    for skill_path in sorted(ROOT.rglob("SKILL.md")):
+        if any(k in str(skill_path) for k in SKIP):
+            continue
+
+        content = skill_path.read_text(encoding='utf-8', errors='ignore')
+        fm, body = parse_frontmatter(content)
+        changed = False
+        rel = skill_path.relative_to(ROOT).as_posix()
+
+        # 补 name
+        if not fm.get('name'):
+            fm['name'] = skill_path.parent.name
+            changed = True
+
+        # 补 owner/group
+        owner, group = infer_owner_group(skill_path)
+        if not fm.get('owner'):
+            fm['owner'] = owner
+            changed = True
+        if not fm.get('group'):
+            fm['group'] = group
+            changed = True
+
+        # 补 description
+        if not fm.get('description'):
+            heading = extract_first_heading(body)
+            ability = extract_ability_section(body)
+            if ability:
+                desc = ability
+            elif heading:
+                desc = heading
+            else:
+                desc = fm.get('name', skill_path.parent.name)
+            # 查 INDEX 补充关键词
+            idx_info = index_keywords.get(rel, {})
+            keywords = idx_info.get('keywords', '')
+            if keywords:
+                desc += f"。触发词：{keywords}"
+            fm['description'] = desc
+            changed = True
+
+        # 补 triggers
+        if not fm.get('triggers'):
+            idx_info = index_keywords.get(rel, {})
+            keywords = idx_info.get('keywords', '')
+            if keywords:
+                fm['triggers'] = keywords
+                changed = True
+            else:
+                # 从 name 生成基础触发词
+                name = fm.get('name', '')
+                if name:
+                    fm['triggers'] = name
+                    changed = True
+
+        if changed:
+            patched += 1
+            print(f"  ✏️  {rel}")
+            print(f"      desc: {fm.get('description', '')[:60]}...")
+            print(f"      triggers: {fm.get('triggers', '')[:60]}")
+            if apply:
+                new_content = rebuild_frontmatter(fm, body)
+                skill_path.write_text(new_content, encoding='utf-8')
+        else:
+            skipped += 1
+
+    print(f"\n📊 补齐 {patched} 个，跳过 {skipped} 个已完整的")
+    if not apply and patched > 0:
+        print("加 --apply 执行写入。")
+
+
+if __name__ == "__main__":
+    main()
+
+
+[Tool result] Write
+
+assistant:
+[Tool call] Shell
+  command: cd "卡若AI" && python3 "_共享模块/skill_router/patch_frontmatter.py" 2>&1
+  working_directory: /Users/karuo/Documents/个人
+  description: Preview frontmatter patching
+
+[Tool result] Shell
+
+assistant:
+37个Skill全部能自动补齐。执行写入。
+[Tool call] Shell
+  command: cd "卡若AI" && python3 "_共享模块/skill_router/patch_frontmatter.py" --apply 2>&1
+  working_directory: /Users/karuo/Documents/个人
+  description: Apply frontmatter patching to all skills
+
+[Tool result] Shell
+
+assistant:
+37个Skill frontmatter补齐完成。现在重新生成manifest并检查覆盖率。
+[Tool call] Shell
+  command: cd "卡若AI" && python3 "_共享模块/skill_router/sync_index.py" 2>&1
+  working_directory: /Users/karuo/Documents/个人
+  description: Regenerate manifest and verify coverage
+
+[Tool result] Shell
+
+assistant:
+触发词覆盖从 **51% 飙升到 99%**，只剩1个。现在继续推下一步：更新主入口和核心规则文件。
+[Tool call] TodoWrite
+  todos: [{"id":"t3","status":"completed"},{"id":"t4","status":"in_progress"}]
+  merge: true
+
+[Tool result] TodoWrite
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_卡若AI总索引.md
+  old_string: ---
+
+## 一、快速开始
+  new_string: ---
+
+## 零、模型统一路由协议（所有AI必读）
+
+> **任何模型（含小模型）接入卡若AI时，按以下顺序加载上下文：**
+
+### 加载顺序（3步即可调度全部Skill）
+
+1. **读本文件** `00_卡若AI总索引.md` → 了解团队结构与规则
+2. **读机器清单** `_共享模块/skill_router/skills_manifest.json` → 75个Skill的结构化数据（id/name/owner/group/triggers/path）
+3. **按需读取** 目标Skill的 `SKILL.md` → 获取执行细节
+
+### 路由决策流程
+
+```
+用户输入 → 提取关键词 → 在 manifest.skills[].triggers 匹配
+         → 命中主Skill → 检查是否需要跨组协同
+         → 读取 SKILL.md → 按执行流程执行
+         → 输出结果 + 标注执行人和Skill名
+```
+
+### 跨组协同协议
+
+| 场景 | 主Skill组 | 协同组 | 协同说明 |
+|:---|:---|:---|:---|
+| 部署后要汇报 | 金 | 水 | 金组部署完→水泉生成汇报 |
+| 需求确定后开发 | 水 | 火 | 水泉拆需求→火炬写代码 |
+| 技术完成后算账 | 火 | 土 | 火组交付→土基算ROI |
+| 商业确定后分发 | 土 | 木 | 土组定方案→木叶做内容分发 |
+| 增长后扩容 | 木 | 金 | 木组放量→金组扩容基础设施 |
+
+### 工具脚本
+
+```bash
+# 重新生成机器清单（增删Skill后运行）
+python3 _共享模块/skill_router/sync_index.py
+
+# 批量优化所有SKILL.md（清理规则块+补frontmatter）
+python3 _共享模块/skill_router/optimize_all_skills.py --apply
+
+# 拆分超大SKILL到references（>300行自动拆）
+python3 _共享模块/skill_router/split_large_skills.py --apply
+
+# 批量补齐缺失的frontmatter
+python3 _共享模块/skill_router/patch_frontmatter.py --apply
+```
+
+---
+
+## 一、快速开始
+
+[Tool result] StrReplace
+
+assistant:
+同时更新统计数据（之前是57项，现在是75项）：
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/00_卡若AI总索引.md
+  old_string: ## 五、完整技能清单（55项）
+  new_string: ## 五、完整技能清单（75项）
+
+[Tool result] StrReplace
+
+assistant:
+现在更新 `karuo-ai.mdc` 核心规则，加入 manifest 路由指令。
+[Tool call] TodoWrite
+  todos: [{"id":"t4","status":"completed"},{"id":"t5","status":"in_progress"}]
+  merge: true
+
+[Tool result] TodoWrite
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  old_string: 你是「卡若AI」，卡若的个人数字管家和智能大总管。管理五行AI助手团队，统筹调度65个Skill。
+  new_string: 你是「卡若AI」，卡若的个人数字管家和智能大总管。管理五行AI助手团队，统筹调度75个Skill。
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  old_string: - **Skill路由索引**：`_共享模块/skill_router/SKILL_INDEX.md`（65个Skill快速定位）
+  new_string: - **Skill路由索引**：`_共享模块/skill_router/SKILL_INDEX.md`（人类可读，75个Skill快速定位）
+- **机器可读清单**：`_共享模块/skill_router/skills_manifest.json`（模型优先读此文件路由决策）
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  old_string: ## 上下文加载顺序
+
+```
+1. Cursor系统指令 → 2. 本规则(karuo-ai.mdc) → 3. 用户规则
+4. 对话开始后主动读取：总索引 → Skill路由索引 → 记忆 → 匹配的SKILL.md
+```
+  new_string: ## 上下文加载顺序
+
+```
+1. Cursor系统指令 → 2. 本规则(karuo-ai.mdc) → 3. 用户规则
+4. 对话开始后主动读取：
+   a. 总索引 00_卡若AI总索引.md（团队+规则+端口）
+   b. 机器清单 _共享模块/skill_router/skills_manifest.json（75个Skill结构化数据）
+   c. 记忆 /Users/karuo/Documents/个人/记忆.md
+   d. 按触发词匹配的 SKILL.md（按需读取）
+```
+
+## 模型路由决策（所有模型必守）
+
+```
+用户输入 → 提取关键词 → 在 skills_manifest.json 的 triggers 字段匹配
+         → 命中主Skill → 检查是否需跨组协同（见总索引·协同协议）
+         → 读取对应 SKILL.md → 按执行流程执行
+         → 输出结果 + 标注执行人和Skill名
+```
+
+**跨组协同链**：金→水→火→土→木→金（基础设施→流程→技术→商业→内容→扩容）
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] TodoWrite
+  todos: [{"id":"t5","status":"completed"},{"id":"t6","status":"in_progress"}]
+  merge: true
+
+[Tool result] TodoWrite
+
+assistant:
+现在建立跨组接力模板。我需要把统一的协同协议写入5个组长的决策Skill中，让任何模型在调用组长Skill时自动获得跨组接力能力。
+[Tool call] Write
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/COLLABORATION_PROTOCOL.md
+  contents: # 卡若AI 跨组协同协议（v1）
+
+> 所有组长决策Skill 和 跨组任务 引用本文件。本文件是"协同层"的核心。
+
+## 一、协同链（相生方向）
+
+```
+金(基础设施) → 水(流程编排) → 火(技术实现) → 土(商业验证) → 木(内容增长) → 金(扩容)
+```
+
+## 二、协同触发规则
+
+| 条件 | 触发 | 动作 |
+|:---|:---|:---|
+| 主Skill执行完，输出涉及下游组 | 自动协同 | 调用下游组对应Skill |
+| 主Skill执行卡住，需上游组支持 | 升级组长 | 上游组长介入资源调度 |
+| 跨3组以上的复杂任务 | 水组统筹 | 卡人召开跨组协调会 |
+
+## 三、协同输出标准
+
+每次跨组协同完成后，输出格式：
+
+```
+**协同报告**
+- 主Skill：[Skill名] | 执行人：[成员名]
+- 协同Skill：[Skill名] | 执行人：[成员名]
+- 状态：完成 / 部分完成 / 阻塞
+- 结果摘要：[1-2句]
+- 下一步：[具体动作]
+```
+
+## 四、组长协同职责
+
+| 组长 | 上游（接收） | 下游（交付） | 协同动作 |
+|:---|:---|:---|:---|
+| **卡资(金)** | ← 木组（扩容需求） | → 水组（基础设施就绪通知） | 资源分配后通知水泉编排流程 |
+| **卡人(水)** | ← 金组（设施就绪） | → 火组（需求拆解交付） | 拆解完需求后交火炬开发 |
+| **卡火(火)** | ← 水组（需求文档） | → 土组（技术交付物） | 开发完成后交土基算ROI |
+| **卡土(土)** | ← 火组（技术产出） | → 木组（商业方案） | ROI验证后交木叶做内容分发 |
+| **卡木(木)** | ← 土组（商业决策） | → 金组（增长扩容需求） | 内容放量后向金组申请扩容 |
+
+## 五、典型跨组场景
+
+### 场景1：新项目上线（全链路）
+```
+水泉拆需求 → 火炬开发 → 金剑部署 → 土基算ROI → 木叶做内容分发
+```
+
+### 场景2：紧急故障修复
+```
+金剑发现服务器异常 → 火锤代码修复 → 金剑重新部署 → 水泉汇报
+```
+
+### 场景3：商业项目评估
+```
+土基算账 → 火眼追问深挖 → 土基出报告 → 卡土决策
+```
+
+
+[Tool result] Write
+
+assistant:
+现在把协同协议引用写入5个组长的决策Skill中。
+[Tool call] Task
+  description: Add collab protocol to leader skills
+  prompt: 请在以下5个组长决策Skill的SKILL.md中，在frontmatter之后、正文第一个##之前，插入一行引用行：
+
+> **跨组协同协议**：见 `_共享模块/skill_router/COLLABORATION_PROTOCOL.md`，本Skill执行后如涉及下游组，自动触发协同。
+
+需要修改的5个文件（基路径 /Users/karuo/Documents/个人/卡若AI/）：
+1. 01_卡资（金）/资源调度中心/SKILL.md
+2. 02_卡人（水）/跨组协调中心/SKILL.md
+3. 03_卡木（木）/创意评审工坊/SKILL.md
+4. 04_卡火（火）/技术攻关会/SKILL.md
+5. 05_卡土（土）/商业决策会/SKILL.md
+
+操作步骤：
+- 读取每个文件
+- 找到frontmatter结束后的 --- 行之后
+- 在第一个 ## 标题之前插入那行引用
+- 写回文件
+
+请逐个处理这5个文件。
+  subagent_type: generalPurpose
+  model: fast
+
+[Tool result] Task
+
+assistant:
+5个组长Skill全部加入了跨组协同协议引用。现在做最后两步：重新生成最终版manifest + 一致性检查。
+[Tool call] TodoWrite
+  todos: [{"id":"t6","status":"completed"},{"id":"t7","status":"in_progress"}]
+  merge: true
+
+[Tool result] TodoWrite
+
+assistant:
+[Tool call] Shell
+  command: cd "卡若AI" && python3 "_共享模块/skill_router/sync_index.py" 2>&1
+  working_directory: /Users/karuo/Documents/个人
+  description: Final manifest generation with full quality check
+
+[Tool result] Shell
+
+assistant:
+最后1个缺触发词的也补上。
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/04_卡火（火）/_团队成员/火炬/存客宝项目管理/工作手机中间层/SKILL.md
+  limit: 15
+
+[Tool result] Read
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/04_卡火（火）/_团队成员/火炬/存客宝项目管理/工作手机中间层/SKILL.md
+  old_string: triggers: workphone-middle-layer
+  new_string: triggers: 工作手机中间层, PHP SDK, TypeScript SDK, unified对齐, 存客宝对接, 触客宝对接, workphone
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] Shell
+  command: cd "卡若AI" && python3 "_共享模块/skill_router/sync_index.py" 2>&1
+  working_directory: /Users/karuo/Documents/个人
+  description: Final sync - should be 100% coverage
+
+[Tool result] Shell
+
+assistant:
+**75/75 全部通过，100%覆盖率。** 现在做最后的一致性检查。
+[Tool call] TodoWrite
+  todos: [{"id":"t7","status":"completed"},{"id":"t8","status":"in_progress"}]
+  merge: true
+
+[Tool result] TodoWrite
+
+assistant:
+写一个一致性检查脚本，对比 SKILL_INDEX.md 和 manifest 的数据。
+[Tool call] Shell
+  command: cd "卡若AI" && python3 -c "
+import json, re
+from pathlib import Path
+
+ROOT = Path('.')
+INDEX = Path('_共享模块/skill_router/SKILL_INDEX.md').read_text(encoding='utf-8')
+MANIFEST = json.loads(Path('_共享模块/skill_router/skills_manifest.json').read_text(encoding='utf-8'))
+
+# 从INDEX提取所有注册的SKILL路径
+index_paths = set(re.findall(r'\x60([^\x60]*?/SKILL\.md)\x60', INDEX))
+
+# 从manifest提取所有路径
+manifest_paths = set(s['path'] for s in MANIFEST['skills'])
+
+# 在INDEX但不在manifest（死登记）
+only_index = index_paths - manifest_paths
+# 在manifest但不在INDEX（未登记）
+only_manifest = manifest_paths - index_paths
+
+print('=== 一致性检查 ===')
+print(f'SKILL_INDEX 登记：{len(index_paths)} 条')
+print(f'skills_manifest：{len(manifest_paths)} 条')
+print(f'仅INDEX有（死登记）：{len(only_index)}')
+for p in sorted(only_index):
+    print(f'  - {p}')
+print(f'仅manifest有（未登记到INDEX）：{len(only_manifest)}')
+for p in sorted(only_manifest):
+    print(f'  + {p}')
+
+# 文件实际存在性
+missing_files = []
+for s in MANIFEST['skills']:
+    if not (ROOT / s['path']).exists():
+        missing_files.append(s['path'])
+print(f'manifest中指向不存在文件：{len(missing_files)}')
+for p in missing_files:
+    print(f'  ✗ {p}')
+
+if not only_index and not only_manifest and not missing_files:
+    print('\\n✅ 全部一致，无异常！')
+" 2>&1
+  working_directory: /Users/karuo/Documents/个人
+  description: Run consistency check between INDEX and manifest
+
+[Tool result] Shell
+
+assistant:
+有3个Skill存在于manifest但未登记到SKILL_INDEX.md。把它们补上。
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/SKILL_INDEX.md
+  offset: 8
+  limit: 5
+
+[Tool result] Read
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/SKILL_INDEX.md
+  old_string: | G01 | NAS/群晖/存储/照片整理 | 金仓 | 群晖NAS管理 | `01_卡资（金）/_团队成员/金仓/群晖NAS管理/SKILL.md` |
+  new_string: | G00 | 备份代码/创建快照/git stash/容灾/代码回滚 | 金仓 | 容灾备份 | `01_卡资（金）/_团队成员/金仓/容灾备份/SKILL.md` |
+| G01 | NAS/群晖/存储/照片整理 | 金仓 | 群晖NAS管理 | `01_卡资（金）/_团队成员/金仓/群晖NAS管理/SKILL.md` |
+
+[Tool result] StrReplace
+
+assistant:
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/SKILL_INDEX.md
+  offset: 68
+  limit: 15
+
+[Tool result] Read
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/SKILL_INDEX.md
+  old_string: | F07 | 浏览器自动/滑块验证/自动注册登录 | 火炬 | 浏览器自动操作与验证解决 | `04_卡火（火）/_团队成员/火炬/浏览器自动操作与验证解决/SKILL.md` |
+  new_string: | F07 | 浏览器自动/滑块验证/自动注册登录 | 火炬 | 浏览器自动操作与验证解决 | `04_卡火（火）/_团队成员/火炬/浏览器自动操作与验证解决/SKILL.md` |
+| F07a | 存客宝项目/工作手机项目 | 火炬 | 存客宝项目管理 | `04_卡火（火）/_团队成员/火炬/存客宝项目管理/SKILL.md` |
+| F07b | 工作手机中间层/PHP SDK/TS SDK/unified对齐 | 火炬 | 工作手机中间层 | `04_卡火（火）/_团队成员/火炬/存客宝项目管理/工作手机中间层/SKILL.md` |
+
+[Tool result] StrReplace
+
+assistant:
+更新统计数据：
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/skill_router/SKILL_INDEX.md
+  old_string: - **金组**：17个 Skill
+- **水组**：15个 Skill
+- **木组**：9个 Skill
+- **火组**：18个 Skill
+- **土组**：8个 Skill
+- **共享**：1个 Skill
+- **总计**：**68个 Skill**
+  new_string: - **金组**：22个 Skill
+- **水组**：15个 Skill
+- **木组**：9个 Skill
+- **火组**：20个 Skill
+- **土组**：8个 Skill
+- **共享**：1个 Skill
+- **总计**：**75个 Skill**
+
+[Tool result] StrReplace
+
+assistant:
+再跑一次一致性检查确认全部对齐。
+[Tool call] Shell
+  command: cd "卡若AI" && python3 "_共享模块/skill_router/sync_index.py" 2>&1 && echo "---" && python3 -c "
+import json, re
+from pathlib import Path
+
+ROOT = Path('.')
+INDEX = Path('_共享模块/skill_router/SKILL_INDEX.md').read_text(encoding='utf-8')
+MANIFEST = json.loads(Path('_共享模块/skill_router/skills_manifest.json').read_text(encoding='utf-8'))
+
+index_paths = set(re.findall(r'\x60([^\x60]*?/SKILL\.md)\x60', INDEX))
+manifest_paths = set(s['path'] for s in MANIFEST['skills'])
+
+only_index = index_paths - manifest_paths
+only_manifest = manifest_paths - index_paths
+missing_files = [s['path'] for s in MANIFEST['skills'] if not (ROOT / s['path']).exists()]
+
+print('=== 最终一致性检查 ===')
+print(f'INDEX登记：{len(index_paths)} | manifest：{len(manifest_paths)}')
+print(f'仅INDEX：{len(only_index)} | 仅manifest：{len(only_manifest)} | 失效文件：{len(missing_files)}')
+if not only_index and not only_manifest and not missing_files:
+    print('✅ 完全一致！')
+else:
+    for p in sorted(only_index): print(f'  INDEX多：{p}')
+    for p in sorted(only_manifest): print(f'  manifest多：{p}')
+    for p in missing_files: print(f'  文件缺失：{p}')
+" 2>&1
+  working_directory: /Users/karuo/Documents/个人
+  description: Final consistency check
+
+[Tool result] Shell
+
+assistant:
+[Tool call] TodoWrite
+  todos: [{"id":"t8","status":"completed"}]
+  merge: true
+
+[Tool result] TodoWrite
+
+assistant:
+全部8个任务完成。最终写入记忆。
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/记忆.md
+  limit: 30
+
+[Tool result] Read
+
+assistant:
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/记忆.md
+  offset: 30
+
+[Tool result] Read
+
+assistant:
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/个人/记忆.md
+  old_string: ### 2026-02-07
+- [现在时刻] kr宝塔密钥登录写在服务器管理 Skill；本机 `ssh -p 22022 root@43.139.27.93` 免密。
+- [规则] 所有总结/复盘：**结构清晰、有空格、有字段、≤300字**。见 思考与总结格式.md § 五、SKILL_RULES。
+- [规则] **先做再说**：先执行再总结、再做优化文档；不先写文档再执行。见 SKILL_RULES、karuo-ai.mdc 执行铁律。
+  new_string: ### 2026-02-07
+- [现在时刻] kr宝塔密钥登录写在服务器管理 Skill；本机 `ssh -p 22022 root@43.139.27.93` 免密。
+- [规则] 所有总结/复盘：**结构清晰、有空格、有字段、≤300字**。见 思考与总结格式.md § 五、SKILL_RULES。
+- [规则] **先做再说**：先执行再总结、再做优化文档；不先写文档再执行。见 SKILL_RULES、karuo-ai.mdc 执行铁律。
+
+### 2026-02-10
+- [09:50] [架构] 完成卡若AI全局协同优化（重大里程碑）：
+  - 建立双索引机制：人类看SKILL_INDEX.md，模型看skills_manifest.json（v2）
+  - 75个Skill全部通过校验：路径0失效、frontmatter 100%完整、触发词100%覆盖
+  - 21个超大Skill自动拆分到references（94个段落，平均减少40%行数）
+  - 建立跨组协同协议COLLABORATION_PROTOCOL.md，5个组长Skill已接入
+  - 新增4个工具脚本：sync_index.py / optimize_all_skills.py / split_large_skills.py / patch_frontmatter.py
+  - 更新karuo-ai.mdc加入manifest路由指令和协同链
+  - 更新00_卡若AI总索引.md加入"模型统一路由协议"段落
+- [规则] 增删Skill后必须运行：python3 _共享模块/skill_router/sync_index.py
+- [规则] 模型接入优先读 skills_manifest.json 进行路由决策，而非遍历全目录
+
+[Tool result] StrReplace
+
+assistant:
+---
+
+**卡若AI 全局协同优化已全量完成。** 以下是完整复盘：
+
+---
+
+**目标&结果**：让普通大模型也能稳定调用卡若AI全部75个Skill并实现跨组协同。全部达成。
+
+**过程**：
+1. 建立机器可读清单 `skills_manifest.json`（v2），含结构化路由数据+协同协议
+2. 创建 `sync_index.py`，自动扫描75个SKILL.md、生成manifest、校验路径、检查frontmatter
+3. 37个缺frontmatter的Skill全部自动补齐（触发词覆盖 51%→100%）
+4. 21个超大Skill自动拆分94个段落到references（小程序管理1797→1467行、全栈开发1561→1023行等）
+5. 建立跨组协同协议 `COLLABORATION_PROTOCOL.md`，5个组长Skill已接入
+6. 更新总索引加入"模型统一路由协议"、规则文件加入manifest路由指令
+7. SKILL_INDEX.md 与 manifest 完全一致（75:75，0差异）
+
+**反思**：之前的体系"信息全但机器不友好"，核心瓶颈是缺少统一的JSON入口和标准化触发词。这次通过"双索引+自动同步"解决了根本问题。
+
+**总结**：
+```
+角色层（五行团队）→ 协议层（manifest + 协同链）→ 数据层（JSON + SKILL.md）
+任何模型：读manifest → 匹配triggers → 定位SKILL → 按协同链接力
+```
+
+**下一步执行**：
+- 日常增删Skill后跑 `python3 _共享模块/skill_router/sync_index.py`
+- 定期跑 `split_large_skills.py` 控制Skill体积
+- 后续可建"路由命中率日报"量化优化效果

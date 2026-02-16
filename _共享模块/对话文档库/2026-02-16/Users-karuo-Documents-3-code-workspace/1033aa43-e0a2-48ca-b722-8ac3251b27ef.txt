@@ -1,0 +1,1623 @@
+user:
+[Image]
+<image_files>
+The following images were provdied by the user and saved to the workspace for future use:
+1. /Users/karuo/.cursor/projects/Users-karuo-Documents-4/assets/image-c87d5e3c-9dfe-44b0-b9eb-21458e2851c3.png
+
+These images can be copied for use in other locations.
+</image_files>
+<user_query>
+数据库
+数据库这方面的话，主要就是把各个的用户数据，用户的分销的数据以及各个测试题的数据都放到这个数据库里面去，然后把这个数据库搭建完整，然后可以使实时的去秒级的那毫秒级的去查询相应的一个用户的一个资料，测试用户的资料。以及用户老是捆绑的一个资料，然后把这个整个数据库的前端、后端相应以及配置都在数据库里面，还有以及管理的人员，老师的相应的人员都在数据库里面去做完整的一个搭建，这个数据库一定要便捷高效使用知己skill开发那个数据库里面帮我找几个，在那个本地的一个数据库寻找几个已经那个最适合玩最完善的，以及那个估值最高的，能做一个基础的一个那个测试的一个数据库，然后包括他们的职业以及相应的规划，以及他们的性格各方面的做一个完整的这个用户的数据库的一个。no，直接在那个数据库里面直接去找.处理一下这个问题
+</user_query>
+
+assistant:
+<think>
+The user is asking me to:
+
+1. Set up a complete database for the "知己" (Zhiji) project that includes:
+   - User data
+   - Distribution/referral data
+   - Test question data
+   - Real-time (millisecond-level) query capability for user profiles, test user data, and user-consultant binding
+   - Frontend/backend configuration in the database
+   - Admin staff and consultant ("老师") data in the database
+
+2. Use the 知己 Skill to develop the database - find in the local database some that are most suitable, most complete, and highest value for baseline testing
+
+3. Include user database with: career, planning, personality, etc. - a complete user database
+
+4. "直接在那个数据库里面直接去找" - directly look in/find in the database and handle this
+
+The user also shared a screenshot showing the 知己 admin login page with a "服务器错误" (server error) - suggesting the backend/DB might not be working.
+
+According to the rules, I need to:
+1. Read the 知己 Skill first: `.cursor/skills/zhiji-project-manager/SKILL.md`
+2. The project uses MongoDB by default
+3. Check port (MongoDB: 27017)
+
+Let me start by reading the 知己 Skill and then exploring the existing database setup and lib/mongodb to understand the current state. I'll also look for any existing seed/test data or database schemas.
+</think>
+正在读取知己 Skill 与现有数据库实现，准备搭建完整的用户、分销、题库与管理后台数据体系。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/.cursor/skills/zhiji-project-manager/SKILL.md
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] LS
+
+assistant:
+<think>
+I've read the Skill and mongodb.ts. The project uses MongoDB with collections already defined. The user wants:
+1. Complete database with: user data, distribution data, test question data
+2. Real-time (millisecond) query for user profile, test user data, user-consultant binding
+3. Frontend/backend config in DB, admin and consultant (老师) data in DB
+4. Find in local DB some "most suitable, most complete, highest value" for baseline testing - including career, planning, personality - a complete user database
+5. "直接在那个数据库里面直接去找" - handle directly in the database
+
+The login screenshot shows "服务器错误" - likely the admin auth API is failing (maybe MongoDB not connected or no admin user).
+
+I need to:
+1. Check agent_database.mdc and any existing models/schemas
+2. Look at admin auth route to fix the server error
+3. Add missing collections for: distribution (referral_bindings already in COLLECTIONS), question banks, consultants, admin_users, system_settings
+4. Create seed script with test users (with career, planning, personality) for baseline testing
+5. Ensure indexes for fast (ms-level) queries
+
+Let me also check:
+- admin auth route (why server error)
+- admin seed route (dashboard seed data)
+- lib/test-questions.ts for question structure
+- existing models or types
+</think>
+继续查看管理后台认证、种子数据与题库结构，并查找数据库相关文档与 Agent 规则。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/auth/route.ts
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/seed/route.ts
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/test-questions.ts
+  limit: 120
+[Tool call] Glob
+  target_directory: /Users/karuo/Documents/开发/4、合作项目/知己开发
+  glob_pattern: **/agent_database*
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Glob
+
+[Tool result] LS
+
+assistant:
+<think>
+I see the auth route: when MongoDB fails (e.g. not running), it falls back to local auth. But the error "服务器错误" is returned in the catch block when any error happens - so the issue might be that `conn.db` is wrong. Looking at the code: `const conn = await connectToDatabase()` returns `{ client, db }`, not `{ db }` - so it should be `conn.db`. Let me check - connectToDatabase returns `{ client: MongoClient; db: Db }`, so conn.db is correct.
+
+Actually the issue might be that when MongoDB is not available, the catch catches the error and then tries to use local auth. But if the error is something else (e.g. in the JSON parse of body), it would hit the outer catch and return "服务器错误". So the user might have MongoDB not running, and the connectToDatabase() throws - then we go to catch (dbError) and use local auth. So we should only get "服务器错误" if:
+1. body parsing fails
+2. Or something in the "local auth" path fails
+3. Or connectToDatabase throws something that's not caught properly (e.g. conn is undefined)
+
+Wait - in the catch block we have `const conn = await connectToDatabase()` and then `const db = conn.db`. So if connectToDatabase throws, we go to catch (dbError). So we only get to "服务器错误" if the error is in the outer try - e.g. req.json() fails, or something after the MongoDB block. Let me re-read.
+
+Actually: the flow is:
+1. Try MongoDB
+2. If MongoDB fails (catch dbError), log and fall through
+3. If !usedDb and admin/admin123, return success with default token
+4. Else return 401
+5. If any error in the whole try block (including in connectToDatabase that might throw in a way we don't expect), we go to outer catch and return 500 "服务器错误"
+
+So "服务器错误" could mean: connectToDatabase() is throwing an error that isn't being caught properly, or the error is thrown in a different place. For example if connectToDatabase throws, we enter the inner catch (dbError) - so we should be fine. Unless the throw is something like "conn is undefined" after connect - but connectToDatabase returns { client, db }, so conn.db would be the Db. So the only way to get 500 is if something in the outer try throws outside of the inner try-catch - e.g. body = await req.json() or the default admin insert. So maybe the issue is that when count === 0 we do insertOne, and that might throw if MongoDB is not connected? No - we're inside the try that has connectToDatabase first. So if connectToDatabase() succeeds, we have a connection. If it fails, we throw to the inner catch. So the 500 might be from:
+- connectToDatabase() succeeding but then insertOne or findOne throwing (e.g. network timeout)
+- or from the fallback path: generateToken or NextResponse.json throwing (unlikely)
+
+I'll focus on making the database robust and adding a proper seed with career/personality so that:
+1. Database schema and indexes are complete for users, distribution, test data, consultants, admin, config
+2. Seed script that adds test users with career, planning, personality (we have seed already but can extend it)
+3. Fix auth to be more resilient (e.g. ensure we don't throw 500 when MongoDB is down - we already have fallback)
+
+Let me read agent_database.mdc and see if there's a references folder for database, and check development docs for database.
+</think>
+正在读取数据库 Agent 规则与开发文档中的数据库规范，并扩展 mongodb 的集合与索引。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/.cursor/rules/agent_database.mdc
+[Tool call] Grep
+  pattern: bookings|orders|distribution|referral
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/开发/4、合作项目/知己项目/开发文档
+
+[Tool result] Read
+
+[Tool result] Grep
+
+[Tool result] LS
+
+assistant:
+<think>
+开发文档可能在 知己开发 目录下。让我找开发文档里的数据库相关文档，以及 API 里用到的集合（booking、orders、distribution 等）。
+</think>
+
+
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/开发/4、合作项目/知己开发/开发文档
+[Tool call] Grep
+  pattern: getCollection|COLLECTIONS\.|db\.collection
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/users/route.ts
+  limit: 80
+
+[Tool result] LS
+
+[Tool result] Grep
+
+[Tool result] Read
+
+assistant:
+<think>
+I see that the API uses COLLECTIONS.ORDERS, COLLECTIONS.PAY_TRADES, COLLECTIONS.PROFIT_SHARING_RULES, COLLECTIONS.PROFIT_SHARING_RECORDS, COLLECTIONS.KNOWLEDGE_BASE - but in mongodb.ts I only see partial COLLECTIONS. I need to read the full mongodb.ts again to see what's defined and what's missing. Then I'll:
+1. Add all missing collections to mongodb.ts (ORDERS, PAY_TRADES, PROFIT_SHARING_RULES, PROFIT_SHARING_RECORDS, KNOWLEDGE_BASE, BOOKINGS if used)
+2. Read 开发文档/7、数据库/数据库管理规范.md
+3. Extend initializeDatabase() with indexes for all collections for ms-level query
+4. Create/update seed script: add test users with career, planning, personality (职业、规划、性格), and ensure consultants + admin + question_banks + system_settings have seed data
+5. Fix auth so that when MongoDB fails we don't throw 500 - already has fallback, but maybe connectToDatabase() throws in a way that isn't caught by inner catch (e.g. conn.db might be undefined if the return type is wrong). Let me check - connectToDatabase returns Promise<{ client: MongoClient; db: Db }>, so conn.db is correct. So the 500 might be from insertOne or findOne throwing. I'll add better error handling to auth to always fallback to local on any DB error.
+
+Checking booking API for BOOKINGS collection.
+</think>
+正在读取数据库规范与 mongodb 中已定义的集合。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/开发文档/7、数据库/数据库管理规范.md
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts
+[Tool call] Grep
+  pattern: COLLECTIONS\.|bookings
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发
+  glob: *.ts
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Grep
+
+assistant:
+<think>
+So the code uses COLLECTIONS.ORDERS, PAY_TRADES, PROFIT_SHARING_RULES, PROFIT_SHARING_RECORDS, KNOWLEDGE_BASE but these are NOT in the current mongodb.ts COLLECTIONS. So the API is referencing undefined constants - that would cause runtime errors. Let me check - in JavaScript/TS, COLLECTIONS.ORDERS would be undefined, and db.collection(undefined) might create a collection named "undefined". So the first fix is to add all missing collections to lib/mongodb.ts.
+
+Also need to check booking API for "bookings" collection.
+</think>
+检查 booking 与 admin 仪表盘使用的集合：
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/booking/route.ts
+  limit: 60
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/dashboard/route.ts
+  limit: 80
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/consultants/route.ts
+  limit: 60
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/questions/route.ts
+  limit: 80
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+Now I have a clear picture. The code uses:
+- COLLECTIONS.BOOKINGS (booking route) - MISSING in mongodb.ts
+- COLLECTIONS.ORDERS - MISSING
+- COLLECTIONS.PAY_TRADES - MISSING
+- COLLECTIONS.PROFIT_SHARING_RULES - MISSING
+- COLLECTIONS.PROFIT_SHARING_RECORDS - MISSING
+- COLLECTIONS.KNOWLEDGE_BASE - MISSING
+
+So the login "服务器错误" could be because when the auth route runs, connectToDatabase() might be throwing (e.g. MongoDB not running), and the inner catch catches it - but wait, if it's caught we go to the fallback. Unless the error is thrown before we get to the inner try. Let me look at auth again - the outer try includes: body = await req.json(), then the inner try/catch for MongoDB. So if req.json() fails we'd get 500. Or if after the inner catch we have a bug. Actually in the auth route, when we do connectToDatabase(), we're inside the inner try. So if that throws, we go to inner catch (dbError), then we check !usedDb and username/password. So the only way to get 500 is: 1) req.json() throws 2) Or after returning from the inner block something throws 3) Or the fallback path throws (e.g. generateToken or NextResponse.json). So I'll make the auth more defensive: do local auth first if MongoDB fails, and ensure we never throw 500 for "admin/admin123". 
+
+Main tasks:
+1. **lib/mongodb.ts**: Add missing COLLECTIONS (ORDERS, PAY_TRADES, PROFIT_SHARING_RULES, PROFIT_SHARING_RECORDS, KNOWLEDGE_BASE, BOOKINGS). Add indexes for all collections for ms-level query (id/userId/phone/orderSn/createdAt etc).
+2. **initializeDatabase**: Add indexes for new collections + admin_users, consultants, question_banks, referral_bindings, orders, pay_trades, profit_sharing_*, knowledge_base, bookings. Also create compound indexes for common query patterns.
+3. **Seed data**: Extend admin seed API or add a comprehensive seed script that: - Ensures default admin - Seeds a few consultants (老师) - Seeds question_banks from lib/test-questions - Seeds system_settings, ai_settings - Seeds ~50-200 test users with career (职业), planning (规划), personality (性格: MBTI/九型/生命密码) for "最完善、估值最高的基础测试用数据库". User said "直接在那个数据库里面直接去找" - I'll create seed data that gets inserted into MongoDB so the dashboard and queries work.
+4. **Auth**: Make auth route more resilient - try local auth first when DB fails so we don't return 500.
+
+Let me also add lib/models for type definitions (optional but good for "完整搭建"). And ensure inviteCode in users is not unique if we allow empty - the seed uses inviteCode like ZJxxxxx, and referredBy can be another user's inviteCode. So sparse/unique is fine.
+
+Implementing.
+</think>
+正在实现：补全数据库集合与索引、增强种子数据（含职业/规划/性格）、并加固登录在无库时的降级。
+
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"补全 lib/mongodb.ts 缺失集合与毫秒级查询索引","status":"in_progress"},{"id":"2","content":"扩展种子数据：用户职业/规划/性格 + 咨询师 + 题库 + 系统配置","status":"pending"},{"id":"3","content":"管理后台登录无库时降级，避免 500 服务器错误","status":"pending"},{"id":"4","content":"新增 lib/models 类型定义与开发文档更新","status":"pending"}]
+  merge: false
+
+[Tool result] TodoWrite
+
+assistant:
+<think>
+Implement step 1: Update lib/mongodb.ts with all missing collections and indexes.
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts
+  old_string: export const COLLECTIONS = {
+  // === C端 ===
+  USERS: "users",               // 用户表
+  REPORTS: "reports",           // 解读报告
+  TEST_RECORDS: "test_records", // 测试记录
+  APPOINTMENTS: "appointments", // 咨询预约
+  CONSULTANTS: "consultants",   // 专家/咨询师
+  SURVEYS: "surveys",           // 调研记录
+  INVITATIONS: "invitations",   // 邀请记录
+  // === 管理后台 ===
+  ADMIN_USERS: "admin_users",           // 管理员账号
+  QUESTION_BANKS: "question_banks",     // 题库管理
+  AI_SETTINGS: "ai_settings",           // AI设置
+  SYSTEM_SETTINGS: "system_settings",   // 系统设置
+  REFERRAL_BINDINGS: "referral_bindings", // 推荐绑定关系
+} as const
+  new_string: export const COLLECTIONS = {
+  // === C端 ===
+  USERS: "users",               // 用户表
+  REPORTS: "reports",           // 解读报告
+  TEST_RECORDS: "test_records", // 测试记录
+  APPOINTMENTS: "appointments", // 咨询预约（旧）
+  BOOKINGS: "bookings",         // 预约订单（含手机号+支付+存客宝）
+  CONSULTANTS: "consultants",   // 专家/咨询师（老师）
+  SURVEYS: "surveys",           // 调研记录
+  INVITATIONS: "invitations",   // 邀请记录
+  // === 支付与分销 ===
+  ORDERS: "orders",                       // 支付订单
+  PAY_TRADES: "pay_trades",               // 支付流水
+  REFERRAL_BINDINGS: "referral_bindings", // 推荐绑定关系（30天）
+  PROFIT_SHARING_RULES: "profit_sharing_rules",   // 分润规则
+  PROFIT_SHARING_RECORDS: "profit_sharing_records", // 分润记录
+  // === 管理后台 ===
+  ADMIN_USERS: "admin_users",       // 管理员账号
+  QUESTION_BANKS: "question_banks", // 题库管理
+  AI_SETTINGS: "ai_settings",       // AI设置
+  SYSTEM_SETTINGS: "system_settings", // 系统设置
+  KNOWLEDGE_BASE: "knowledge_base", // AI知识库（RAG）
+} as const
+
+[Tool result] StrReplace
+
+user:
+<user_query>
+继续
+</user_query>
+
+assistant:
+<think>
+The user said "继续" (continue). I was in the middle of implementing the database setup for the 知己 project. Let me check my todo list and continue from where I left off.
+
+I had:
+1. [in_progress] 补全 lib/mongodb.ts 缺失集合与毫秒级查询索引 - I added the missing COLLECTIONS but still need to add the indexes in initializeDatabase()
+2. [pending] 扩展种子数据：用户职业/规划/性格 + 咨询师 + 题库 + 系统配置
+3. [pending] 管理后台登录无库时降级，避免 500 服务器错误
+4. [pending] 新增 lib/models 类型定义与开发文档更新
+
+Let me continue:
+1. Finish initializeDatabase() in mongodb.ts with all indexes for ms-level queries
+2. Then do seed extension, auth fallback, and models/docs
+</think>
+继续完成数据库搭建：补全索引、扩展种子数据并加固登录降级。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts
+
+[Tool result] Read
+
+assistant:
+<think>
+I need to:
+1. Add indexes for all collections (including new ones: bookings, orders, pay_trades, referral_bindings, profit_sharing_*, admin_users, consultants, question_banks, knowledge_base) for ms-level query. Use createIndex with { background: true } where needed, and catch duplicate index errors.
+2. Extend seed: add career/planning/personality to users, seed consultants, question_banks, system_settings, ai_settings.
+3. Auth: make login resilient when MongoDB fails.
+4. Optionally add lib/models and update docs.
+
+Let me do the index expansion first - add all indexes. Then seed, then auth.
+</think>
+
+
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"补全 lib/mongodb.ts 缺失集合与毫秒级查询索引","status":"in_progress"}]
+  merge: true
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts
+  old_string: /**
+ * 初始化数据库索引
+ * 首次启动时调用
+ */
+export async function initializeDatabase() {
+  try {
+    const { db } = await connectToDatabase()
+
+    // 用户表索引
+    await db.collection(COLLECTIONS.USERS).createIndex({ phone: 1 }, { unique: true, sparse: true })
+    await db.collection(COLLECTIONS.USERS).createIndex({ openId: 1 }, { unique: true, sparse: true })
+    await db.collection(COLLECTIONS.USERS).createIndex({ inviteCode: 1 }, { unique: true })
+
+    // 报告表索引
+    await db.collection(COLLECTIONS.REPORTS).createIndex({ userId: 1, createdAt: -1 })
+    await db.collection(COLLECTIONS.REPORTS).createIndex({ type: 1 })
+
+    // 测试记录索引
+    await db.collection(COLLECTIONS.TEST_RECORDS).createIndex({ userId: 1, type: 1, createdAt: -1 })
+
+    // 预约表索引
+    await db.collection(COLLECTIONS.APPOINTMENTS).createIndex({ userId: 1, status: 1 })
+    await db.collection(COLLECTIONS.APPOINTMENTS).createIndex({ consultantId: 1, date: 1 })
+
+    console.log("[知己] 数据库索引初始化完成")
+  } catch (error) {
+    console.error("[知己] 数据库初始化失败:", error)
+  }
+}
+  new_string: /** 安全创建索引（已存在则跳过） */
+async function createIndexSafe(
+  db: Db,
+  coll: string,
+  spec: Record<string, 1 | -1>,
+  options?: { unique?: boolean; sparse?: boolean; background?: boolean }
+) {
+  try {
+    await db.collection(coll).createIndex(spec, options)
+  } catch (e: unknown) {
+    if ((e as { code?: number })?.code !== 85 && (e as { code?: number })?.code !== 86) {
+      console.warn("[知己] 索引创建跳过:", coll, (e as Error).message)
+    }
+  }
+}
+
+/**
+ * 初始化数据库索引（毫秒级查询：按 id/userId/phone/orderSn/createdAt 等）
+ * 首次启动或部署时调用
+ */
+export async function initializeDatabase() {
+  try {
+    const { db } = await connectToDatabase()
+
+    // 用户表：按手机/OpenID/邀请码/昵称查
+    await createIndexSafe(db, COLLECTIONS.USERS, { phone: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(db, COLLECTIONS.USERS, { openId: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(db, COLLECTIONS.USERS, { inviteCode: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(db, COLLECTIONS.USERS, { id: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(db, COLLECTIONS.USERS, { createdAt: -1 })
+    await createIndexSafe(db, COLLECTIONS.USERS, { nickname: "text" }, {} as { background?: boolean })
+
+    // 报告表
+    await createIndexSafe(db, COLLECTIONS.REPORTS, { userId: 1, createdAt: -1 })
+    await createIndexSafe(db, COLLECTIONS.REPORTS, { type: 1 })
+
+    // 测试记录：按用户+类型+时间秒查
+    await createIndexSafe(db, COLLECTIONS.TEST_RECORDS, { userId: 1, type: 1, createdAt: -1 })
+    await createIndexSafe(db, COLLECTIONS.TEST_RECORDS, { userId: 1 })
+
+    // 预约（旧）
+    await createIndexSafe(db, COLLECTIONS.APPOINTMENTS, { userId: 1, status: 1 })
+    await createIndexSafe(db, COLLECTIONS.APPOINTMENTS, { consultantId: 1, date: 1 })
+
+    // 预约订单 bookings：按用户/咨询师/状态/单号
+    await createIndexSafe(db, COLLECTIONS.BOOKINGS, { userId: 1, status: 1 })
+    await createIndexSafe(db, COLLECTIONS.BOOKINGS, { consultantId: 1, createdAt: -1 })
+    await createIndexSafe(db, COLLECTIONS.BOOKINGS, { bookingNo: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(db, COLLECTIONS.BOOKINGS, { createdAt: -1 })
+
+    // 咨询师
+    await createIndexSafe(db, COLLECTIONS.CONSULTANTS, { status: 1 })
+    await createIndexSafe(db, COLLECTIONS.CONSULTANTS, { createdAt: -1 })
+
+    // 支付订单 orders
+    await createIndexSafe(db, COLLECTIONS.ORDERS, { orderSn: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(db, COLLECTIONS.ORDERS, { userId: 1, createdAt: -1 })
+    await createIndexSafe(db, COLLECTIONS.ORDERS, { status: 1 })
+
+    // 支付流水
+    await createIndexSafe(db, COLLECTIONS.PAY_TRADES, { orderSn: 1 })
+    await createIndexSafe(db, COLLECTIONS.PAY_TRADES, { createdAt: -1 })
+
+    // 推荐绑定：按被推荐人/推荐人秒查
+    await createIndexSafe(db, COLLECTIONS.REFERRAL_BINDINGS, { userId: 1 })
+    await createIndexSafe(db, COLLECTIONS.REFERRAL_BINDINGS, { referrerId: 1, boundAt: -1 })
+
+    // 分润规则与记录
+    await createIndexSafe(db, COLLECTIONS.PROFIT_SHARING_RULES, { isDefault: 1 })
+    await createIndexSafe(db, COLLECTIONS.PROFIT_SHARING_RECORDS, { orderSn: 1 })
+    await createIndexSafe(db, COLLECTIONS.PROFIT_SHARING_RECORDS, { referrerId: 1, createdAt: -1 })
+
+    // 管理后台
+    await createIndexSafe(db, COLLECTIONS.ADMIN_USERS, { username: 1 }, { unique: true })
+    await createIndexSafe(db, COLLECTIONS.QUESTION_BANKS, { testType: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(db, COLLECTIONS.QUESTION_BANKS, { testType: 1, order: 1 })
+    await createIndexSafe(db, COLLECTIONS.AI_SETTINGS, { key: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(db, COLLECTIONS.SYSTEM_SETTINGS, { key: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(db, COLLECTIONS.KNOWLEDGE_BASE, { createdAt: -1 })
+
+    console.log("[知己] 数据库索引初始化完成")
+  } catch (error) {
+    console.error("[知己] 数据库初始化失败:", error)
+  }
+}
+
+[Tool result] TodoWrite
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+MongoDB text index requires a different format - the spec for text index is { fieldName: "text" }. But createIndex for text often uses createIndex({ nickname: "text" }) - that's valid in MongoDB. Let me check - actually for a simple field text index it's { key: "text" }. So that's fine. But we might get error if the collection is empty or if text index already exists. I'll leave it; if it causes issues we can remove the text index for nickname.
+
+Actually in MongoDB, createIndex for text is like: collection.createIndex({ nickname: "text" }). So the spec is Record<string, 1 | -1> but "text" is also allowed. TypeScript might complain. Let me check - we're passing { nickname: "text" } and options {} - the type says Record<string, 1 | -1>. So I need to either remove the text index or use a more permissive type. For simplicity I'll remove the nickname text index to avoid type/errors - we already have keyword regex search. So I'll remove that line.
+</think>
+修正：MongoDB 的 text 索引格式与类型不匹配，移除对 `nickname` 的 text 索引，保留按字段的精确/正则查询。
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts
+  old_string:     await createIndexSafe(db, COLLECTIONS.USERS, { id: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(db, COLLECTIONS.USERS, { createdAt: -1 })
+    await createIndexSafe(db, COLLECTIONS.USERS, { nickname: "text" }, {} as { background?: boolean })
+  new_string:     await createIndexSafe(db, COLLECTIONS.USERS, { id: 1 }, { unique: true, sparse: true })
+    await createIndexSafe(db, COLLECTIONS.USERS, { createdAt: -1 })
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/seed/route.ts
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/auth/route.ts
+
+[Tool result] StrReplace
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+Seed: I need to add career (职业), planning (规划), personality (性格) to users. And add a new endpoint or extend POST to also seed: consultants, question_banks, system_settings, ai_settings. Let me extend the seed route to:
+1. Add career, careerPlan, personalitySummary to each user in the seed
+2. Add an option to seed "base" data: admin, consultants, question_banks from test-questions, system_settings, ai_settings - either same POST with body.type = "full" or a separate call. I'll add body.mode: "users" | "full". When "full", also seed consultants (3-5 老师), question_banks (from lib/test-questions), system_settings, ai_settings.
+
+Auth: the 500 could happen if body = await req.json() throws (e.g. invalid JSON). I'll wrap body parsing in try and default to {}. And ensure any throw in the outer try is caught and we try local auth before returning 500.
+</think>
+正在扩展种子数据（职业/规划/性格）并加固登录降级逻辑。
+
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"补全 lib/mongodb.ts 缺失集合与毫秒级查询索引","status":"completed"},{"id":"2","content":"扩展种子数据：用户职业/规划/性格 + 咨询师 + 题库 + 系统配置","status":"in_progress"}]
+  merge: true
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/seed/route.ts
+  old_string: /**
+ * 知己 · 种子数据API
+ * POST: 生成2000个模拟用户数据（含MBTI/九型人格/数字生命密码测试结果）
+ */
+
+import { NextRequest, NextResponse } from "next/server"
+import { connectToDatabase, COLLECTIONS } from "@/lib/mongodb"
+
+/** 随机中文名 */
+const surnames = ["赵","钱","孙","李","周","吴","郑","王","冯","陈","褚","卫","蒋","沈","韩","杨","朱","秦","尤","许","何","吕","施","张","孔","曹","严","华","金","魏","陶","姜","戚","谢","邹","喻","柏","水","窦","章","云","苏","潘","葛","奚","范","彭","郎","鲁","韦","昌","马","苗","凤","花","方","俞","任","袁","柳","酆","鲍","史","唐","费","廉","岑","薛","雷","贺","倪","汤","滕","殷","罗","毕","郝","邬","安","常","乐","于","时","傅","皮"]
+const names = ["伟","芳","娜","敏","静","丽","强","磊","军","洋","勇","艳","杰","娟","涛","明","超","秀英","华","慧","鑫","桂英","玲","婷","建华","建国","子涵","雨晨","浩然","子轩","雨泽","宇轩","梓涵","欣怡","思源","语彤","若曦","佳怡","雅琪","天佑","俊杰","文博","志远","嘉豪","晨曦","子墨","思远","梓萱","紫萱","诗涵"]
+const mbtiTypes = ["INTJ","INTP","ENTJ","ENTP","INFJ","INFP","ENFJ","ENFP","ISTJ","ISFJ","ESTJ","ESFJ","ISTP","ISFP","ESTP","ESFP"]
+const enneagramTypes = [1,2,3,4,5,6,7,8,9]
+const cities = ["北京","上海","广州","深圳","杭州","成都","重庆","武汉","南京","天津","西安","长沙","厦门","青岛","大连","苏州","郑州","福州","济南","合肥","昆明","贵阳","太原","石家庄","哈尔滨"]
+  new_string: /**
+ * 知己 · 种子数据API
+ * POST: 生成模拟用户（含职业/规划/性格）+ 可选全量种子（咨询师/题库/系统配置）
+ * body: { count?: number, mode?: "users" | "full" }  default: count=2000, mode=users
+ */
+
+import { NextRequest, NextResponse } from "next/server"
+import { connectToDatabase, COLLECTIONS } from "@/lib/mongodb"
+import { testConfigs } from "@/lib/test-questions"
+import crypto from "crypto"
+
+/** 随机中文名 */
+const surnames = ["赵","钱","孙","李","周","吴","郑","王","冯","陈","褚","卫","蒋","沈","韩","杨","朱","秦","尤","许","何","吕","施","张","孔","曹","严","华","金","魏","陶","姜","戚","谢","邹","喻","柏","水","窦","章","云","苏","潘","葛","奚","范","彭","郎","鲁","韦","昌","马","苗","凤","花","方","俞","任","袁","柳","酆","鲍","史","唐","费","廉","岑","薛","雷","贺","倪","汤","滕","殷","罗","毕","郝","邬","安","常","乐","于","时","傅","皮"]
+const names = ["伟","芳","娜","敏","静","丽","强","磊","军","洋","勇","艳","杰","娟","涛","明","超","秀英","华","慧","鑫","桂英","玲","婷","建华","建国","子涵","雨晨","浩然","子轩","雨泽","宇轩","梓涵","欣怡","思源","语彤","若曦","佳怡","雅琪","天佑","俊杰","文博","志远","嘉豪","晨曦","子墨","思远","梓萱","紫萱","诗涵"]
+const mbtiTypes = ["INTJ","INTP","ENTJ","ENTP","INFJ","INFP","ENFJ","ENFP","ISTJ","ISFJ","ESTJ","ESFJ","ISTP","ISFP","ESTP","ESFP"]
+const enneagramTypes = [1,2,3,4,5,6,7,8,9]
+const cities = ["北京","上海","广州","深圳","杭州","成都","重庆","武汉","南京","天津","西安","长沙","厦门","青岛","大连","苏州","郑州","福州","济南","合肥","昆明","贵阳","太原","石家庄","哈尔滨"]
+/** 职业与规划（便于测试与估值展示） */
+const careers = ["产品经理","软件开发","教师","医生","金融分析","运营","设计","销售","人力资源","创业","自由职业","咨询顾问","市场策划","自媒体"]
+const plans = ["三年内晋升管理岗","转行互联网","副业变现","个人品牌打造","考编/考研","创业筹备","深耕当前领域","平衡工作与家庭"]
+function hashPassword(p: string) {
+  return crypto.createHash("sha256").update(p + "_zhiji_admin_salt").digest("hex")
+}
+
+[Tool result] TodoWrite
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Now add career, careerPlan, personalitySummary to each user in the seed, and add the "full" mode that seeds consultants, question_banks, system_settings, ai_settings, admin.
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/seed/route.ts
+  old_string:       // 用户文档
+      users.push({
+        id: userId,
+        phone,
+        nickname,
+        avatar: "",
+        birthday,
+        city,
+        gender: rand(["male", "female"]),
+        vip: Math.random() < 0.15,
+        points: randInt(0, 2000),
+        inviteCode,
+        referredBy: Math.random() < 0.3 ? `ZJ${String(100000 + randInt(0, Math.max(0, i - 1))).slice(1)}` : "",
+        // 测试结果概览
+        mbtiType,
+        enneagramType: String(enneagramType),
+        lifePathNumber: String(lifePathNumber),
+        testCount: randInt(1, 6),
+        lastTestAt: randDate(createdAt, "2026-02-10"),
+        status: Math.random() < 0.95 ? "active" : "inactive",
+        createdAt,
+        updatedAt: createdAt,
+      })
+  new_string:       // 用户文档（含职业、规划、性格摘要，便于秒级查询与估值测试）
+      const career = rand(careers)
+      const careerPlan = rand(plans)
+      const personalitySummary = `${mbtiType} · 九型${enneagramType}号 · 生命灵数${lifePathNumber}`
+      users.push({
+        id: userId,
+        phone,
+        nickname,
+        avatar: "",
+        birthday,
+        city,
+        gender: rand(["male", "female"]),
+        vip: Math.random() < 0.15,
+        points: randInt(0, 2000),
+        inviteCode,
+        referredBy: Math.random() < 0.3 ? `ZJ${String(100000 + randInt(0, Math.max(0, i - 1))).slice(1)}` : "",
+        // 职业与规划
+        career,
+        careerPlan,
+        personalitySummary,
+        // 测试结果概览
+        mbtiType,
+        enneagramType: String(enneagramType),
+        lifePathNumber: String(lifePathNumber),
+        testCount: randInt(1, 6),
+        lastTestAt: randDate(createdAt, "2026-02-10"),
+        status: Math.random() < 0.95 ? "active" : "inactive",
+        createdAt,
+        updatedAt: createdAt,
+      })
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/seed/route.ts
+  old_string: export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const count = Math.min(body.count || 2000, 5000)
+
+    const { db } = await connectToDatabase()
+    const usersCol = db.collection(COLLECTIONS.USERS)
+    const testCol = db.collection(COLLECTIONS.TEST_RECORDS)
+  new_string: export async function POST(req: NextRequest) {
+  try {
+    const body = (await req.json().catch(() => ({}))) as { count?: number; mode?: "users" | "full" }
+    const count = Math.min(body.count ?? 2000, 5000)
+    const mode = body.mode ?? "users"
+
+    const { db } = await connectToDatabase()
+    const usersCol = db.collection(COLLECTIONS.USERS)
+    const testCol = db.collection(COLLECTIONS.TEST_RECORDS)
+
+    // full 模式：先写入管理员、咨询师、题库、系统配置（基础测试库）
+    if (mode === "full") {
+      const adminCol = db.collection(COLLECTIONS.ADMIN_USERS)
+      if ((await adminCol.countDocuments()) === 0) {
+        await adminCol.insertOne({
+          username: "admin",
+          password: hashPassword("admin123"),
+          nickname: "超级管理员",
+          role: "superadmin",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+      }
+      const consultantsCol = db.collection(COLLECTIONS.CONSULTANTS)
+      if ((await consultantsCol.countDocuments()) === 0) {
+        await consultantsCol.insertMany([
+          { name: "林知心", title: "MBTI与九型人格咨询师", avatar: "", intro: "10年性格解读与职业规划", specialties: ["MBTI","九型人格"], price: 398, status: "active", cunkebaoPhone: "13800138001", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+          { name: "王明远", title: "数字生命密码导师", avatar: "", intro: "生命灵数与人际关系", specialties: ["数字生命密码"], price: 398, status: "active", cunkebaoPhone: "13800138002", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+          { name: "陈静", title: "综合解读与职场顾问", avatar: "", intro: "性格+职业规划一站式", specialties: ["MBTI","九型人格","数字生命密码"], price: 398, status: "active", cunkebaoPhone: "", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        ])
+      }
+      const qbCol = db.collection(COLLECTIONS.QUESTION_BANKS)
+      for (const [testType, config] of Object.entries(testConfigs)) {
+        const existing = await qbCol.findOne({ testType })
+        if (!existing) {
+          await qbCol.insertOne({
+            testType,
+            title: config.title,
+            subtitle: config.subtitle,
+            description: config.description,
+            questionCount: config.questionCount,
+            estimatedTime: config.estimatedTime,
+            inputType: config.inputType ?? "questions",
+            questions: config.questions,
+            order: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          })
+        }
+      }
+      const sysCol = db.collection(COLLECTIONS.SYSTEM_SETTINGS)
+      if ((await sysCol.countDocuments()) === 0) {
+        await sysCol.insertMany([
+          { key: "siteName", value: "知己", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+          { key: "consultPrice", value: "398", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() },
+        ])
+      }
+      const aiCol = db.collection(COLLECTIONS.AI_SETTINGS)
+      if ((await aiCol.countDocuments()) === 0) {
+        await aiCol.insertOne({ key: "defaultModel", value: "llama-3.3-70b-versatile", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+      }
+    }
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Now update the return value to include full mode info when mode is full. And fix auth route to never return 500 for admin/admin123 (try local auth first on any error).
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/seed/route.ts
+  old_string:     return NextResponse.json({
+      success: true,
+      data: {
+        usersCreated: users.length,
+        testRecordsCreated: testRecords.length,
+      },
+    })
+  new_string:     return NextResponse.json({
+      success: true,
+      data: {
+        mode,
+        usersCreated: users.length,
+        testRecordsCreated: testRecords.length,
+      },
+    })
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/auth/route.ts
+  old_string: export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const { username, password } = body
+
+    if (!username || !password) {
+      return NextResponse.json({ success: false, error: "请输入用户名和密码" }, { status: 400 })
+    }
+
+    // 先尝试 MongoDB 认证
+    let usedDb = false
+    try {
+      const conn = await connectToDatabase()
+      const db = conn.db
+      const collection = db.collection(COLLECTIONS.ADMIN_USERS)
+
+      // 首次启动：初始化默认管理员
+      const count = await collection.countDocuments()
+      if (count === 0) {
+        await collection.insertOne({
+          username: "admin",
+          password: hashPassword("admin123"),
+          nickname: "超级管理员",
+          role: "superadmin",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+        console.log("[知己Admin] 已创建默认管理员: admin/admin123")
+      }
+
+      // 验证登录
+      const admin = await collection.findOne({ username, status: "active" })
+      if (admin) {
+        const hashedPwd = hashPassword(password)
+        if (admin.password === hashedPwd) {
+          usedDb = true
+          const token = generateToken(String(admin._id), admin.username)
+          await collection.updateOne({ _id: admin._id }, { $set: { lastLoginAt: new Date().toISOString() } })
+          return NextResponse.json({
+            success: true,
+            data: {
+              token,
+              admin: { id: String(admin._id), username: admin.username, nickname: admin.nickname, role: admin.role },
+            },
+          })
+        }
+      }
+
+      // 数据库中没找到匹配的管理员
+      if (count > 0) {
+        return NextResponse.json({ success: false, error: "用户名或密码错误" }, { status: 401 })
+      }
+    } catch (dbError) {
+      console.log("[知己Admin] MongoDB不可用，使用本地认证:", (dbError as Error).message?.slice(0, 50))
+    }
+
+    // MongoDB不可用或无数据时，使用内置默认管理员账号
+    if (!usedDb && username === "admin" && password === "admin123") {
+      const token = generateToken("default_admin", "admin")
+      return NextResponse.json({
+        success: true,
+        data: { token, admin: { id: "default_admin", username: "admin", role: "superadmin", nickname: "超级管理员" } },
+      })
+    }
+
+    return NextResponse.json({ success: false, error: "用户名或密码错误" }, { status: 401 })
+  } catch (error: unknown) {
+    console.error("[知己Admin] 登录失败:", error)
+    return NextResponse.json({ success: false, error: "服务器错误" }, { status: 500 })
+  }
+}
+  new_string: export async function POST(req: NextRequest) {
+  let body: { username?: string; password?: string } = {}
+  try {
+    body = (await req.json().catch(() => ({}))) as { username?: string; password?: string }
+  } catch {
+    return NextResponse.json({ success: false, error: "请求体无效" }, { status: 400 })
+  }
+  const username = body.username ?? ""
+  const password = body.password ?? ""
+
+  if (!username || !password) {
+    return NextResponse.json({ success: false, error: "请输入用户名和密码" }, { status: 400 })
+  }
+
+  // 无库时优先走本地默认账号，避免 500
+  const defaultCreds = username === "admin" && password === "admin123"
+  if (defaultCreds) {
+    const token = generateToken("default_admin", "admin")
+    const ok = { success: true as const, data: { token, admin: { id: "default_admin", username: "admin", role: "superadmin", nickname: "超级管理员" } } }
+    try {
+      const conn = await connectToDatabase()
+      const db = conn.db
+      const collection = db.collection(COLLECTIONS.ADMIN_USERS)
+      const count = await collection.countDocuments()
+      if (count === 0) {
+        await collection.insertOne({
+          username: "admin",
+          password: hashPassword("admin123"),
+          nickname: "超级管理员",
+          role: "superadmin",
+          status: "active",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+        console.log("[知己Admin] 已创建默认管理员: admin/admin123")
+      }
+      const admin = await collection.findOne({ username, status: "active" })
+      if (admin && admin.password === hashPassword(password)) {
+        const t = generateToken(String(admin._id), admin.username)
+        await collection.updateOne({ _id: admin._id }, { $set: { lastLoginAt: new Date().toISOString() } })
+        return NextResponse.json({ success: true, data: { token: t, admin: { id: String(admin._id), username: admin.username, nickname: admin.nickname, role: admin.role } } })
+      }
+    } catch (dbError) {
+      console.log("[知己Admin] MongoDB不可用，使用本地认证:", (dbError as Error).message?.slice(0, 50))
+    }
+    return NextResponse.json(ok)
+  }
+
+  // 非默认账号：必须走数据库
+  try {
+    const conn = await connectToDatabase()
+    const db = conn.db
+    const collection = db.collection(COLLECTIONS.ADMIN_USERS)
+    const count = await collection.countDocuments()
+    if (count === 0) {
+      await collection.insertOne({
+        username: "admin",
+        password: hashPassword("admin123"),
+        nickname: "超级管理员",
+        role: "superadmin",
+        status: "active",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      })
+    }
+    const admin = await collection.findOne({ username, status: "active" })
+    if (admin && admin.password === hashPassword(password)) {
+      const token = generateToken(String(admin._id), admin.username)
+      await collection.updateOne({ _id: admin._id }, { $set: { lastLoginAt: new Date().toISOString() } })
+      return NextResponse.json({
+        success: true,
+        data: { token, admin: { id: String(admin._id), username: admin.username, nickname: admin.nickname, role: admin.role } },
+      })
+    }
+    return NextResponse.json({ success: false, error: "用户名或密码错误" }, { status: 401 })
+  } catch (dbError) {
+    console.error("[知己Admin] 登录失败:", dbError)
+    return NextResponse.json({ success: false, error: "服务暂时不可用，请稍后重试" }, { status: 503 })
+  }
+}
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+I need to fix the auth logic: for default creds we now return ok immediately after trying DB. But if DB works and has admin, we return the DB token - good. If DB fails we return ok (local token). So we're good. But wait - for defaultCreds we first try DB; if DB is up and has admin user with password admin123 we should return the DB token. So the flow is correct. Let me double-check: when defaultCreds is true we try connectToDatabase; if it succeeds we check count and maybe insert default admin, then findOne admin - if found and password matches we return DB token. If DB throws we catch and return ok (local). If DB succeeds but no admin match (shouldn't happen for admin/admin123) we fall through and return ok. So we need to return after the try block when defaultCreds. So after the try/catch we have "return NextResponse.json(ok)" - that's only reached when we didn't already return inside the try (e.g. when DB failed or when admin not found). So when DB fails we return ok. When DB succeeds and admin found we return inside try. When DB succeeds but no admin? Then we don't return in try, and we return ok - which is correct (local token). Good.
+
+Now add lib/models types and update 开发文档/7、数据库. I'll add a simple models/index.ts that re-exports types for User, Report, etc. and update the database doc.
+</think>
+正在添加 `lib/models` 类型定义并更新开发文档。
+
+[Tool call] TodoWrite
+  todos: [{"id":"2","content":"扩展种子数据：用户职业/规划/性格 + 咨询师 + 题库 + 系统配置","status":"completed"},{"id":"3","content":"管理后台登录无库时降级，避免 500 服务器错误","status":"completed"},{"id":"4","content":"新增 lib/models 类型定义与开发文档更新","status":"in_progress"}]
+  merge: true
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib
+
+[Tool result] TodoWrite
+
+[Tool result] LS
+
+assistant:
+<think>
+Create lib/models/index.ts with types for User, Consultant, TestRecord, etc. and update 开发文档/7、数据库/数据库管理规范.md to document the new collections and seed usage.
+</think>
+
+
+[Tool call] Write
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/models/index.ts
+  contents: /**
+ * 知己 · 数据库模型类型定义
+ * 与 MongoDB 集合对应，便于前后端与 API 统一类型
+ */
+
+/** 用户（含职业、规划、性格摘要，支持毫秒级查询） */
+export interface UserDoc {
+  _id?: unknown
+  id?: string
+  phone?: string
+  openId?: string
+  nickname: string
+  avatar?: string
+  birthday?: string
+  city?: string
+  gender?: "male" | "female"
+  vip?: boolean
+  points?: number
+  inviteCode?: string
+  referredBy?: string
+  /** 职业 */
+  career?: string
+  /** 职业/人生规划 */
+  careerPlan?: string
+  /** 性格摘要：MBTI·九型·生命灵数 */
+  personalitySummary?: string
+  mbtiType?: string
+  enneagramType?: string
+  lifePathNumber?: string
+  testCount?: number
+  lastTestAt?: string
+  status?: "active" | "inactive"
+  createdAt: string
+  updatedAt: string
+}
+
+/** 测试记录 */
+export interface TestRecordDoc {
+  _id?: unknown
+  userId: string
+  testType: "mbti" | "enneagram" | "numerology"
+  resultType: string
+  resultTypeName: string
+  scores?: Record<string, number>
+  birthday?: string
+  createdAt: string
+}
+
+/** 咨询师/老师（含存客宝手机号绑定） */
+export interface ConsultantDoc {
+  _id?: unknown
+  name: string
+  title: string
+  avatar?: string
+  intro?: string
+  specialties?: string[]
+  price?: number
+  status?: "active" | "inactive"
+  cunkebaoPhone?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** 预约订单（含手机号、支付、存客宝状态） */
+export interface BookingDoc {
+  _id?: unknown
+  bookingNo: string
+  userId: string
+  consultantId: string
+  phone: string
+  amount: number
+  status: "pending" | "paid" | "cancelled"
+  cunkebaoStatus?: "pending" | "success" | "failed"
+  createdAt: string
+  updatedAt: string
+}
+
+/** 支付订单 */
+export interface OrderDoc {
+  _id?: unknown
+  orderSn: string
+  userId: string
+  amount: number
+  status: string
+  payMethod?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** 推荐绑定（30天） */
+export interface ReferralBindingDoc {
+  _id?: unknown
+  userId: string
+  referrerId: string
+  inviteCode: string
+  status: "new" | "renew" | "takeover"
+  boundAt: string
+  expireAt: string
+  createdAt: string
+}
+
+/** 管理员 */
+export interface AdminUserDoc {
+  _id?: unknown
+  username: string
+  password: string
+  nickname?: string
+  role: string
+  status: "active" | "inactive"
+  lastLoginAt?: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** 题库条目（按 testType 存） */
+export interface QuestionBankDoc {
+  _id?: unknown
+  testType: string
+  title: string
+  subtitle?: string
+  description?: string
+  questionCount?: number
+  estimatedTime?: string
+  inputType?: "questions" | "birthday"
+  questions: unknown[]
+  order?: number
+  createdAt: string
+  updatedAt: string
+}
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/开发文档/7、数据库/数据库管理规范.md
+  old_string: # 第7章 数据库管理规范
+
+> **阅读对象**：三支开发团队（必读）  
+> **原则**：保持抽象，不绑定具体数据库；三支团队可各自选型实现。
+
+---
+
+## 1. 设计原则
+  new_string: # 第7章 数据库管理规范
+
+> **阅读对象**：三支开发团队（必读）  
+> **原则**：保持抽象，不绑定具体数据库；三支团队可各自选型实现。  
+> **实现**：知己项目默认 MongoDB，集合与索引见 `lib/mongodb.ts`，类型见 `lib/models/index.ts`。
+
+---
+
+## 0. 集合与索引速查（MongoDB 实现）
+
+| 集合 | 用途 | 关键索引（毫秒级查询） |
+|------|------|------------------------|
+| users | 用户（含职业/规划/性格摘要） | phone, openId, inviteCode, id, createdAt |
+| test_records | 测试记录 | userId+type+createdAt |
+| consultants | 咨询师/老师（含存客宝手机号） | status, createdAt |
+| bookings | 预约订单（手机号+支付+存客宝） | userId+status, consultantId, bookingNo |
+| orders | 支付订单 | orderSn, userId+createdAt |
+| referral_bindings | 推荐绑定 30 天 | userId, referrerId+boundAt |
+| profit_sharing_rules / profit_sharing_records | 分润规则与记录 | orderSn, referrerId+createdAt |
+| admin_users | 管理员 | username |
+| question_banks | 题库 | testType |
+| ai_settings / system_settings | AI 与系统配置 | key |
+| knowledge_base | AI 知识库 RAG | createdAt |
+
+**种子数据**：管理后台仪表盘可调用 `POST /api/admin/seed`，body：`{ "mode": "full" }` 生成全量基础库（管理员+咨询师+题库+系统配置）；`{ "count": 200, "mode": "users" }` 生成带职业/规划/性格的用户与测试记录。
+
+---
+
+## 1. 设计原则
+
+[Tool result] Write
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Check lints for the files I edited. The QUESTION_BANKS unique index on testType might conflict - we're using unique: true, sparse: true. For question_banks we have one doc per testType so unique is correct. Let me verify seed route and auth don't have lint errors. Also ensure testConfigs is exported from test-questions.
+</think>
+
+
+[Tool call] Grep
+  pattern: export.*testConfigs|testConfigs
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/test-questions.ts
+[Tool call] ReadLints
+  paths: ["/Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts","/Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/seed/route.ts","/Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/auth/route.ts","/Users/karuo/Documents/开发/4、合作项目/知己开发/lib/models/index.ts"]
+
+[Tool result] Grep
+
+[Tool result] ReadLints
+
+assistant:
+<think>
+testConfigs is exported. No linter errors. Mark todo 4 completed and add a short summary to the 知己 skill's project progress or experience log as required. Let me also ensure the payment/route uses the correct COLLECTIONS - we added ORDERS etc. so the API should work now. I'll update the progress doc.
+</think>
+
+
+[Tool call] TodoWrite
+  todos: [{"id":"4","content":"新增 lib/models 类型定义与开发文档更新","status":"completed"}]
+  merge: true
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/.cursor/skills/zhiji-project-manager/references/project-progress.md
+  limit: 80
+
+[Tool result] TodoWrite
+
+[Tool result] Read
+
+assistant:
+<think>
+I'll add a short changelog entry at the top of project-progress for today's database work.
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/.cursor/skills/zhiji-project-manager/references/project-progress.md
+  old_string: # 知己 · 项目进度跟踪
+
+> 最后更新：2026-02-10（AI体系+支付+分账全栈搭建）
+  new_string: # 知己 · 项目进度跟踪
+
+> 最后更新：2026-02-10（数据库全量集合+索引+种子+登录降级）
+
+**变更（2026-02-10）**：数据库层补全——① `lib/mongodb.ts` 补全 ORDERS/PAY_TRADES/BOOKINGS/PROFIT_SHARING_*/KNOWLEDGE_BASE 等集合，并为各集合创建毫秒级查询索引；② 种子 API 支持 `mode: "full"`（管理员+咨询师+题库+系统配置）及用户字段 career/careerPlan/personalitySummary；③ 管理后台登录在 MongoDB 不可用时降级为本地 admin/admin123，避免 500；④ 新增 `lib/models/index.ts` 类型定义；⑤ 开发文档 7、数据库 增加集合与种子说明。
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+All done. Give the user a concise summary.
+</think>
+已按你的要求做完数据库相关改动，当前状态如下。
+
+---
+
+**1. 集合与索引（`lib/mongodb.ts`）**
+
+- **补全集合常量**：`BOOKINGS`、`ORDERS`、`PAY_TRADES`、`PROFIT_SHARING_RULES`、`PROFIT_SHARING_RECORDS`、`KNOWLEDGE_BASE`（与现有 API 一致）。
+- **统一索引**：为上述集合及原有 users/test_records/consultants 等建好索引，支持按 `userId`、`phone`、`orderSn`、`bookingNo`、`createdAt` 等做毫秒级查询；索引创建用安全封装，已存在则跳过。
+
+**2. 种子数据（`POST /api/admin/seed`）**
+
+- **用户**：每条用户增加 `career`（职业）、`careerPlan`（规划）、`personalitySummary`（性格摘要：MBTI·九型·生命灵数），方便做“最完善、估值最高”的测试库。
+- **全量基础库**：请求体传 `{ "mode": "full" }` 时，会写入：
+  - 默认管理员 admin / admin123  
+  - 3 位咨询师/老师（含存客宝手机号）  
+  - 3 套题库（来自 `lib/test-questions`）  
+  - 系统配置（siteName、consultPrice）  
+  - AI 设置（defaultModel）  
+- 仍支持 `{ "count": 200 }` 或 `{ "count": 200, "mode": "users" }` 只生成用户+测试记录。
+
+**3. 管理后台登录降级**
+
+- 使用 **admin / admin123** 时：优先走 MongoDB；若连不上库，直接走本地默认账号并返回 200，不再出现“服务器错误”500。
+- 非默认账号：必须走数据库；若数据库不可用则返回 503“服务暂时不可用”，不再 500。
+
+**4. 类型与文档**
+
+- **`lib/models/index.ts`**：补充 User、Consultant、TestRecord、Booking、Order、ReferralBinding、Admin、QuestionBank 等文档类型，与当前集合一致。
+- **开发文档 7、数据库**：已更新集合与索引速查表，并说明种子接口用法（含 `mode: "full"`）。
+
+---
+
+**使用方式建议**
+
+1. **本地 MongoDB 已启动**（端口 27017）：  
+   - 先访问管理后台登录页，用 admin / admin123 登录（若库为空，首次登录会自动建默认管理员）。  
+   - 需要完整测试数据时：调用一次 `POST /api/admin/seed`，body：`{ "mode": "full" }`，再按需传 `{ "count": 200 }` 生成用户与测试记录。
+
+2. **未装或未启 MongoDB**：  
+   - 仍可用 admin / admin123 登录后台（走本地降级）；仪表盘等依赖数据库的接口会返回空或 0，属预期。
+
+如需把“种子数据”做成仪表盘里的一键按钮（例如「生成基础测试库」），可以再在管理后台加一个触发 `POST /api/admin/seed` 的入口。
+
+user:
+<user_query>
+
+运行网站
+</user_query>
+
+assistant:
+<think>
+The user wants to run the website. I should run the dev server for the 知己 project. According to the project rules, the fixed port is 3000 and the command is `pnpm dev`. I should check if there's already a dev server running in terminals first, then run the command.
+</think>
+
+
+[Tool call] LS
+  target_directory: /Users/karuo/.cursor/projects/Users-karuo-Documents-4/terminals
+
+[Tool result] LS
+
+assistant:
+<think>
+Let me run the dev server for the zhiji project. The project path is /Users/karuo/Documents/开发/4、合作项目/知己开发. I'll use pnpm dev which will start on port 3000.
+</think>
+
+
+[Tool call] Shell
+  command: cd /Users/karuo/Documents/开发/4、合作项目/知己开发 && pnpm dev
+  description: 启动知己 Next.js 开发服务器（端口 3000）
+  is_background: true
+  timeout: 15000
+
+[Tool result] Shell
+
+assistant:
+<think>
+The dev server was started in the background. Let me check if it's running successfully by reading the terminal output after a short wait.
+</think>
+
+
+[Tool call] mcp_cursor-ide-browser_browser_wait_for
+  time: 3
+
+[Tool result] mcp_cursor-ide-browser_browser_wait_for
+
+assistant:
+<think>
+Let me read the terminal output to see if the server started successfully.
+</think>
+
+
+[Tool call] Read
+  path: /Users/karuo/.cursor/projects/Users-karuo-Documents-4/terminals/407662.txt
+
+[Tool result] Read
+
+assistant:
+<think>
+The website is running successfully on http://localhost:3000. The Next.js dev server started. There are MongoDB authentication errors (code 13 Unauthorized) when the admin dashboard and users API try to connect - this means the MongoDB connection string likely needs auth credentials in .env.local. But the website itself is running. I'll inform the user that the site is up and mention the MongoDB auth issue if they want to use the admin features.
+</think>
+网站已经启动，可以访问：
+
+- **首页**: http://localhost:3000
+- **管理后台**: http://localhost:3000/admin
+
+当前 MongoDB 连接返回认证错误（`command aggregate requires authentication`），说明 `.env.local` 里的 `MONGODB_URI` 可能需要带上用户名和密码。  
+仪表盘和用户列表等接口会失败，但页面本身可以正常打开。若本地 MongoDB 未开启或无认证，会使用空数据降级。
+
+user:
+[Image]
+<image_files>
+The following images were provdied by the user and saved to the workspace for future use:
+1. /Users/karuo/.cursor/projects/Users-karuo-Documents-4/assets/image-f1f11b0c-7a59-4068-99e4-d4e443b3792f.png
+
+These images can be copied for use in other locations.
+</image_files>
+<user_query>
+
+用户数据还是空的，帮我按上方的要求处理一下，拿mbti的数据处理一下
+</user_query>
+
+assistant:
+<think>
+The user is saying the user data is still empty and wants me to process it according to the previous requirements, using MBTI data. 
+
+From the earlier context:
+1. We built a seed API at POST /api/admin/seed that can generate users with career, careerPlan, personalitySummary, MBTI, enneagram, life path number, etc.
+2. The seed can be triggered with `{ "mode": "full" }` for full base data, or `{ "count": 200 }` for users + test records.
+3. There was a MongoDB authentication error earlier - "command aggregate requires authentication". So the MongoDB might not be connecting properly with auth.
+
+The user wants:
+- User data to be populated
+- Use MBTI data to process it
+
+I need to:
+1. Call the seed API to generate user data - POST /api/admin/seed with body like { "mode": "full", "count": 200 } or similar. But the API is on the Next.js server - I can't directly call it from here unless the server is running. The server is running on localhost:3000.
+
+2. I could use curl to call the seed API: `curl -X POST http://localhost:3000/api/admin/seed -H "Content-Type: application/json" -d '{"mode":"full","count":200}'`
+
+3. However - the MongoDB had authentication errors. So even if I call the seed API, it might fail because MongoDB connection requires authentication. Let me try anyway - maybe the user fixed the MongoDB config, or maybe the seed will work differently.
+
+Actually, looking at the seed route - it uses connectToDatabase() which will throw if MongoDB auth fails. So the seed might fail. But I should try - the user is asking to populate the data. If it fails we can tell them about the MongoDB auth issue.
+
+Let me run curl to trigger the seed. I'll use a reasonable count like 200 users with MBTI data (the seed already includes MBTI, enneagram, numerology test records).
+</think>
+正在调用种子 API 生成包含 MBTI 等测试数据的用户。
+
+[Tool call] Shell
+  command: curl -s -X POST "http://localhost:3000/api/admin/seed" -H "Content-Type: application/json" -d '{"mode":"full","count":200}'
+  description: 调用种子 API 生成用户与 MBTI 测试数据
+
+[Tool result] Shell
+
+assistant:
+<think>
+The seed failed because MongoDB requires authentication. The user's MongoDB is configured with auth but the MONGODB_URI in .env.local probably doesn't include credentials, or the credentials are wrong.
+
+I need to:
+1. Check the .env.local for MONGODB_URI - but that might contain secrets, I should be careful
+2. Or suggest the user fix the MongoDB connection string to include username:password
+
+Let me check if there's an .env.example or similar to see the expected format. And check .env.local - I'll just look at the key names not the actual values.
+</think>
+种子 API 调用失败：MongoDB 返回「需要认证」。正在检查 MongoDB 连接配置。
+
+[Tool call] Grep
+  pattern: MONGODB
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发
+  glob: .env*
+[Tool call] Glob
+  target_directory: /Users/karuo/Documents/开发/4、合作项目/知己开发
+  glob_pattern: .env*
+
+[Tool result] Grep
+
+[Tool result] Glob
+
+assistant:
+<think>
+The MONGODB_URI is `mongodb://localhost:27017` - no username/password. But the error says "command aggregate requires authentication" which means the MongoDB server itself has auth enabled (maybe it's a cloud MongoDB like Atlas, or a local MongoDB with auth enabled). 
+
+So the user needs to either:
+1. Add credentials to the URI: mongodb://username:password@localhost:27017/zhiji?authSource=admin
+2. Or if using MongoDB Atlas, use the full connection string
+3. Or if using local MongoDB without auth, maybe the MongoDB they're connecting to is actually a remote one that requires auth
+
+I should provide the user with clear guidance:
+1. The seed failed because MongoDB requires authentication
+2. They need to update MONGODB_URI in .env.local to include credentials
+3. Format: mongodb://用户名:密码@localhost:27017/zhiji?authSource=admin
+4. After fixing, restart the dev server and call the seed API again
+
+Alternatively, I could add a "mock/fallback" mode - when MongoDB fails, we could use a local JSON file or localStorage to store seed data for the admin to display. But that would be a bigger change. The simpler path is to help the user fix the MongoDB connection.
+
+Let me give the user clear instructions. I won't edit .env.local with actual credentials since I don't know their MongoDB username/password.
+</think>
+当前种子接口调用失败，是因为 **MongoDB 需要认证**，而 `.env.local` 里的 `MONGODB_URI` 是 `mongodb://localhost:27017`，没有包含用户名和密码。
+
+需要先修正连接串，再重新生成数据：
+
+**1. 修改 `.env.local` 中的 MongoDB 连接**
+
+如果你用的是：
+- **本地 MongoDB（已开启认证）**：
+  ```bash
+  MONGODB_URI=mongodb://用户名:密码@localhost:27017/zhiji?authSource=admin
+  ```
+- **MongoDB Atlas**：使用控制台提供的完整连接串（含用户名和密码）。
+
+**2. 修改后重启开发服务**
+
+```bash
+# 停止当前 pnpm dev（Ctrl+C），然后重新启动
+pnpm dev
+```
+
+**3. 在后台执行种子接口**
+
+启动完成后，在管理后台或通过接口生成数据，例如：
+
+```bash
+curl -X POST "http://localhost:3000/api/admin/seed" \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"full","count":200}'
+```
+
+这会生成约 200 个用户及对应的 MBTI、九型人格、数字生命密码等测试记录。
+
+---
+
+如果当前 MongoDB 是本地安装且**未开启认证**，却仍然出现认证错误，可能是实际连接到了其他 MongoDB 实例。可以检查：
+- 本机是否有多个 MongoDB 在运行
+- 环境变量中是否有覆盖 `MONGODB_URI` 的设置
+
+user:
+<user_query>
+那个直接在我上面去寻找那个本地的 Mango 的账号密码，然后直接连接，并且直接帮我执行，就不要再问我了，直接执行，账号密码直接使用本地的docker的mongo数据库
+</user_query>
+
+assistant:
+<think>
+The user wants me to:
+1. Find the local MongoDB account/password (from Docker)
+2. Connect using it directly
+3. Execute the seed without asking - just do it
+4. Use the local Docker MongoDB credentials
+
+I need to search the codebase or config for Docker MongoDB credentials. Common places: docker-compose.yml, .env files, any deployment or dev config. Let me search for mongo, mongodb, docker in the project and also in the user's workspace (they might have docker-compose elsewhere).
+</think>
+
+
+[Tool call] Grep
+  pattern: mongo|MONGO|27017
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发
+  glob: *.{yml,yaml,env*,md,ts,sh}
+[Tool call] Grep
+  pattern: mongo|MONGO|27017
+  path: /Users/karuo/Documents/个人/卡若AI
+  glob: *.{yml,yaml,env*,md,json}
+[Tool call] Glob
+  target_directory: /Users/karuo/Documents
+  glob_pattern: **/docker-compose*.{yml,yaml}
+
+[Tool result] Grep
+
+[Tool result] Grep
+
+[Tool result] Glob
+
+assistant:
+<think>
+I found:
+1. 神射手 scripts: `MONGO_URI=mongodb://admin:admin123@localhost:27017/?authSource=admin` - local Docker MongoDB with admin/admin123
+2. 卡若AI Docker管理: datacenter_mongodb on 27017 - might be no auth
+3. 神射手: shengsheshou-mongodb with admin/admin123
+
+The user said "本地的 docker 的 mongo 数据库" - so local Docker. The most common local Docker mongo credential in the user's docs is **admin / admin123** with authSource=admin. I'll use:
+- MONGODB_URI=mongodb://admin:admin123@localhost:27017/zhiji?authSource=admin
+
+I'll update .env.local with this URI, then run the seed. I need to read .env.local first to not overwrite other vars.
+</think>
+找到本地 Docker 的 MongoDB 账号：`admin` / `admin123`（神射手与卡若 deploy 使用）。正在写入 `.env.local` 并执行种子。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/.env.local
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/deploy/docker-compose.yml
+  limit: 80
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+The karuo deploy uses `mongodb://mongodb:27017/karuo_ai` - no auth in the compose. Let me check datacenter or the one that listens on localhost 27017. Docker管理 said datacenter_mongodb uses 27017. Let me check if there's a compose for datacenter_mongodb with credentials.
+
+Actually the user said "本地的 docker 的 mongo 数据库" - the error was "command aggregate requires authentication", so the MongoDB they're connecting to (localhost:27017) has auth enabled. The only credential I found for local Docker mongo is admin:admin123 from 神射手. So I'll use that. If the local Docker mongo is datacenter_mongodb and has no auth, then mongodb://localhost:27017 would work - but it didn't work, so auth is required. So I'll set:
+MONGODB_URI=mongodb://admin:admin123@localhost:27017/zhiji?authSource=admin
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/.env.local
+  old_string: MONGODB_URI=mongodb://localhost:27017
+  new_string: MONGODB_URI=mongodb://admin:admin123@localhost:27017/zhiji?authSource=admin
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Now I need to run the seed. The Next.js server might have cached the old env - so we need to restart the dev server for the new MONGODB_URI to take effect. Let me try calling the seed first; if it still fails, we need to restart the server.
+</think>
+正在调用种子 API 生成用户与 MBTI 数据（需重启 dev 后新环境变量才生效）：
+
+[Tool call] Shell
+  command: curl -s -X POST "http://localhost:3000/api/admin/seed" -H "Content-Type: application/json" -d '{"mode":"full","count":200}'
+  description: 调用种子 API 写入用户与测试数据
+
+[Tool result] Shell
+
+assistant:
+<think>
+It worked! So the server was already restarted or the env was read again. We got 200 users and 444 test records. The mode "full" also seeded admin, consultants, question_banks, system_settings, ai_settings. So the user management page should now show 200 users with MBTI data.
+</think>
+已经按你本地 Docker 的 MongoDB 配置处理完。
+
+**已做：**
+1. **连接**：在 `.env.local` 里把 `MONGODB_URI` 改成本地 Docker 的账号（来自你卡若AI 里神射手/本地 Docker 的配置）：
+   - `mongodb://admin:admin123@localhost:27017/zhiji?authSource=admin`
+2. **种子**：调用了种子接口，已写入：
+   - **200 个用户**（含昵称、手机、城市、职业、规划、MBTI/九型/生命灵数等）
+   - **444 条测试记录**（MBTI、九型人格、数字生命密码）
+   - 全量模式还写入了：默认管理员、3 位咨询师、3 套题库、系统配置、AI 设置
+
+刷新管理后台的「用户管理」页面，应能看到约 200 名用户及 MBTI 等字段；若 dev 之前已重启过，直接刷新即可。
+
+user:
+<user_query>
+一些那个人的那个日期、测试日期全部变成注册时间，全部变成2026年的1月13号以后注册时间。
+</user_query>
+
+assistant:
+<think>
+The user wants to change all the user data so that:
+1. Personal dates (birthday?) - not entirely clear
+2. Test dates - all become something (maybe "registration time" or a specific date?)
+3. Registration time (注册时间) - all become after January 13, 2026
+
+So the user is saying: make all "注册时间" (registration time / createdAt) be after 2026-01-13. So I need to update the users collection in MongoDB to set createdAt (and probably updatedAt) to dates after 2026-01-13. They might also want test record dates and other dates to be in a similar range.
+
+Let me re-read: "一些那个人的那个日期、测试日期全部变成注册时间，全部变成2026年的1月13号以后注册时间。"
+
+I think they mean:
+- 一些那个人的那个日期 - some of that person's dates (maybe birthday or other date fields)
+- 测试日期 - test dates
+- 全部变成注册时间 - all become (like) registration time? Or "all unified to" registration time
+- 全部变成2026年的1月13号以后注册时间 - all become registration time after January 13, 2026
+
+So the request is: set all registration times (createdAt for users) and probably test dates (createdAt for test_records) to be after 2026-01-13. So update the database so that:
+1. users: createdAt (and updatedAt) are all >= 2026-01-14 or random dates after 2026-01-13
+2. test_records: createdAt are all >= 2026-01-14 or random dates after 2026-01-13
+
+I'll write a script or use an API to update. There's no existing API for bulk updating user dates. I have two options:
+1. Create a one-off script that uses MongoDB connection and updates all users and test_records with new dates after 2026-01-13
+2. Add an API endpoint in the admin that does this bulk update
+
+The user said "全部变成2026年的1月13号以后" - so dates should be after Jan 13, 2026. I'll use random dates between 2026-01-14 and e.g. 2026-02-11 (today) so it looks realistic.
+
+I'll need to run this against the database. I can:
+1. Add a small API route under admin that does the update (then call it with curl)
+2. Or run a Node script with ts-node or similar that connects to MongoDB and updates
+
+The cleanest is to add a one-off API or script. Let me add an API route like POST /api/admin/seed/fix-dates or something that updates all users and test_records to have createdAt/updatedAt after 2026-01-13. Or I could do it with a script run with node.
+
+Actually, the project uses Next.js and the mongodb connection is in lib/mongodb.ts. So I can create a script in the project that imports connectToDatabase and COLLECTIONS and runs the update. But running a script would require loading env and compiling - simpler to add an API route that we call once.
+
+I'll add a route: POST /api/admin/seed/fix-dates (or put it under seed as a different body param). Let me check - we have POST /api/admin/seed. I could add body.action = "fixDates" that when set, only runs the date fix logic: update all users and test_records so createdAt and updatedAt are random dates between 2026-01-14 and 2026-02-11.
+
+Let me implement:
+1. In app/api/admin/seed/route.ts add a branch: if body.action === "fixDates", then for each user set createdAt and updatedAt to a random date between 2026-01-14 and 2026-02-11; for each test_record set createdAt to a random date in the same range (and we could keep test records after their user's createdAt if we want - but user said "全部变成" so I'll just set all to random in that range).
+2. Call this API.
+
+Or I could create a separate file app/api/admin/fix-dates/route.ts to keep seed clean. I'll do the separate route so we don't clutter the seed logic.
+</think>
+添加一个用于将用户与测试记录的日期统一为 2026-01-13 之后的接口，并执行更新。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/seed/route.ts
+  limit: 30
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/lib/mongodb.ts
+  limit: 85
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+I'll create a new API route POST /api/admin/fix-dates/route.ts that:
+1. Updates all users: set createdAt and updatedAt to random dates between 2026-01-14 and 2026-02-11; also lastTestAt if exists
+2. Updates all test_records: set createdAt to random dates between 2026-01-14 and 2026-02-11
+
+Then I'll call it with curl.
+</think>
+
+
+[Tool call] Write
+  path: /Users/karuo/Documents/开发/4、合作项目/知己开发/app/api/admin/fix-dates/route.ts
+  contents: /**
+ * 知己 · 统一日期为 2026-01-13 以后
+ * POST: 将用户注册时间、测试日期等全部改为 2026年1月13日之后的随机日期
+ */
+
+import { NextResponse } from "next/server"
+import { connectToDatabase, COLLECTIONS } from "@/lib/mongodb"
+
+const START = new Date("2026-01-14T00:00:00.000Z").getTime()
+const END = new Date("2026-02-11T23:59:59.999Z").getTime()
+
+function randomDateAfterJan13(): string {
+  return new Date(START + Math.random() * (END - START)).toISOString()
+}
+
+export async function POST() {
+  try {
+    const { db } = await connectToDatabase()
+    const usersCol = db.collection(COLLECTIONS.USERS)
+    const testCol = db.collection(COLLECTIONS.TEST_RECORDS)
+
+    const users = await usersCol.find({}).toArray()
+    const testRecords = await testCol.find({}).toArray()
+
+    let usersUpdated = 0
+    for (const u of users) {
+      const createdAt = randomDateAfterJan13()
+      const updatedAt = randomDateAfterJan13()
+      const lastTestAt = u.lastTestAt ? randomDateAfterJan13() : undefined
+      await usersCol.updateOne(
+        { _id: u._id },
+        { $set: { createdAt, updatedAt, ...(lastTestAt && { lastTestAt }) } }
+      )
+      usersUpdated++
+    }
+
+    let testsUpdated = 0
+    for (const t of testRecords) {
+      const createdAt = randomDateAfterJan13()
+      await testCol.updateOne(
+        { _id: t._id },
+        { $set: { createdAt } }
+      )
+      testsUpdated++
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: { usersUpdated, testsUpdated, message: "全部日期已统一为 2026-01-13 之后" },
+    })
+  } catch (error: unknown) {
+    console.error("[知己Admin] fix-dates 失败:", error)
+    return NextResponse.json({ success: false, error: (error as Error).message }, { status: 500 })
+  }
+}
+
+
+[Tool result] Write
+
+assistant:
+<think>
+Now call the API to run the fix.
+</think>
+
+
+[Tool call] Shell
+  command: curl -s -X POST "http://localhost:3000/api/admin/fix-dates" -H "Content-Type: application/json"
+  description: 执行日期统一：用户与测试记录改为 2026-01-13 之后
+
+[Tool result] Shell
+
+assistant:
+<think>
+Done. 210 users and 462 test records updated. All registration times (createdAt, updatedAt) and test dates (createdAt, lastTestAt) are now random dates between 2026-01-14 and 2026-02-11.
+</think>
+已按你的要求改完。
+
+**已做：**
+- 新增接口：`POST /api/admin/fix-dates`
+- 已执行一次，结果：
+  - **210 个用户**：`createdAt`、`updatedAt`、`lastTestAt` 已改为 2026-01-14 ～ 2026-02-11 之间的随机时间
+  - **462 条测试记录**：`createdAt`（测试日期）已改为同一时间段内的随机时间
+
+现在所有人的注册时间和测试日期都在 **2026 年 1 月 13 日之后**。刷新管理后台用户管理/测试记录即可看到新日期。

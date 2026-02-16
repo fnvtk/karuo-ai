@@ -1,0 +1,715 @@
+user:
+<user_query>
+@卡若AI/05_安全保障/局域网控制 分析一下能控制这个局域网哪些东西
+</user_query>
+
+assistant:
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI/05_安全保障/局域网控制
+
+[Tool result] LS
+
+assistant:
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/05_安全保障/局域网控制/SKILL.md
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/05_安全保障/局域网控制/README.md
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/05_安全保障/局域网控制/公司路由器配置.md
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/05_安全保障/局域网控制/scripts/局域网设备管理.sh
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/05_安全保障/局域网控制/快速参考.md
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+根据分析，这个**局域网控制** Skill 能控制以下设备和功能：
+
+---
+
+## 可控制的设备类型
+
+### 📱 Android 手机/平板
+- 屏幕镜像（实时显示，60fps，延迟<100ms）
+- 远程控制（鼠标键盘→触摸输入）
+- 应用安装/卸载/启动/停止
+- 文件传输（push/pull）
+- 系统诊断（日志、内存、存储）
+- 权限管理、缓存清理
+
+### 📺 Android TV / 智能电视
+- 同上所有功能
+- 会议系统部署（腾讯会议、飞书等）
+- 开机自启配置
+- 批量应用管理
+
+### 💻 电脑（Mac/Windows/Linux）
+- **VNC 远程桌面**（端口5900）
+- **RDP 连接**（端口3389）
+- **SSH 管理**（端口22）
+- 文件共享
+
+### 🔧 其他设备
+- 路由器/网关（SSH管理）
+- NAS 存储（SSH）
+- 智能家居设备
+
+---
+
+## 核心能力
+
+| 功能 | 说明 |
+|------|------|
+| **自动设备发现** | 扫描192.168.x.0/24网段，识别设备类型 |
+| **ADB无线连接** | 端口5555/5037/4444/5556 |
+| **屏幕镜像** | 基于scrcpy，60fps流畅 |
+| **远程控制** | 鼠标点击、键盘输入、手势操作 |
+| **应用管理** | 安装、卸载、启用、禁用、清缓存 |
+| **系统诊断** | 崩溃日志、内存、存储分析 |
+| **批量操作** | 多设备同时安装应用 |
+
+---
+
+## 当前公司网络环境
+
+根据路由器配置，当前网络：
+
+| 项目 | 值 |
+|------|-----|
+| 路由器 | H3C ER2200G2 |
+| 网关 | 192.168.1.1 |
+| 网段 | 192.168.0.x - 192.168.1.x (/23) |
+| 你的MacBook | 192.168.1.113 |
+| Synology NAS | 192.168.1.201 |
+
+**已知可控设备**：
+- NAS (192.168.1.201) - 可通过SSH管理
+- 小米设备 (192.168.1.10)
+- 手机/平板 (192.168.1.22)
+- iPhone设备若干
+
+---
+
+## 快速使用
+
+直接对我说以下任意一句：
+
+```
+"扫描局域网设备"      → 自动发现所有可控设备
+"连接我的手机"        → ADB连接+屏幕镜像
+"安装应用到设备"      → 自动检查兼容性并安装
+"设备闪退修复"        → 自动诊断+修复
+```
+
+需要我现在扫描一下当前局域网有哪些可控制的设备吗？
+
+user:
+<user_query>
+分析一下可连接的ip
+</user_query>
+
+assistant:
+扫描当前局域网，查找可连接的设备。
+[Tool call] Shell
+  command: ifconfig | grep "inet " | grep -v 127.0.0.1 | head -3
+  description: 获取本机IP和网段信息
+[Tool call] Shell
+  command: netstat -rn | grep default | head -3
+  description: 获取网关信息
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: # 快速扫描局域网活跃设备（并行ping）
+echo "=== 扫描网段 192.168.1.0/24 ==="
+echo "本机IP: 192.168.1.44"
+echo "网关: 192.168.1.1"
+echo ""
+echo "正在扫描活跃设备..."
+
+# 并行ping扫描，将结果保存到临时文件
+temp_file="/tmp/lan_scan_$$"
+> "$temp_file"
+
+for i in {1..254}; do
+    {
+        IP="192.168.1.$i"
+        if ping -c 1 -W 300 "$IP" >/dev/null 2>&1; then
+            echo "$IP" >> "$temp_file"
+        fi
+    } &
+    # 控制并发
+    if (( i % 50 == 0 )); then
+        wait
+    fi
+done
+wait
+
+echo ""
+echo "=== 活跃IP列表 ==="
+sort -t. -k4 -n "$temp_file" 2>/dev/null | while read ip; do
+    echo "✓ $ip"
+done
+
+echo ""
+echo "共发现 $(wc -l < "$temp_file" | tr -d ' ') 个活跃设备"
+
+# 保留文件供后续分析
+cat "$temp_file" | sort -t. -k4 -n > /tmp/active_ips.txt
+rm -f "$temp_file"
+  description: 并行扫描局域网活跃IP
+  timeout: 60000
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: # 检测每个活跃IP的开放端口和设备类型
+echo "=== 设备端口扫描与类型识别 ==="
+echo ""
+
+# 读取活跃IP
+while read ip; do
+    # 跳过本机
+    if [ "$ip" == "192.168.1.44" ]; then
+        continue
+    fi
+    
+    ports=""
+    device_type="未知"
+    control_methods=""
+    
+    # 检测常用端口（快速模式）
+    for port_info in "22:SSH" "80:HTTP" "443:HTTPS" "3389:RDP" "5555:ADB" "5900:VNC" "8080:Web" "5037:ADB2"; do
+        port="${port_info%%:*}"
+        service="${port_info##*:}"
+        if timeout 0.3 bash -c "</dev/tcp/$ip/$port" 2>/dev/null; then
+            ports+="$service($port) "
+            control_methods+="$service "
+        fi
+    done
+    
+    # 判断设备类型
+    if [[ "$control_methods" == *"ADB"* ]]; then
+        device_type="📱 Android设备"
+    elif [[ "$control_methods" == *"VNC"* ]]; then
+        device_type="💻 VNC设备"
+    elif [[ "$control_methods" == *"RDP"* ]]; then
+        device_type="🖥️ Windows电脑"
+    elif [[ "$control_methods" == *"SSH"* ]]; then
+        device_type="🔧 SSH设备"
+    elif [[ "$control_methods" == *"HTTP"* ]]; then
+        device_type="🌐 Web设备"
+    else
+        device_type="❓ 其他设备"
+    fi
+    
+    # 特殊设备识别
+    if [ "$ip" == "192.168.1.1" ]; then
+        device_type="🌐 路由器(H3C)"
+    elif [ "$ip" == "192.168.1.201" ]; then
+        device_type="💾 Synology NAS"
+    fi
+    
+    echo "$ip | $device_type | 开放端口: ${ports:-无}"
+    
+done < /tmp/active_ips.txt
+  description: 检测活跃设备的端口和类型
+  timeout: 120000
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: # 检测每个活跃IP的开放端口和设备类型（zsh兼容）
+echo "=== 设备端口扫描与类型识别 ==="
+echo ""
+
+for ip in $(cat /tmp/active_ips.txt); do
+    # 跳过本机
+    if [[ "$ip" = "192.168.1.44" ]]; then
+        continue
+    fi
+    
+    ports=""
+    control_methods=""
+    
+    # 检测常用端口
+    # SSH
+    if timeout 0.3 bash -c "</dev/tcp/$ip/22" 2>/dev/null; then
+        ports+="SSH(22) "
+        control_methods+="SSH "
+    fi
+    # HTTP
+    if timeout 0.3 bash -c "</dev/tcp/$ip/80" 2>/dev/null; then
+        ports+="HTTP(80) "
+        control_methods+="HTTP "
+    fi
+    # HTTPS
+    if timeout 0.3 bash -c "</dev/tcp/$ip/443" 2>/dev/null; then
+        ports+="HTTPS(443) "
+    fi
+    # RDP
+    if timeout 0.3 bash -c "</dev/tcp/$ip/3389" 2>/dev/null; then
+        ports+="RDP(3389) "
+        control_methods+="RDP "
+    fi
+    # ADB WiFi
+    if timeout 0.3 bash -c "</dev/tcp/$ip/5555" 2>/dev/null; then
+        ports+="ADB(5555) "
+        control_methods+="ADB "
+    fi
+    # VNC
+    if timeout 0.3 bash -c "</dev/tcp/$ip/5900" 2>/dev/null; then
+        ports+="VNC(5900) "
+        control_methods+="VNC "
+    fi
+    # Web 8080
+    if timeout 0.3 bash -c "</dev/tcp/$ip/8080" 2>/dev/null; then
+        ports+="Web(8080) "
+    fi
+    
+    # 判断设备类型
+    device_type="❓ 其他设备"
+    if [[ "$control_methods" = *"ADB"* ]]; then
+        device_type="📱 Android设备"
+    elif [[ "$control_methods" = *"VNC"* ]]; then
+        device_type="💻 VNC设备"
+    elif [[ "$control_methods" = *"RDP"* ]]; then
+        device_type="🖥️ Windows电脑"
+    elif [[ "$control_methods" = *"SSH"* ]]; then
+        device_type="🔧 SSH设备"
+    elif [[ "$control_methods" = *"HTTP"* ]]; then
+        device_type="🌐 Web设备"
+    fi
+    
+    # 特殊设备识别
+    if [[ "$ip" = "192.168.1.1" ]]; then
+        device_type="🌐 路由器(H3C)"
+    elif [[ "$ip" = "192.168.1.201" ]]; then
+        device_type="💾 Synology NAS"
+    fi
+    
+    printf "%-16s | %-18s | %s\n" "$ip" "$device_type" "${ports:-无开放端口}"
+    
+done
+  description: 检测设备端口和类型（zsh兼容）
+  timeout: 120000
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: # 补充扫描更多端口（NAS和路由器常用端口）
+echo "=== 深度端口扫描 ==="
+echo ""
+
+# 针对关键设备扫描更多端口
+key_ips="192.168.1.1 192.168.1.201"
+
+for ip in $key_ips; do
+    echo "--- $ip ---"
+    for port in 22 80 443 5000 5001 8080 8443 9000 139 445 548 111; do
+        if timeout 0.5 bash -c "</dev/tcp/$ip/$port" 2>/dev/null; then
+            echo "  ✓ 端口 $port 开放"
+        fi
+    done
+    echo ""
+done
+
+# 检查ADB是否安装
+echo "=== ADB状态检查 ==="
+if command -v adb &>/dev/null; then
+    echo "ADB 已安装"
+    adb devices -l 2>/dev/null
+else
+    echo "ADB 未安装"
+fi
+  description: 深度扫描关键设备端口
+  timeout: 30000
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: # 单独扫描路由器和NAS
+echo "=== 路由器 192.168.1.1 端口扫描 ==="
+for port in 22 23 80 443 8080 8443; do
+    if timeout 1 bash -c "</dev/tcp/192.168.1.1/$port" 2>/dev/null; then
+        echo "  ✓ 端口 $port 开放"
+    fi
+done
+
+echo ""
+echo "=== NAS 192.168.1.201 端口扫描 ==="
+for port in 22 80 443 5000 5001 139 445 548 8080 9000; do
+    if timeout 1 bash -c "</dev/tcp/192.168.1.201/$port" 2>/dev/null; then
+        echo "  ✓ 端口 $port 开放"
+    fi
+done
+
+echo ""
+echo "=== 检查网络连通性 ==="
+ping -c 2 192.168.1.1
+echo ""
+ping -c 2 192.168.1.201
+  description: 单独扫描路由器和NAS端口
+  timeout: 30000
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: # 使用nc检测端口（更可靠）
+echo "=== 使用nc扫描关键设备 ==="
+
+echo ""
+echo "--- 路由器 192.168.1.1 ---"
+for port in 22 23 80 443 8080; do
+    nc -zv -w 1 192.168.1.1 $port 2>&1 | head -1
+done
+
+echo ""
+echo "--- NAS 192.168.1.201 ---"  
+for port in 22 80 443 5000 5001 139 445; do
+    nc -zv -w 1 192.168.1.201 $port 2>&1 | head -1
+done
+
+echo ""
+echo "=== 获取本机MAC地址 ==="
+ifconfig en0 | grep ether
+  description: 使用nc扫描关键设备端口
+  timeout: 30000
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: # 分别测试各端口
+echo "=== 路由器 192.168.1.1 端口检测 ==="
+nc -zv -w 2 192.168.1.1 80 2>&1 || true
+nc -zv -w 2 192.168.1.1 443 2>&1 || true
+nc -zv -w 2 192.168.1.1 8080 2>&1 || true
+
+echo ""
+echo "=== NAS 192.168.1.201 端口检测 ==="
+nc -zv -w 2 192.168.1.201 22 2>&1 || true
+nc -zv -w 2 192.168.1.201 80 2>&1 || true
+nc -zv -w 2 192.168.1.201 443 2>&1 || true
+nc -zv -w 2 192.168.1.201 5000 2>&1 || true
+nc -zv -w 2 192.168.1.201 5001 2>&1 || true
+
+echo ""
+echo "=== 尝试curl访问 ==="
+curl -s -o /dev/null -w "路由器 HTTP: %{http_code}\n" --connect-timeout 2 http://192.168.1.1 || echo "路由器 HTTP: 无响应"
+curl -s -o /dev/null -w "NAS HTTP 5000: %{http_code}\n" --connect-timeout 2 http://192.168.1.201:5000 || echo "NAS 5000: 无响应"
+curl -s -o /dev/null -w "NAS HTTPS 5001: %{http_code}\n" --connect-timeout 2 -k https://192.168.1.201:5001 || echo "NAS 5001: 无响应"
+  description: 详细检测路由器和NAS端口
+  timeout: 30000
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: # 检查是否有Android设备（ADB端口）
+echo "=== 扫描所有IP的ADB端口(5555) ==="
+for ip in $(cat /tmp/active_ips.txt); do
+    result=$(nc -zv -w 1 "$ip" 5555 2>&1)
+    if echo "$result" | grep -q "succeeded"; then
+        echo "✓ $ip - ADB端口开放！"
+    fi
+done
+
+echo ""
+echo "=== 扫描VNC端口(5900) ==="
+for ip in $(cat /tmp/active_ips.txt); do
+    result=$(nc -zv -w 1 "$ip" 5900 2>&1)
+    if echo "$result" | grep -q "succeeded"; then
+        echo "✓ $ip - VNC端口开放！"
+    fi
+done
+
+echo ""
+echo "=== 扫描RDP端口(3389) ==="
+for ip in $(cat /tmp/active_ips.txt); do
+    result=$(nc -zv -w 1 "$ip" 3389 2>&1)
+    if echo "$result" | grep -q "succeeded"; then
+        echo "✓ $ip - RDP端口开放！"
+    fi
+done
+
+echo ""
+echo "=== 扫描SSH端口(22) ==="
+for ip in $(cat /tmp/active_ips.txt); do
+    result=$(nc -zv -w 1 "$ip" 22 2>&1)
+    if echo "$result" | grep -q "succeeded"; then
+        echo "✓ $ip - SSH端口开放！"
+    fi
+done
+  description: 扫描所有设备的远程控制端口
+  timeout: 60000
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: # 修复扫描脚本
+echo "=== 全面端口扫描 ==="
+echo ""
+
+# ADB端口
+echo "--- ADB端口(5555) ---"
+for ip in $(cat /tmp/active_ips.txt); do
+    if nc -z -w 1 "$ip" 5555 2>/dev/null; then
+        echo "✓ $ip - ADB"
+    fi
+done
+
+# VNC端口
+echo ""
+echo "--- VNC端口(5900) ---"
+for ip in $(cat /tmp/active_ips.txt); do
+    if nc -z -w 1 "$ip" 5900 2>/dev/null; then
+        echo "✓ $ip - VNC"
+    fi
+done
+
+# RDP端口
+echo ""
+echo "--- RDP端口(3389) ---"
+for ip in $(cat /tmp/active_ips.txt); do
+    if nc -z -w 1 "$ip" 3389 2>/dev/null; then
+        echo "✓ $ip - RDP"
+    fi
+done
+
+# SSH端口
+echo ""
+echo "--- SSH端口(22) ---"
+for ip in $(cat /tmp/active_ips.txt); do
+    if nc -z -w 1 "$ip" 22 2>/dev/null; then
+        echo "✓ $ip - SSH"
+    fi
+done
+
+# HTTP端口
+echo ""
+echo "--- HTTP端口(80/443) ---"
+for ip in $(cat /tmp/active_ips.txt); do
+    http=""
+    if nc -z -w 1 "$ip" 80 2>/dev/null; then
+        http="HTTP"
+    fi
+    if nc -z -w 1 "$ip" 443 2>/dev/null; then
+        http="$http HTTPS"
+    fi
+    if [[ -n "$http" ]]; then
+        echo "✓ $ip - $http"
+    fi
+done
+  description: 全面扫描远程控制端口
+  timeout: 120000
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: # 快速汇总已发现的可连接设备
+echo "=========================================="
+echo "    局域网设备扫描结果汇总"
+echo "=========================================="
+echo ""
+echo "本机IP: 192.168.1.44"
+echo "网关: 192.168.1.1"
+echo "扫描时间: $(date '+%Y-%m-%d %H:%M:%S')"
+echo ""
+echo "=========================================="
+echo "    ✅ 可远程控制的设备"
+echo "=========================================="
+echo ""
+echo "📱 Android设备 (ADB控制)"
+echo "-------------------------------------------"
+echo "  192.168.1.6 - ADB端口(5555)开放"
+echo "  → 可用: 屏幕镜像、远程控制、应用安装"
+echo ""
+echo "🌐 路由器"
+echo "-------------------------------------------"
+echo "  192.168.1.1 (H3C ER2200G2)"
+echo "  → HTTP(80) / HTTPS(443) 管理界面"
+echo "  → 访问: http://192.168.1.1"
+echo "  → 账号: admin / admin"
+echo ""
+echo "💾 NAS存储"
+echo "-------------------------------------------"
+echo "  192.168.1.201 (Synology NAS)"
+echo "  → SSH(22) - 可命令行管理"
+echo "  → HTTP(80/443) - Web界面"
+echo "  → DSM(5000/5001) - 群晖管理"
+echo "  → 访问: http://192.168.1.201:5000"
+echo ""
+echo "=========================================="
+echo "    ❓ 其他在线设备 (未开放远程端口)"
+echo "=========================================="
+echo ""
+echo "共24个IP在线，大部分为手机/平板/IoT设备："
+echo "  192.168.1.7, .9, .12, .16, .18, .19, .20"
+echo "  192.168.1.22, .24, .25, .26, .29, .34, .37"
+echo "  192.168.1.39, .42, .46, .49, .54, .115, .130"
+echo ""
+echo "(这些设备可能是手机、平板、智能家居等，"
+echo " 未开启ADB调试或远程管理端口)"
+echo ""
+echo "==========================================" 
+  description: 汇总扫描结果
+
+[Tool result] Shell
+
+user:
+<user_query>
+继续
+</user_query>
+
+assistant:
+[Tool call] Shell
+  command: # 连接并获取Android设备详细信息
+echo "=== 连接 Android 设备 192.168.1.6 ==="
+adb connect 192.168.1.6:5555
+sleep 1
+adb devices -l
+  description: 连接Android设备获取详情
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: # 获取Android设备详细信息
+echo "=== 设备详细信息 ==="
+echo ""
+echo "品牌: $(adb -s 192.168.1.6:5555 shell getprop ro.product.brand 2>/dev/null | tr -d '\r')"
+echo "型号: $(adb -s 192.168.1.6:5555 shell getprop ro.product.model 2>/dev/null | tr -d '\r')"
+echo "设备名: $(adb -s 192.168.1.6:5555 shell getprop ro.product.device 2>/dev/null | tr -d '\r')"
+echo "Android版本: $(adb -s 192.168.1.6:5555 shell getprop ro.build.version.release 2>/dev/null | tr -d '\r')"
+echo "API级别: $(adb -s 192.168.1.6:5555 shell getprop ro.build.version.sdk 2>/dev/null | tr -d '\r')"
+echo "CPU架构: $(adb -s 192.168.1.6:5555 shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r')"
+echo "序列号: $(adb -s 192.168.1.6:5555 shell getprop ro.serialno 2>/dev/null | tr -d '\r')"
+echo "屏幕分辨率: $(adb -s 192.168.1.6:5555 shell wm size 2>/dev/null | grep 'Physical' | cut -d':' -f2 | tr -d ' \r')"
+echo ""
+echo "=== 存储空间 ==="
+adb -s 192.168.1.6:5555 shell df -h /data 2>/dev/null | head -2
+echo ""
+echo "=== 内存信息 ==="
+adb -s 192.168.1.6:5555 shell cat /proc/meminfo 2>/dev/null | grep -E "MemTotal|MemFree|MemAvailable" | head -3
+  description: 获取Android设备详细信息
+
+[Tool result] Shell
+
+assistant:
+[Tool call] Shell
+  command: # 查看已安装的应用
+echo "=== 已安装应用列表 ==="
+adb -s 192.168.1.6:5555 shell pm list packages -3 2>/dev/null | sed 's/package://' | sort
+  description: 查看设备已安装的第三方应用
+
+[Tool result] Shell
+
+assistant:
+---
+
+## 局域网扫描结果汇总
+
+### 📊 网络环境
+| 项目 | 值 |
+|------|-----|
+| 本机IP | 192.168.1.44 |
+| 网关 | 192.168.1.1 |
+| 网段 | 192.168.1.0/24 |
+| 在线设备 | **25台** |
+
+---
+
+### ✅ 可远程控制的设备（3台）
+
+#### 1. 📱 Android 设备 - `192.168.1.6`
+| 属性 | 值 |
+|------|-----|
+| 型号 | ZC-328 (RK3288芯片) |
+| 系统 | Android 7.1.2 |
+| CPU | armeabi-v7a (32位ARM) |
+| 分辨率 | 1080x1920 |
+| 内存 | 2GB（可用1.2GB） |
+| 存储 | 11GB（已用496MB，剩余95%） |
+| 已安装应用 | 3个（工业控制类） |
+
+**可执行操作**：
+- ✅ 屏幕镜像（scrcpy）
+- ✅ 远程控制（鼠标键盘）
+- ✅ 应用安装/卸载
+- ✅ 文件传输
+- ✅ 系统诊断
+
+---
+
+#### 2. 🌐 路由器 - `192.168.1.1`
+| 属性 | 值 |
+|------|-----|
+| 型号 | H3C ER2200G2 |
+| 管理地址 | http://192.168.1.1 |
+| 账号/密码 | admin / admin |
+| 开放端口 | HTTP(80), HTTPS(443) |
+
+**可执行操作**：
+- ✅ Web管理界面登录
+- ✅ 查看在线设备
+- ✅ 网络配置管理
+- ✅ 带宽监控
+
+---
+
+#### 3. 💾 Synology NAS - `192.168.1.201`
+| 属性 | 值 |
+|------|-----|
+| 类型 | 群晖NAS |
+| 管理地址 | http://192.168.1.201:5000 |
+| 开放端口 | SSH(22), HTTP(80/443), DSM(5000/5001) |
+
+**可执行操作**：
+- ✅ SSH命令行管理
+- ✅ DSM Web管理界面
+- ✅ 文件共享访问
+- ✅ 数据备份
+
+---
+
+### ❓ 其他在线设备（22台）
+
+这些设备未开放远程管理端口，可能是：
+- 手机/平板（未开启USB调试）
+- 智能家居设备
+- 打印机/摄像头等IoT设备
+
+---
+
+## 下一步操作建议
+
+| 操作 | 命令/说明 |
+|------|-----------|
+| 投屏Android设备 | `scrcpy -s 192.168.1.6:5555` |
+| 安装应用到设备 | `adb -s 192.168.1.6:5555 install -r -g app.apk` |
+| SSH连接NAS | `ssh admin@192.168.1.201` |
+| 打开路由器管理 | 浏览器访问 http://192.168.1.1 |
+
+需要我执行哪个操作？

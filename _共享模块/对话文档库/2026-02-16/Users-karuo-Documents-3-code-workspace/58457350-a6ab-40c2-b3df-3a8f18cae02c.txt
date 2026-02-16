@@ -1,0 +1,928 @@
+user:
+<user_query>
+
+检查苹果浏览器用命令行把本机的默认浏览器用苹果的浏览器
+</user_query>
+
+assistant:
+<think>
+The user is asking to check and set the default browser on their Mac to Safari (苹果浏览器) using the command line. Let me think about this:
+
+1. On macOS, to set the default browser via command line, we typically need to use some method
+2. Safari is "Safari" on Mac - "苹果的浏览器" means Apple's browser, which is Safari
+3. There are a few approaches:
+   - Using `defaults write` to change default handler for http/https URLs
+   - Using `open -a Safari` - but that just opens Safari, doesn't set it as default
+   - On macOS, the default browser is typically set through System Preferences/Settings
+
+Let me search for how to set default browser on macOS via command line.
+
+Actually, on macOS, setting the default browser isn't straightforward via command line. The traditional approach involves:
+1. `defaults write com.apple.LaunchServices/com.apple.launchservices.secure LSHandlers -array-add '{"LSHandlerContentType"="public.html";LSHandlerRoleAll="com.apple.safari";}'` - but this might not work correctly
+2. The LSHandlers structure is complex - it's an array of dictionaries
+3. There are third-party tools like `defaultbrowser` that can do this
+
+Let me search for the current best approach for macOS.
+</think>
+正在查找在 macOS 上通过命令行将默认浏览器设为 Safari 的方法。
+
+[Tool call] WebSearch
+  search_term: macOS 命令行设置默认浏览器 Safari defaults write LSHandlers
+  explanation: 查找在 macOS 上通过命令行将 Safari 设为默认浏览器的方法
+
+[Tool result] WebSearch
+
+assistant:
+<think>
+So for Safari specifically:
+1. The `defaultbrowser` tool from Homebrew can set Safari as default: `defaultbrowser safari`
+2. The `open -a Safari --args --make-default-browser` doesn't work for Safari - only for Chromium-based browsers
+3. There might be a way using `defaults write` but it's complex
+
+Let me also check if there's a built-in way on macOS - maybe using Swift/AppleScript or checking what the current default is first.
+
+The user asked to:
+1. 检查 - check
+2. 用命令行把本机的默认浏览器用苹果的浏览器 - set default browser to Safari via command line
+
+So I need to:
+1. Check current default browser
+2. Provide command to set Safari as default
+
+Let me search for how to check current default browser and also if there's a native way without Homebrew.
+</think>
+
+
+[Tool call] WebSearch
+  search_term: macOS 查看当前默认浏览器 命令行 LSHandlers
+  explanation: 查找如何通过命令行检查当前默认浏览器
+[Tool call] WebSearch
+  search_term: defaultbrowser safari macOS brew install
+  explanation: 确认 defaultbrowser 工具的使用方法
+
+[Tool result] WebSearch
+
+[Tool result] WebSearch
+
+assistant:
+<think>
+Now I have a good picture:
+
+1. **检查当前默认浏览器**：`defaultbrowser`（无参数）会列出所有可用浏览器及当前默认
+2. **设置 Safari 为默认**：`defaultbrowser safari`
+3. 需要先安装：`brew install defaultbrowser`
+
+Let me run these commands on the user's Mac to:
+1. First check if defaultbrowser is installed
+2. If not, install it
+3. Check current default browser
+4. Set Safari as default
+
+Actually, the user asked me to "检查" and "把本机的默认浏览器用苹果的浏览器" - so they want to both check and set. Let me run the commands.
+</think>
+正在检查系统状态并执行设置：
+
+[Tool call] Shell
+  command: which defaultbrowser 2>/dev/null || echo "未安装"
+  description: 检查 defaultbrowser 是否已安装
+[Tool call] Shell
+  command: defaults read com.apple.LaunchServices/com.apple.launchservices.secure LSHandlers 2>/dev/null | head -80
+  description: 查看当前 LSHandlers 配置（含默认浏览器）
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+assistant:
+<think>
+I can see:
+1. `defaultbrowser` is not installed
+2. Current default browser: `com.bot.pc.doubao` - this appears to be 豆包 (Doubao) - a Chinese AI assistant app that can also act as a browser. For http, https, public.html, public.xhtml - all are set to doubao.
+
+The user wants to set Safari (com.apple.safari) as default. I have two options:
+
+1. Install defaultbrowser via brew and use `defaultbrowser safari`
+2. Use defaults write to modify LSHandlers directly - this is complex and error-prone
+
+Let me try installing defaultbrowser and using it - it's the recommended approach.
+</think>
+当前默认浏览器为豆包（`com.bot.pc.doubao`）。正在安装 `defaultbrowser` 并将 Safari 设为默认：
+
+[Tool call] Shell
+  command: brew install defaultbrowser
+  description: 安装 defaultbrowser 命令行工具
+
+[Tool result] Shell
+
+assistant:
+<think>
+defaultbrowser is installed. Now let me:
+1. Run defaultbrowser (no args) to list available browsers and current default
+2. Set Safari as default with defaultbrowser safari
+</think>
+
+
+[Tool call] Shell
+  command: defaultbrowser
+  description: 列出可用浏览器及当前默认
+
+[Tool result] Shell
+
+assistant:
+<think>
+The output shows:
+- safari is available
+- * doubao - is current default (marked with *)
+- chrome, atlas, web, nwjs, testing are also available
+
+Now I'll set Safari as default with `defaultbrowser safari`
+</think>
+
+
+[Tool call] Shell
+  command: defaultbrowser safari
+  description: 将 Safari 设为默认浏览器
+
+[Tool result] Shell
+
+assistant:
+<think>
+The command completed successfully with no output. Let me verify that Safari is now the default by running defaultbrowser again.
+</think>
+
+
+[Tool call] Shell
+  command: defaultbrowser
+  description: 验证 Safari 是否已成为默认
+
+[Tool result] Shell
+
+assistant:
+<think>
+Hmm, it still shows * doubao. The defaultbrowser safari command ran without error but the default might not have changed. This could be due to:
+1. macOS security - maybe it requires user confirmation
+2. The change might need to be done through System Settings
+3. There might be a permission issue
+
+Let me try again - maybe the command needs to be run differently. Or perhaps on newer macOS versions there are additional restrictions. Let me search for this.
+</think>
+验证显示仍为豆包。正在查找 macOS 上可能阻止该更改的原因：
+
+[Tool call] WebSearch
+  search_term: defaultbrowser safari 不生效 macOS 权限 系统设置
+  explanation: 查找 defaultbrowser 设置不生效的原因
+[Tool call] Shell
+  command: defaultbrowser safari 2>&1; echo "Exit: $?"
+  description: 再次尝试设置并查看完整输出
+
+[Tool result] WebSearch
+
+[Tool result] Shell
+
+assistant:
+<think>
+The defaultbrowser safari command exited with 0 but the default still shows doubao. On newer macOS versions (Sequoia 15+), there might be additional restrictions. The system might require:
+1. GUI interaction for security
+2. Or maybe the defaultbrowser tool writes to a different location than what "defaultbrowser" reads
+
+Let me try using `open` to open System Settings directly to the desktop & dock page where default browser is set. Or maybe there's another approach.
+
+Actually, I notice something - in macOS 13+, the default browser setting moved to "桌面与 Dock" (Desktop & Dock). Perhaps there's an AppleScript or osascript way to do this.
+
+Let me also check if we can use `open "x-apple.systempreferences:com.apple.preference.desktopscreeneffect"` or similar to open the right preference pane. And we could provide the user with a one-liner to open the settings so they can manually change it.
+
+Actually the user asked to use 命令行 - command line. Let me try opening system settings to the right pane as a fallback. Or maybe we need to kill some cache for the change to take effect.
+
+Let me try: 1. Maybe we need to restart some service
+2. Or open the System Settings to Desktop & Dock for manual change
+
+Let me also read the defaultbrowser source or docs to see if there's a known issue.
+</think>
+defaultbrowser safari 已执行成功，但验证仍显示豆包。正在尝试通过系统设置打开并检查：
+
+[Tool call] Shell
+  command: open "x-apple.systempreferences:com.apple.Desktop-ScreenEffects.Preferences"
+  description: 尝试打开桌面与 Dock 设置
+[Tool call] WebSearch
+  search_term: macOS open System Settings Desktop Dock default browser URL scheme
+  explanation: 查找打开默认浏览器设置的正确 URL
+
+[Tool result] Shell
+
+[Tool result] WebSearch
+
+assistant:
+<think>
+So for macOS Ventura and later, the default browser is in Desktop & Dock. Let me try opening that specific setting. I already tried com.apple.Desktop-ScreenEffects.Preferences - maybe the correct one is different.
+
+Let me provide the user a summary:
+1. 检查结果：当前默认是豆包 (doubao)
+2. 已安装 defaultbrowser
+3. defaultbrowser safari 执行了，但验证仍显示豆包 - 可能是 macOS 安全限制，新版本需要用户通过 GUI 确认
+4. 提供命令行快速打开设置页面的方法
+
+Let me try: open "x-apple.systempreferences:com.apple.Desktop-Settings.extension"
+</think>
+
+
+[Tool call] Shell
+  command: open "x-apple.systempreferences:com.apple.Desktop-Settings.extension"
+  description: 打开桌面与 Dock 设置（含默认浏览器）
+
+[Tool result] Shell
+
+assistant:
+<think>
+The command opened the settings. Now let me summarize everything for the user.
+</think>
+---
+
+## 检查与设置结果
+
+### 1. 当前状态
+
+| 项目 | 结果 |
+|:---|:---|
+| **当前默认浏览器** | 豆包 (doubao) |
+| **可用浏览器** | Safari、Chrome、Atlas、Web、NW.js、Testing |
+| **defaultbrowser 工具** | 已安装（`brew install defaultbrowser`） |
+
+### 2. 已执行的操作
+
+1. 安装 `defaultbrowser`：`brew install defaultbrowser`
+2. 执行 `defaultbrowser safari` 将 Safari 设为默认
+3. 打开「系统设置 → 桌面与 Dock」页面
+
+### 3. 关于 `defaultbrowser safari` 未生效
+
+在较新的 macOS（如 Sequoia 15+）上，系统可能要求通过图形界面确认默认浏览器，命令行修改可能不会立即生效。
+
+### 4. 推荐做法
+
+**方式一：在系统设置中手动设置**
+
+已为你打开「桌面与 Dock」设置，请：
+
+1. 在左侧选择「桌面与 Dock」
+2. 向下滚动到「预设网页浏览器」
+3. 在下拉菜单中选择 **Safari**
+
+**方式二：命令行快速打开设置**
+
+```bash
+open "x-apple.systempreferences:com.apple.Desktop-Settings.extension"
+```
+
+**方式三：常用 defaultbrowser 命令**
+
+```bash
+# 查看当前默认浏览器
+defaultbrowser
+
+# 设置 Safari 为默认（在部分系统上可能需要配合 GUI 确认）
+defaultbrowser safari
+```
+
+### 5. 一键设置脚本（可选）
+
+如需在脚本中自动设置并打开设置页，可使用：
+
+```bash
+defaultbrowser safari && open "x-apple.systempreferences:com.apple.Desktop-Settings.extension"
+```
+
+---
+
+**总结**：`defaultbrowser` 已安装并执行过 `defaultbrowser safari`，但在当前 macOS 上可能仍需在「系统设置 → 桌面与 Dock → 预设网页浏览器」中手动选择 Safari 才能完全生效。
+
+user:
+<user_query>
+然后你理解一下这个所有的这个项目，然后这个项目包括图片，包括这些所有的配置跟卡洛 AI 的品相应的有的一些配置。然后这融入到这个项目，这个项目有需求的配置都直接找卡欧阳耀，然后把所有的配置都列清楚，并且相应的技能的需要有说明，中文的说明和备注它的一个作用，特别是那个说明底下确定它的效果，那个作用，然后所有的那个 a skill 的技能的界面都把它那个所有都安装一下。那并且那个，把这个的内容，把这一个的内容和节点都按照卡罗伊最适合适配的方式来操作，并且保证它是可用。然后把这，那个，你的那个的整个。那能中文化的就直接中文化了。那好吧，那确保整个项目可以用，可以直接在飞书上对接，然后所有能配置的参数和额外的参数都融入到这个项目里面，从卡罗拉里面的一些都融入到这个里面，但不要更改原有的大体的一个方向，目的是让我可以轻松的配置对话，控制着我的那个 MacBook 的电脑。以及可以安装到其他电脑上面的相应的附属安装到其他的电脑上面。要保证我的对话通畅，然后回答精确，并且能实现本地的一些操作。然后本地这边那个电脑端这边有一个能展示在桌面的操作界面。
+
+优化这个提示词 特别是合并卡若ai那部分
+</user_query>
+
+assistant:
+<think>
+The user is asking me to optimize a prompt. The prompt seems to be about:
+
+1. Understanding a project (clawdbot based on the recently viewed files - 桌面操作指南.md, frpc.toml)
+2. The project includes images, configurations, and configurations related to 卡若AI
+3. Integrate 卡若AI configurations into this project
+4. List all configurations clearly with Chinese descriptions and notes on their purpose/effect
+5. Install all Skill interfaces
+6. Adapt content and nodes to the way that best fits 卡若AI
+7. Ensure it's usable
+8. Localize (中文化) where possible
+9. Ensure the whole project works and can connect to Feishu (飞书)
+10. Integrate all configurable parameters and extra parameters from 卡若AI into this project without changing the overall direction
+11. Goal: easily configure dialogue, control MacBook, install on other computers, ensure smooth dialogue, precise answers, local operations
+12. Local computer side should have a desktop operation interface
+
+The user specifically asks to "优化这个提示词 特别是合并卡若ai那部分" - optimize this prompt, especially the part about merging 卡若AI.
+
+So the task is to **rewrite/optimize the user's prompt** - make it clearer, more structured, and better merge the 卡若AI integration requirements. I'm not being asked to implement the project, but to improve the prompt text itself.
+
+Let me first look at the clawdbot project to understand what it is, so I can make the optimized prompt more precise.
+</think>
+查看 clawdbot 项目结构及与卡若AI 的关联，以便我们优化提示词并合并卡若AI 部分。
+
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/开发/4、小工具/clawdbot
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、小工具/clawdbot/桌面操作指南.md
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/00_卡若AI总索引.md
+  limit: 150
+
+[Tool result] LS
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+I now have a better picture. The user wants me to **optimize the prompt** they wrote - especially merging the 卡若AI part. The prompt was a long, somewhat repetitive request about:
+
+1. Understanding the clawdbot project
+2. Including images, configs, 卡若AI configs
+3. Listing all configs with Chinese descriptions and purpose/effect
+4. Installing all Skill interfaces
+5. Adapting to 卡若AI style
+6. Localizing (中文化)
+7. Ensuring usability, Feishu integration
+8. Not changing overall direction
+9. Goal: easy config, control MacBook, install on other PCs, smooth dialogue, precise answers, local ops
+10. Desktop operation interface
+
+I need to **rewrite this as a clear, structured prompt** that:
+- Merges 卡若AI requirements cleanly
+- Removes redundancy
+- Keeps goals and constraints clear
+- Is suitable for giving to an AI or a developer to execute
+
+Let me also quickly check OpenClaw_配置说明.md and the feishu bridge to understand the project better for the prompt.
+</think>
+
+
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、小工具/clawdbot/OpenClaw_配置说明.md
+[Tool call] Read
+  path: /Users/karuo/Documents/开发/4、小工具/clawdbot/飞书桥接_完整部署与问题手册.md
+  limit: 120
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/开发/4、小工具/clawdbot/skills
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] LS
+
+assistant:
+<think>
+I have a good picture now. The user wants me to **optimize the prompt** they wrote - to make it clearer, merge the 卡若AI part well, and produce a single polished prompt that can be used to guide implementation. Let me write an optimized version of their prompt.
+
+Key elements to merge and clarify:
+1. Understand the clawdbot project (OpenClaw + 飞书桥接 + 卡若AI)
+2. Include: images, all configs, 卡若AI configs
+3. List all configs with 中文说明 + 备注作用 + 效果确认
+4. Install all Skill 界面/技能
+5. Adapt content and nodes to 卡若AI 最适合的方式，保证可用
+6. 中文化 where possible
+7. Ensure: 项目可用、飞书对接、所有可配置参数和额外参数融入、从卡若AI 融入但不改原有大方向
+8. 目标：轻松配置对话、控制 MacBook、可安装到其他电脑、对话通畅、回答精确、本地操作
+9. 本地电脑端有桌面操作界面
+10. 特别合并卡若AI 那部分
+
+I'll output a clean, structured prompt document that they can use.
+</think>
+正在撰写优化后的提示词文档，合并卡若AI 部分并理清结构：
+
+[Tool call] Write
+  path: /Users/karuo/Documents/开发/4、小工具/clawdbot/references/卡若AI融合与配置优化_任务提示词.md
+  contents: # 卡若AI 融合与配置优化 — 任务提示词
+
+> 优化版 | 合并卡若AI 部分，可直接用于指导实施或交给 AI 执行
+
+---
+
+## 一、目标（不改大方向）
+
+1. **主目标**：通过飞书对话轻松配置、控制本机 MacBook，并在其他电脑上可复现部署。
+2. **体验要求**：对话通畅、回答精确、能执行本地操作。
+3. **界面要求**：本机有一块可展示在桌面的操作界面（控制面板/菜单栏/快捷方式）。
+4. **融合原则**：把卡若AI 的配置、技能、规则融入本项目，**不改变 OpenClaw/clawdbot 原有整体架构与方向**，只做适配与增强。
+
+---
+
+## 二、卡若AI 融合（合并说明）
+
+### 2.1 必须融入的内容
+
+| 来源 | 融入内容 | 作用 |
+|:---|:---|:---|
+| **卡若AI 总索引** | 找谁办事、五行团队、52 技能清单、端口与飞书企微 | 对话时能按「找谁办事」路由，回复风格与能力与卡若AI 一致 |
+| **karuo-ai.mdc 规则** | 思考→拆解→读取→执行→总结→验证；语言为简体中文；先理解再执行 | 保证回复流程统一、可追溯、可验证 |
+| **记忆与工作台路径** | 主记忆 `记忆.md`、分类记忆 `记忆/`、工作台 `卡若AI/` | 回复可带长期偏好、人脉、原则，避免与卡若AI 脱节 |
+| **飞书桥接与模型策略** | 本地 qwen2.5 优先，超时/复杂时 V0；飞书 webhook→桥接→OpenClaw | 与现有飞书桥接、frp、Ollama 方案一致，不重做轮子 |
+| **技能与 Skill** | 卡若AI 52 技能与 OpenClaw skills 的对应关系；优先用卡若AI 的 SKILL.md 做说明与效果定义 | 技能列表、参数、效果说明统一，且可被飞书侧对话使用 |
+
+### 2.2 融合时的约束
+
+- **不替换** OpenClaw 的网关、频道、技能执行引擎；只在配置、文案、工作空间（AGENTS.md/SOUL.md/USER.md）和桥接逻辑上引用卡若AI。
+- **不重复造** 飞书连接、frp、Ollama 调用；沿用现有 `feishu_openclaw_bridge.py`、`start_feishu_frpc.sh` 等。
+- **中文化**：所有面向用户的配置项说明、技能说明、错误提示、桌面操作指南，均使用简体中文，并注明「作用」与「效果」。
+
+---
+
+## 三、配置清单与说明要求
+
+### 3.1 需要列清的配置
+
+1. **OpenClaw 相关**  
+   - 网关（端口、认证、bind）  
+   - 代理（模型、工作空间、并发）  
+   - 消息（回复范围、@ 规则）  
+   - 钩子（飞书 webhook、token）
+
+2. **飞书桥接与隧道**  
+   - 飞书事件订阅 URL、app id、密钥  
+   - 桥接端口、frpc/frps 配置、域名与 Nginx  
+   - 本地模型与 V0 的调用顺序、超时、降级策略
+
+3. **卡若AI 相关**  
+   - 卡若AI 工作台路径、记忆路径、总索引路径  
+   - 飞书/企微/端口在总索引中的引用  
+   - 与 OpenClaw 的 SOUL.md、USER.md、AGENTS.md 的对应关系
+
+4. **桌面与本地操作**  
+   - 控制面板 URL、一键启动脚本路径  
+   - 菜单栏/快捷方式（如 SwiftBar、Raycast）的配置路径与命令  
+   - 日志路径、健康检查命令
+
+### 3.2 说明格式（中文）
+
+对每个配置项要求：
+
+- **名称**：配置项或文件名。
+- **说明**：一句话说明「是什么」。
+- **作用**：说明「用来干什么」「不配会怎样」。
+- **效果确认**：如何验证该配置已生效（例如：访问某 URL、执行某命令、在飞书发某消息看回复）。
+
+示例：
+
+| 配置项 | 说明 | 作用 | 效果确认 |
+|:---|:---|:---|:---|
+| `gateway.port` | 网关监听端口 | 控制面板与 API 的入口；改错则无法访问 | 浏览器打开 `http://127.0.0.1:18789/config` 能打开即生效 |
+| `workspace` | 工作空间目录 | 存放 SOUL/USER/AGENTS 与记忆；错则 AI 读不到卡若AI 身份与记忆 | 在飞书问「我是谁」应回答卡若AI 身份 |
+
+---
+
+## 四、技能（Skill）与界面
+
+### 4.1 技能安装与说明
+
+- **安装范围**：当前 OpenClaw 技能列表中的技能，凡可安装的（含依赖如 1password-cli、remindctl、ffmpeg 等），均按「可用」目标安装或标注「可选/暂不安装」及原因。
+- **说明文档**：每个技能在项目内有一份中文说明，包含：  
+  - 技能名称与一句话功能  
+  - 依赖与安装命令  
+  - 主要参数（若有）  
+  - 作用与典型使用场景  
+  - 效果确认方法（例如：在飞书/控制面板发什么指令可验证）
+- **与卡若AI 技能对应**：若某 OpenClaw 技能对应卡若AI 某专员/技能（如文件操作→水溪/文件整理），在说明中注明，并指向卡若AI 总索引或对应 SKILL.md。
+
+### 4.2 技能「界面」统一
+
+- 所有技能的入口、参数、返回格式，在文档中统一描述（可集中在一份「技能清单」表），便于飞书侧对话设计和用户理解。
+- 能中文化的技能名称、参数名、错误信息，均使用中文或中英对照。
+
+---
+
+## 五、内容与节点适配卡若AI
+
+- **工作空间**：`~/.openclaw/workspace` 下的 SOUL.md、USER.md、AGENTS.md 与卡若AI 人设、总索引、规则保持一致；必要时从 `卡若AI/.cursor/rules/karuo-ai.mdc` 与 `00_卡若AI总索引.md` 摘录精简版放入 workspace，避免重复维护。
+- **桥接逻辑**：飞书消息进入后，先加载卡若AI 总索引/规则/记忆再调模型；回复格式、思考→总结结构符合 karuo-ai.mdc。
+- **节点与流程**：若有流程图/架构图，增加「卡若AI 融合」节点（如：飞书 → 桥接 → 加载卡若AI 上下文 → OpenClaw 技能/模型 → 回复），并在图中用中文标注。
+
+---
+
+## 六、可用性与飞书对接
+
+- **可用**：一键启动后，本机可打开控制面板、飞书发消息能收到回复、本地技能（如文件、提醒、天气）可被触发。
+- **飞书对接**：事件订阅 URL、验证、回复 API、超时与重试策略均文档化，并与现有飞书桥接文档一致；所有相关参数集中列在「配置清单」中。
+- **可配置参数**：项目内所有可调参数（端口、超时、模型名、路径、token 等）集中在一份配置说明中，并注明默认值、可选范围、以及「改完如何验证」。
+
+---
+
+## 七、多机部署（附属安装到其他电脑）
+
+- 文档中保留「部署到其他电脑」章节：环境要求（macOS、Node、Python、Homebrew）、安装顺序、需要复制的配置文件与目录（如 `openclaw.json`、`workspace/`、桥接脚本与 frpc 配置）。
+- 明确哪些配置需要按机器修改（如本机路径、frpc 服务器地址、飞书 app 密钥），并给出示例或占位符。
+- 部署后验收：控制面板可访问、飞书可对话、至少一个本地技能可触发。
+
+---
+
+## 八、桌面操作界面
+
+- **已有**：控制面板 `http://127.0.0.1:18789/config`、一键启动脚本、可选 SwiftBar/Raycast 脚本。
+- **要求**：在文档中单独一节「桌面操作界面」，列出：  
+  - 打开方式（浏览器、命令行、菜单栏、快捷键）  
+  - 每个入口的用途与效果确认方式  
+  - 能中文化的界面文案或配置项，在文档中给出中文说明
+
+---
+
+## 九、交付物检查清单
+
+执行本提示词后，应产出或更新：
+
+- [ ] **配置清单**：所有配置项的中文说明、作用、效果确认（可合并到 `OpenClaw_配置说明.md` 或单独 `配置清单_卡若AI融合.md`）。
+- [ ] **技能清单**：所有技能的中文说明、依赖、参数、作用、效果确认；与卡若AI 技能的对应关系（可合并到现有技能列表并增加「卡若AI 对应」列）。
+- [ ] **卡若AI 融合说明**：本项目引用了卡若AI 的哪些路径、规则、记忆，以及在工作空间与桥接中的用法（可放在 `OpenClaw_配置说明.md` 的「与卡若AI 的整合」并扩充）。
+- [ ] **桌面操作指南**：入口、一键启动、菜单栏/快捷方式、验证步骤（可更新 `桌面操作指南.md`）。
+- [ ] **飞书对接与部署**：飞书相关配置与参数列表、多机部署步骤、验收方法（可更新 `飞书桥接_完整部署与问题手册.md`）。
+- [ ] **中文化**：所有面向用户的配置说明、技能说明、错误提示、桌面指南均为中文或中英对照；界面文案能改的已改为中文。
+- [ ] **可用性**：本机一键启动后控制面板可访问、飞书对话通畅、至少一个本地技能可验证；文档与实现一致。
+
+---
+
+## 十、简短执行摘要（给 AI 或实施者）
+
+1. 理解 clawdbot（OpenClaw + 飞书桥接）与卡若AI（总索引、规则、记忆、52 技能）的关系，**在不改 OpenClaw 大方向的前提下** 做融合。
+2. 列出**全部**配置项，给每项写**中文说明 + 作用 + 效果确认**。
+3. 对 OpenClaw **所有技能**做安装/标注，并写**中文说明 + 作用 + 效果确认**；与卡若AI 技能做对应。
+4. 把**卡若AI 的路径、规则、记忆**融入 workspace 与桥接逻辑；内容与节点按**卡若AI 最适合的方式**适配，保证可用。
+5. **中文化**所有能中文化的配置与界面说明。
+6. 保证**项目可用、飞书对接完整**，**所有可配置与额外参数**都写入文档并融入项目。
+7. 提供**桌面操作界面**的入口说明与验证方法。
+8. 支持**其他电脑部署**，文档中写清步骤与需修改的配置。
+
+---
+
+*文档位置: clawdbot/references/卡若AI融合与配置优化_任务提示词.md*
+
+
+[Tool result] Write
+
+assistant:
+<think>
+I've created the optimized prompt. Let me give the user a short summary and point them to the file. I could also add a one-paragraph "可直接复制的精简版提示词" at the end for pasting into a chat - that would be useful.
+</think>
+在文档末尾添加一段可直接复制的精简版提示词，便于粘贴到对话中使用：
+
+[Tool call] StrReplace
+  path: /Users/karuo/Documents/开发/4、小工具/clawdbot/references/卡若AI融合与配置优化_任务提示词.md
+  old_string: ---
+
+*文档位置: clawdbot/references/卡若AI融合与配置优化_任务提示词.md*
+  new_string: ---
+
+## 附录：可直接复制的精简版提示词
+
+> 适合粘贴到飞书/Cursor 对话，一次性说明需求。
+
+```
+请对 clawdbot（OpenClaw + 飞书桥接）项目做卡若AI 融合与配置优化：
+
+1. 融合卡若AI：在不改 OpenClaw 大方向的前提下，把卡若AI 总索引、karuo-ai.mdc 规则、记忆路径、52 技能对应关系融入本项目；工作空间（SOUL/USER/AGENTS）与桥接逻辑引用卡若AI，保证对话通畅、回答精确、能执行本地操作。
+
+2. 配置清单：列出所有配置项（网关、代理、飞书、桥接、frp、卡若AI 路径、桌面入口等），每项给出中文说明、作用、效果确认方法。
+
+3. 技能：对 OpenClaw 所有技能做安装或标注，每个技能有中文说明、依赖、参数、作用、效果确认；与卡若AI 技能做对应；能中文化的界面与参数均中文化。
+
+4. 内容与节点：按卡若AI 最适合的方式适配工作空间与桥接；保证项目可用、飞书对接完整；所有可配置与额外参数写入文档并融入项目。
+
+5. 桌面操作界面：在文档中明确控制面板、一键启动、菜单栏/快捷方式的入口与验证方法。
+
+6. 多机部署：文档中写清部署步骤、需复制的配置、需按机器修改的参数及验收方法。
+
+产出：更新配置说明、技能清单、桌面操作指南、飞书部署手册；新增或扩充「卡若AI 融合」说明；确保中文化与可用性。
+```
+
+---
+
+*文档位置: clawdbot/references/卡若AI融合与配置优化_任务提示词.md*
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Done. Let me give the user a concise summary.
+</think>
+---
+
+**总结** | 已完成
+
+已根据你的需求写好**优化后的提示词**，并**合并了卡若AI 部分**，主要做了这些事：
+
+1. **合并卡若AI**
+   - 单独成章「卡若AI 融合」：写清要融入什么（总索引、规则、记忆、飞书桥接、52 技能）、怎么融入、以及「不改 OpenClaw 大方向」的约束。
+   - 明确：只做配置/工作空间/桥接适配，不替换网关和引擎，不重做飞书/Ollama 链路。
+
+2. **结构化目标**
+   - 目标：飞书对话配置、控制 MacBook、可装到其他电脑、对话顺、回答准、能本地操作、有桌面操作界面。
+   - 配置：每项要求「说明 + 作用 + 效果确认」，并给了示例表。
+
+3. **技能与界面**
+   - 技能：安装/标注所有技能、中文说明、依赖、参数、作用、效果确认、与卡若AI 技能对应；能中文化的都中文化。
+   - 桌面界面：单独一节，列入口和验证方式。
+
+4. **可执行检查清单**
+   - 文档末尾有交付物检查清单（配置清单、技能清单、融合说明、桌面指南、飞书部署、中文化、可用性）。
+
+5. **附录：精简版提示词**
+   - 一段可直接复制到飞书/Cursor 的短文，涵盖上述要点，方便你一键粘贴使用。
+
+文件位置：
+
+- **完整版**：`/Users/karuo/Documents/开发/4、小工具/clawdbot/references/卡若AI融合与配置优化_任务提示词.md`
+- **附录**：同一文件末尾的「可直接复制的精简版提示词」。
+
+后续你可以：  
+- 把「附录」里那段直接贴给 AI 或同事做任务说明；  
+- 按文档里的检查清单逐项落实配置、技能和文档更新。
+
+user:
+<user_query>
+帮我查找并清理一下硬盘空间用
+</user_query>
+
+assistant:
+<think>
+The user wants me to help find and clean up disk space on their Mac. According to the rules:
+
+1. 磁盘清理 is under 金仓 (卡资/金组) - 金仓 has 磁盘清理 skill
+2. There's a Skill for disk cleanup - I should check if there's a relevant SKILL in 卡若AI for 磁盘清理
+
+Let me find the disk cleanup skill and any scripts, then help the user analyze disk usage and suggest/perform cleanup.
+</think>
+查找卡若AI 的磁盘清理技能与脚本，随后分析并清理硬盘空间。
+
+[Tool call] Grep
+  pattern: 磁盘清理|磁盘
+  path: /Users/karuo/Documents/个人/卡若AI
+  output_mode: content
+  -B: 0
+  -A: 0
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金仓/磁盘清理
+
+[Tool result] Grep
+
+[Tool result] LS
+
+assistant:
+<think>
+Found the disk cleanup skill and scripts. Let me read the SKILL.md and the two scripts (安全清理.sh, 快速诊断.sh) to understand the workflow, then run the diagnostic first and then the safe cleanup.
+</think>
+
+
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金仓/磁盘清理/SKILL.md
+  limit: 180
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金仓/磁盘清理/scripts/快速诊断.sh
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金仓/磁盘清理/scripts/安全清理.sh
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+I have the full picture. The rules say:
+- 系统盘：926GB，保持 100GB+ 可用
+- 安全清理脚本会：清空回收站、系统缓存、Node/Python/通用缓存、Xcode、Homebrew
+
+I'll:
+1. Run the 快速诊断.sh first to get current disk status
+2. Then run 安全清理.sh to perform safe cleanup
+
+The scripts are in: /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金仓/磁盘清理/scripts/
+
+I need to run them. The find command in 安全清理.sh for __pycache__ might take a long time and could be dangerous if run from wrong dir - but the script uses ~/ so it's the user's home. Let me run the diagnostic first.
+</think>
+正在执行金仓的磁盘清理流程：先运行快速诊断，再执行安全清理。
+
+[Tool call] Shell
+  command: cd "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金仓/磁盘清理/scripts" && chmod +x 快速诊断.sh 安全清理.sh && ./快速诊断.sh
+  description: 运行磁盘快速诊断脚本
+  timeout: 120000
+
+[Tool result] Shell
+
+assistant:
+<think>
+The diagnostic ran and we got critical info before timeout:
+
+- **磁盘总览**: 926Gi total, 880Gi used, **656Mi available** — that's essentially **full** (only ~656 MB free!). 使用率 100%.
+- 用户目录 TOP10: 667G 总、230G 数据库、214G Library、111G 卡若开发、35G Documents、32G Downloads...
+- 回收站: 0B（空的）
+- 缓存: 系统缓存 9.4G、通用缓存 4.5G、npm 1.7G、Gradle 3.2G
+- Docker: 25.9GB
+- 大文件 TOP5 部分没显示完（可能 find 很慢）
+
+So the disk is critically full (656 MB). We need to run the safe cleanup script to free space. The safe cleanup will:
+1. Empty trash (0B - nothing)
+2. System cache ~9.4G
+3. Node cache ~1.7G
+4. Python cache
+5. General cache ~4.5G
+6. Gradle ~3.2G
+7. Xcode
+8. Homebrew
+
+That could free roughly 9.4+4.5+1.7+3.2 = ~19GB+ from caches alone. Let me run the safe cleanup script. Note: the script has `find ~/ -type d -name "__pycache__"` which can be very slow on a 667G home - might want to run with a timeout or skip. I'll run the script and see.
+</think>
+发现磁盘几乎已满（仅约 656MB 可用）。正在执行安全清理以释放空间：
+
+[Tool call] Shell
+  command: df -h /System/Volumes/Data
+  description: 确认当前可用空间
+
+[Tool result] Shell
+
+assistant:
+<think>
+637 Mi available - critical. Let me run the safe cleanup. The script does:
+1. rm -rf ~/.Trash/* 
+2. rm -rf ~/Library/Caches/*
+3. Node cache
+4. Python __pycache__ - this find can be VERY slow on large home. I might run the script in background or run a modified version that skips the slow find. Actually let me just run the script - we need the space. I'll run it with a longer timeout. If the find takes too long we could interrupt and do the rest manually.
+
+Actually, looking at the script again - the Python part is:
+find ~/ -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
+This could take hours on 880GB. Let me run the script but skip the slow find by running the quick parts first manually, then run the rest of the script. Or run the script in background.
+
+Better approach: run each step of the cleanup manually (the fast ones) to free space quickly, and mention the slow Python find as optional for later.
+</think>
+可用仅 **637MB**，需立即释放空间。正在分步执行安全清理（跳过耗时的全局 `find`）：
+
+[Tool call] Shell
+  command: echo "=== 清理前 ===" && df -h /System/Volumes/Data | awk 'NR==2{print "可用: "$4}'
+# 1. 回收站
+rm -rf ~/.Trash/* 2>/dev/null || true
+# 2. 系统缓存 (~9.4G)
+rm -rf ~/Library/Caches/* 2>/dev/null || true
+echo "已清理: 回收站、系统缓存"
+  description: 清理回收站与系统缓存
+[Tool call] Shell
+  command: # 3. Node 缓存
+rm -rf ~/.npm/_npx ~/.npm/_logs ~/.npm/_cacache 2>/dev/null || true
+rm -rf ~/.pnpm-store 2>/dev/null || true
+rm -rf ~/.yarn/cache 2>/dev/null || true
+# 4. 通用缓存与 Gradle
+rm -rf ~/.cache/* 2>/dev/null || true
+rm -rf ~/.gradle/caches 2>/dev/null || true
+echo "已清理: Node/通用/Gradle 缓存"
+  description: 清理 Node 与开发缓存
+[Tool call] Shell
+  command: # 5. Xcode
+rm -rf ~/Library/Developer/Xcode/DerivedData/* 2>/dev/null || true
+rm -rf ~/Library/Developer/Xcode/Archives/* 2>/dev/null || true
+# 6. Homebrew
+if command -v brew &> /dev/null; then brew cleanup --prune=all 2>/dev/null || true; brew autoremove 2>/dev/null || true; fi
+echo "已清理: Xcode、Homebrew"
+df -h /System/Volumes/Data | awk 'NR==2{print "=== 清理后可用: "$4}'
+  description: 清理 Xcode 与 Homebrew
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+assistant:
+<think>
+Part of the cleanup ran:
+1. First command: rm ~/Library/Caches/* might have been running (clearing 9.4G) - it timed out
+2. Second: Node/通用/Gradle 缓存 - completed (freed .cache, .gradle, npm - that was 4.5+3.2+1.7 = ~9G+)
+3. Third: Xcode (no match), Homebrew cleanup ran and was removing lots of packages - timed out before df
+
+Let me check current disk space and whether Library/Caches was cleared. If not we can run it again.
+</think>
+正在检查当前可用空间并确认系统缓存是否已清理：
+
+[Tool call] Shell
+  command: df -h /System/Volumes/Data
+  description: 查看清理后可用空间
+[Tool call] Shell
+  command: du -sh ~/Library/Caches ~/.cache ~/.gradle/caches ~/.npm 2>/dev/null || true
+  description: 检查缓存目录当前大小
+
+[Tool result] Shell
+
+[Tool result] Shell
+
+assistant:
+<think>
+Good progress:
+- Before: 637 Mi available
+- After: 3.8 Gi available — we freed about 3.2 GB
+- Library/Caches: was 9.4G, now 1.0G — so about 8.4G was cleared (partially - maybe the first rm was still running when timeout hit, or it completed). So we have 3.8G now.
+- .cache: 0B (cleared)
+- .gradle: not shown, probably gone
+- .npm: 3.3M (most cleared)
+
+We could clear the remaining 1G in Library/Caches to get a bit more. Let me do that and then give the user a summary with recommendations for the big space users (数据库 230G, Library 214G, 卡若开发 111G, Docker 26G).
+</think>
+已释放约 3.2GB，可用空间从 637MB 增至 3.8GB。正在清理系统缓存剩余部分：
+
+[Tool call] Shell
+  command: rm -rf ~/Library/Caches/* 2>/dev/null; df -h /System/Volumes/Data | awk 'NR==2{print "可用: "$4}'
+  description: 清理系统缓存剩余并确认空间
+
+[Tool result] Shell
+
+assistant:
+<think>
+Exit code 1 might be from "no matches" in zsh for *. Let me just run df again to see current state.
+</think>
+
+
+[Tool call] Shell
+  command: df -h /System/Volumes/Data && du -sh ~/Library/Caches 2>/dev/null
+  description: 确认最终可用空间与缓存大小
+
+[Tool result] Shell
+
+assistant:
+<think>
+Now we have 4.1 Gi available. Library/Caches is down to 324M. Good. Let me give the user a clear summary and recommendations for further cleanup - the big ones are 数据库 230G, Library 214G, 卡若开发 111G, Docker 26G, Documents 35G, Downloads 32G.
+</think>
+清理已完成，汇总如下。
+
+---
+
+## 磁盘清理结果
+
+### 当前状态
+
+| 项目 | 清理前 | 清理后 |
+|:---|:---|:---|
+| **可用空间** | **637 MB** | **4.1 GB** |
+| 已用空间 | 880 GB | 876 GB |
+| 释放约 | — | **约 3.5 GB** |
+
+### 已执行的安全清理（金仓磁盘清理 Skill）
+
+| 步骤 | 内容 | 说明 |
+|:---|:---|:---|
+| 1 | 回收站 | 已是空的，未释放 |
+| 2 | 系统缓存 `~/Library/Caches` | 约 9.4G → 324M，已释放约 9G |
+| 3 | Node（npm/pnpm/yarn） | 已清理 |
+| 4 | 通用缓存 `~/.cache`、Gradle | 已清理 |
+| 5 | Xcode DerivedData/Archives | 目录为空，未删到内容 |
+| 6 | Homebrew `brew cleanup + autoremove` | 已执行，释放部分旧版本 |
+
+---
+
+## 空间仍紧张，建议你后续手动做的几项
+
+规则里要求系统盘至少保持 **100GB+ 可用**，目前只有约 4.1GB，建议尽快再腾出空间。按诊断结果，可优先考虑：
+
+| 目录/来源 | 约占用 | 建议操作 |
+|:---|:---|:---|
+| **数据库** `~/数据库` | **230G** | 确认是否可迁移到外置盘或 NAS，或删旧库/备份 |
+| **Library** `~/Library` | **214G** | 重点看：iOS 支持文件、模拟器、应用缓存（见下） |
+| **卡若开发** `~/卡若开发` | **111G** | 删旧项目、node_modules、构建产物、大依赖 |
+| **Docker** | **约 26G** | 不需要的镜像/容器：`docker system prune -a --volumes`（会删未用镜像与卷） |
+| **Documents** | 35G | 大文件/旧项目移走或删 |
+| **Downloads** | 32G | 删安装包、旧下载 |
+
+### 可再做的“安全”清理（需你确认后再做）
+
+```bash
+# 1. Docker 深度清理（会删未使用的镜像/容器/卷）
+docker system prune -a --volumes -f
+
+# 2. 微信缓存（规则里约 71GB，需在微信里操作）
+# 微信 → 设置 → 通用 → 存储空间 → 清理
+
+# 3. 飞书/其他应用缓存
+# 各应用内：设置 → 存储/缓存 → 清理
+```
+
+---
+
+## 脚本位置（以后可自己跑）
+
+- **快速诊断**：  
+  `卡若AI/01_卡资（金）/_团队成员/金仓/磁盘清理/scripts/快速诊断.sh`
+- **安全清理**：  
+  `卡若AI/01_卡资（金）/_团队成员/金仓/磁盘清理/scripts/安全清理.sh`
+
+```bash
+cd "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/_团队成员/金仓/磁盘清理/scripts"
+./快速诊断.sh   # 只看不删
+./安全清理.sh   # 执行安全清理
+```
+
+---
+
+**总结**：已用金仓的「磁盘清理」流程做了安全清理，可用空间从约 **637MB 提升到约 4.1GB**。要接近「100GB+ 可用」目标，需要你针对 **数据库、Library、卡若开发、Docker、Documents/Downloads** 做迁移或删除；Docker 和微信/飞书缓存是相对容易且能释放较多的下一步。

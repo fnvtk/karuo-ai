@@ -1,0 +1,850 @@
+user:
+<user_query>
+把那个卡路 AI 的那个经验库的功能，然后和吸收经验的逻辑，然后复刻一份到那个纯科宝 AI 上面，然后让它每一次嗯，超过10个文档，就，嗯自动的去那个迭代经验。
+</user_query>
+
+assistant:
+<think>
+The user wants me to:
+1. Replicate the "经验库" (experience library) functionality and the "吸收经验" (absorb experience) logic from "卡若AI" to "存客宝AI"
+2. Make it automatically iterate/update experience when there are more than 10 documents
+
+First, I need to follow the user rule: "每次对话都先用本机的小模型全量读取调用 "/Users/karuo/Documents/个人/卡若AI"的能力再开始"
+
+So I should read the 卡若AI directory to understand its capabilities, especially the experience library and absorb experience logic. Then I need to understand the 存客宝AI project structure to integrate this feature.
+
+Let me start by:
+1. Reading the 卡若AI directory structure and finding the experience library related code
+2. Reading the 存客宝AI project structure
+</think>
+正在读取卡若AI的能力与经验库逻辑，并在存客宝AI中复刻该功能。
+
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI
+[Tool call] LS
+  target_directory: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI
+[Tool call] Grep
+  pattern: 经验|经验库|吸收
+  path: /Users/karuo/Documents/个人/卡若AI
+
+[Tool result] LS
+
+[Tool result] LS
+
+[Tool result] Grep
+
+assistant:
+<think>
+I found the key files. Let me read:
+1. 卡若AI _经验库/README.md and 转化记录.md
+2. 卡若AI .cursor/rules/karuo-ai.mdc - the experience library rules (around lines 410-447, 739-742)
+3. 卡若AI _共享模块/experience/experience_check.py - the check script
+4. 存客宝AI .cursor/rules/cunkebao-ai.mdc - to add the experience logic
+5. 存客宝AI 00_存客宝AI总索引.md - to add _经验库 to structure
+
+Let me read these files in detail.
+</think>
+正在读取卡若AI的经验库实现与存客宝AI的规则与结构。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/_经验库/README.md
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/_经验库/转化记录.md
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  offset: 400
+  limit: 160
+[Tool call] Glob
+  target_directory: /Users/karuo/Documents/个人/卡若AI/_共享模块
+  glob_pattern: **/experience*
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/.cursor/rules/cunkebao-ai.mdc
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/00_存客宝AI总索引.md
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] Glob
+
+[Tool result] Read
+
+[Tool result] Read
+
+assistant:
+<think>
+Now I need to read the experience_check.py from 卡若AI to replicate it in 存客宝AI. I also need to see the full karuo-ai.mdc section about experience (around 735-745) for the "对话结束时检查" part.
+</think>
+正在读取卡若AI的 `experience_check.py` 及规则中“对话结束检查”的完整描述。
+
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/_共享模块/experience/experience_check.py
+[Tool call] Read
+  path: /Users/karuo/Documents/个人/卡若AI/.cursor/rules/karuo-ai.mdc
+  offset: 730
+  limit: 30
+[Tool call] LS
+  target_directory: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块
+
+[Tool result] Read
+
+[Tool result] Read
+
+[Tool result] LS
+
+assistant:
+<think>
+Now I have a clear picture. I need to:
+
+1. Create `_经验库/` in 存客宝AI with:
+   - README.md (adapted from 卡若AI, for 存客宝AI)
+   - 转化记录.md
+   - 待沉淀/ (empty dir - can use a .gitkeep or just create README that says empty)
+   - 已整理/ (卡若AI has 已整理/工具技巧/ with some files - 存客宝AI we start empty)
+
+2. Create `_共享模块/experience/` in 存客宝AI with:
+   - experience_check.py (adapted: CUNKEBAO_ROOT, EXPERIENCE_ROOT, CATEGORY_TO_SKILL mapped to 存客宝AI's 运维组/项目组/开发组/测试组)
+
+3. Update `.cursor/rules/cunkebao-ai.mdc` to add:
+   - 经验自动捕捉与沉淀（同卡若：每次经验对话都沉淀、已整理>10 触发 Skill 吸收）
+   - 经验库目录说明
+   - 对话结束时必执行：经验库检查（执行 experience_check.py，>10 自动迭代经验）
+
+4. Update `00_存客宝AI总索引.md` to add _经验库 in 目录结构 and mention 经验库检查
+
+存客宝AI 没有「五行助手」而是「四大职能组」，所以分类→Skill 映射要改成：
+- 开发经验 → 开发组/全栈开发、开发组/代码修复
+- 运维经验 → 运维组/服务器管理、运维组/Docker管理、存客宝私域SDK
+- 项目/需求/规划经验 → 项目组/需求拆解、项目组/飞书管理
+- 工具技巧 → 项目组/文件整理 或 开发组/开发模板
+
+我来写映射：
+CATEGORY_TO_SKILL = {
+    "开发经验": "03_开发组/全栈开发、03_开发组/代码修复",
+    "运维经验": "01_运维组/服务器管理、01_运维组/Docker管理、01_运维组/存客宝私域SDK",
+    "项目经验": "02_项目组/需求拆解、02_项目组/飞书管理",
+    "工具技巧": "02_项目组/文件整理、03_开发组/开发模板",
+}
+</think>
+正在把经验库与吸收逻辑复刻到存客宝AI，并加入“超过 10 个文档自动迭代经验”的规则与脚本。
+
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"创建存客宝AI _经验库 目录与 README、转化记录","status":"in_progress"},{"id":"2","content":"创建 _共享模块/experience/experience_check.py（适配存客宝）","status":"pending"},{"id":"3","content":"在 cunkebao-ai.mdc 中加入经验库规则与对话结束检查","status":"pending"},{"id":"4","content":"更新 00_存客宝AI总索引 目录与经验库说明","status":"pending"}]
+  merge: false
+[Tool call] LS
+  target_directory: /Users/karuo/Documents/个人/卡若AI/_经验库/已整理
+
+[Tool result] TodoWrite
+
+[Tool result] LS
+
+assistant:
+<think>
+卡若AI的已整理下还有子目录（工具技巧），但 README 说「已整理为扁平结构，全部归一，无子目录」。可能后来有子目录了，我们存客宝按扁平来做即可。
+
+创建：
+1. 存客宝AI/_经验库/README.md
+2. 存客宝AI/_经验库/转化记录.md
+3. 存客宝AI/_经验库/待沉淀/.gitkeep 或 README（可选，用占位说明）
+4. 存客宝AI/_经验库/已整理/.gitkeep（空目录占位）
+
+然后 experience_check.py 里 存客宝 根目录怎么取？存客宝AI 的 workspace 是 /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI，所以 SCRIPT_DIR = experience/, CUNKEBAO_ROOT = SCRIPT_DIR.parent.parent = _共享模块.parent = 存客宝AI。
+</think>
+
+
+[Tool call] Write
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_经验库/README.md
+  contents: # 🧠 经验库
+
+> 存客宝AI的学习沉淀中心 | **每次经验对话都沉淀** | 已整理>10 触发 Skill 吸收 | 吸收后删除
+
+---
+
+## ⚠️ 核心规则（优化迭代）
+
+| 规则 | 说明 |
+|:---|:---|
+| **每次沉淀** | 每次对话中有价值经验 → 直接存入经验库（待沉淀→已整理） |
+| **>10 触发** | 已整理文件数 > 10 → 分配相应 Skill 学习吸收 |
+| **吸收后删除** | Skill 吸收完成后 → 直接删除已整理中的原文件 |
+| **执行时检查** | 每次执行过程中自动检查经验库状态 |
+
+---
+
+## 工作原理
+
+```
+每次对话 → 有价值内容 → 存入经验库（待沉淀→已整理）
+    │
+    └→ 执行时检查：已整理 > 10？
+         │
+         ├─ 否 → 继续
+         └─ 是 → 分配 Skill 吸收 → 吸收完成 → 删除原文件
+```
+
+---
+
+## 自动捕捉规则
+
+### 什么内容会被识别为"有价值"？
+
+| 类型 | 特征 | 示例 |
+|:---|:---|:---|
+| **操作步骤** | 包含具体的操作流程 | "先执行A，再执行B，最后C" |
+| **解决方案** | 解决了某个具体问题 | "这个bug是因为X，解决方法是Y" |
+| **配置方法** | 涉及环境/工具配置 | "MongoDB连接需要设置这些参数" |
+| **最佳实践** | 总结出的经验规律 | "做私域项目，先算账再动手" |
+| **常用命令** | 重复使用的命令组合 | "部署时总是执行这三条命令" |
+
+### 不捕捉的内容
+
+- ❌ 一次性的简单问答
+- ❌ 闲聊内容
+- ❌ 敏感信息（密码、密钥）
+- ❌ 临时性的数据
+
+---
+
+## 目录结构
+
+```
+_经验库/
+├── README.md                    # 本文件
+├── 转化记录.md                  # 仅此文档记录吸收历史（无已转化目录）
+├── 待沉淀/                      # 新捕捉的经验，等待整理
+│   └── YYYY-MM-DD_主题.md
+└── 已整理/                      # 整理后的经验（扁平结构，无子目录，>10 触发吸收）
+    ├── 部署流程经验.md
+    ├── 存客宝API踩坑记录.md
+    └── ...
+```
+
+**说明**：已整理为扁平结构，全部归一，无子目录；吸收后直接删除原文件，不向用户汇报，仅 转化记录.md 记录。
+
+---
+
+## 沉淀流程
+
+### 1️⃣ 每次对话沉淀
+
+当对话中出现有价值内容时，**直接**存入经验库：
+- 存入「待沉淀」
+- 定期整理 → 移入「已整理」（扁平，无子目录）
+
+### 2️⃣ 执行时检查（每次必做）
+
+```
+检查 已整理 文件总数
+  │
+  ├─ ≤ 10 → 继续
+  └─ > 10 → 触发吸收流程（自动迭代经验）
+```
+
+### 3️⃣ 分配 Skill 吸收（>10 时）
+
+| 分类 | 分配 Skill | 负责组 |
+|:---|:---|:---|
+| 开发经验 | 全栈开发、代码修复 | 开发组 |
+| 运维经验 | 服务器管理、Docker管理、存客宝私域SDK | 运维组 |
+| 项目经验 | 需求拆解、飞书管理、项目管理 | 项目组 |
+| 工具技巧 | 文件整理、开发模板 | 项目组/开发组 |
+
+### 4️⃣ 吸收后删除
+
+- Skill 读取经验文件，吸收到 SKILL.md 或 references
+- 吸收完成后 → **直接删除**已整理中的原文件
+- 记录到「转化记录.md」
+
+---
+
+## 快速指令
+
+| 指令 | 说明 |
+|:---|:---|
+| `记住这个` | 手动触发经验捕捉 |
+| `查看经验库` | 列出所有已存经验 |
+| `检查经验库` | 执行经验库检查（>10 触发吸收） |
+| `整理经验库` | 触发经验整理流程 |
+
+## 检查脚本
+
+```bash
+# 每次执行时调用（或对话结束时自动检查）
+python3 _共享模块/experience/experience_check.py
+
+# 吸收完成后删除已吸收文件
+python3 _共享模块/experience/experience_check.py --cleanup xxx.md yyy.md
+```
+
+---
+
+> **存客宝AI的学习能力**：不是一次性的工具，而是会持续进化的团队助手。
+
+[Tool call] Write
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_经验库/转化记录.md
+  contents: # 转化记录
+
+> 记录经验吸收到 Skill 的历史（无目录，仅此文档）
+
+---
+
+## 转化规则（2026-02）
+
+1. **每次经验对话**都沉淀到经验库
+2. **已整理 > 10 个文件**时触发 Skill 吸收（自动迭代经验）
+3. 分配**相应 Skill**学习吸收 → 吸收完成后**直接删除**原文件
+4. 不向用户汇报，不保留已转化目录
+
+---
+
+## 已转化技能
+
+| 日期 | 经验来源 | 生成技能 | 所属组 |
+|:---|:---|:---|:---|
+| （暂无） | — | — | — |
+
+---
+
+> 💡 吸收后直接删除原文件，仅在此记录
+
+[Tool call] Write
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_经验库/待沉淀/.gitkeep
+  contents: 
+[Tool call] Write
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_经验库/已整理/.gitkeep
+  contents: 
+
+[Tool result] Write
+
+[Tool result] Write
+
+[Tool result] Write
+
+[Tool result] Write
+
+assistant:
+<think>
+Todo 1 done. Now create experience_check.py. The path: 存客宝AI/_共享模块/experience/experience_check.py. CUNKEBAO_ROOT = SCRIPT_DIR.parent.parent (experience -> _共享模块 -> 存客宝AI).
+</think>
+
+
+[Tool call] TodoWrite
+  todos: [{"id":"1","content":"创建存客宝AI _经验库 目录与 README、转化记录","status":"completed"},{"id":"2","content":"创建 _共享模块/experience/experience_check.py（适配存客宝）","status":"in_progress"}]
+  merge: true
+[Tool call] Write
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/experience/experience_check.py
+  contents: #!/usr/bin/env python3
+"""
+经验库检查 - 执行时自动检查，已整理 > 10 触发 Skill 吸收（自动迭代经验）
+
+规则：
+1. 每次执行过程中检查 _经验库/已整理/ 文件总数
+2. 若 > 10：输出待吸收文件清单，分配相应 Skill 吸收
+3. 吸收完成后调用 --cleanup 删除原文件
+
+用法:
+  python3 experience_check.py
+  python3 experience_check.py --cleanup <已吸收文件路径...>  # 吸收后删除
+"""
+import os
+import re
+import sys
+from pathlib import Path
+
+# 存客宝AI 根目录
+SCRIPT_DIR = Path(__file__).parent
+CUNKEBAO_ROOT = SCRIPT_DIR.parent.parent
+EXPERIENCE_ROOT = CUNKEBAO_ROOT / "_经验库"
+ORGANIZED_DIR = EXPERIENCE_ROOT / "已整理"
+
+THRESHOLD = 10  # 已整理超过此数量触发吸收
+
+# 分类 → Skill 映射（存客宝AI 四大职能组）
+CATEGORY_TO_SKILL = {
+    "开发经验": "03_开发组/全栈开发、03_开发组/代码修复",
+    "运维经验": "01_运维组/服务器管理、01_运维组/Docker管理、01_运维组/存客宝私域SDK",
+    "项目经验": "02_项目组/需求拆解、02_项目组/飞书管理、02_项目组/项目管理",
+    "工具技巧": "02_项目组/文件整理、03_开发组/开发模板",
+}
+
+
+def count_organized_files() -> tuple[int, list[tuple[str, Path]]]:
+    """统计已整理目录下所有 .md 文件（扁平结构，无子目录）"""
+    files = []
+    if not ORGANIZED_DIR.exists():
+        return 0, []
+    for f in ORGANIZED_DIR.glob("*.md"):
+        if f.name.lower() != "readme.md":
+            # 尝试从文件内容提取分类（首300字符内）
+            cat = "未分类"
+            try:
+                text = f.read_text(encoding="utf-8")[:300]
+                if "**分类**：" in text or "**分类**:" in text:
+                    m = re.search(r"\*\*分类\*\*[：:]\s*(\S+)", text)
+                    if m:
+                        cat = m.group(1).strip()
+            except Exception:
+                pass
+            files.append((cat, f))
+    return len(files), files
+
+
+def main_check() -> int:
+    """执行检查，若 > 10 输出待吸收清单"""
+    count, files = count_organized_files()
+    print(f"📊 经验库已整理文件数：{count}")
+
+    if count <= THRESHOLD:
+        print(f"✅ 未超过阈值（{THRESHOLD}），无需触发吸收")
+        return 0
+
+    print(f"\n⚠️ 已超过阈值（{THRESHOLD}），触发 Skill 吸收流程（自动迭代经验）\n")
+    print("待吸收文件清单：")
+    print("-" * 50)
+    by_cat = {}
+    for cat, fp in files:
+        by_cat.setdefault(cat, []).append(fp)
+    for cat, fps in sorted(by_cat.items()):
+        skill = CATEGORY_TO_SKILL.get(cat, "02_项目组/文件整理、03_开发组/开发模板")
+        print(f"\n【{cat}】→ 分配 {skill}")
+        for fp in fps:
+            try:
+                rel = fp.relative_to(ORGANIZED_DIR)
+            except ValueError:
+                rel = fp.name
+            print(f"  - {rel}")
+    print("-" * 50)
+    print("\n执行步骤：")
+    print("1. 分配相应 Skill 读取上述文件")
+    print("2. 将经验吸收到 SKILL.md 或 references/")
+    print("3. 吸收完成后运行：python3 experience_check.py --cleanup <文件路径...>")
+    print("   或手动删除 _经验库/已整理/ 下已吸收的文件")
+    return 1  # 返回 1 表示触发了吸收流程
+
+
+def main_cleanup(paths: list[str]) -> int:
+    """吸收完成后删除指定文件"""
+    deleted = 0
+    for p in paths:
+        fp = Path(p)
+        if not fp.is_absolute():
+            fp = ORGANIZED_DIR / p
+        if fp.exists():
+            try:
+                fp.resolve().relative_to(ORGANIZED_DIR)
+            except ValueError:
+                print(f"  ⚠️ 跳过（不在已整理内）: {p}")
+                continue
+            fp.unlink()
+            print(f"  ✅ 已删除 {fp.name}")
+            deleted += 1
+        else:
+            print(f"  ⚠️ 跳过（不存在）: {p}")
+    return 0 if deleted else 1
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--cleanup":
+        paths = sys.argv[2:]
+        if not paths:
+            print("用法: python3 experience_check.py --cleanup <文件路径...>")
+            sys.exit(1)
+        sys.exit(main_cleanup(paths))
+    sys.exit(main_check())
+
+
+[Tool result] TodoWrite
+
+[Tool result] Write
+
+assistant:
+<think>
+Fix main_cleanup: we need to check that fp is under ORGANIZED_DIR. resolve() can change the path. Let me use: if ORGANIZED_DIR in fp.resolve().parents or fp.resolve().is_relative_to(ORGANIZED_DIR). In Python 3.9+ we have is_relative_to. So: fp.resolve().is_relative_to(ORGANIZED_DIR.resolve()). I'll keep the try/except ValueError for relative_to which is more compatible.
+</think>
+修正 cleanup 中“在已整理内”的判断逻辑，确保只删除 `_经验库/已整理/` 下的文件：
+
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/experience/experience_check.py
+  old_string:         if fp.exists():
+            try:
+                fp.resolve().relative_to(ORGANIZED_DIR)
+            except ValueError:
+                print(f"  ⚠️ 跳过（不在已整理内）: {p}")
+                continue
+            fp.unlink()
+  new_string:         if not fp.exists():
+            print(f"  ⚠️ 跳过（不存在）: {p}")
+            continue
+        try:
+            fp.resolve().relative_to(ORGANIZED_DIR.resolve())
+        except ValueError:
+            print(f"  ⚠️ 跳过（不在已整理内）: {p}")
+            continue
+        fp.unlink()
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/experience/experience_check.py
+  old_string:             fp.unlink()
+            print(f"  ✅ 已删除 {fp.name}")
+            deleted += 1
+        else:
+            print(f"  ⚠️ 跳过（不存在）: {p}")
+  new_string:         fp.unlink()
+        print(f"  ✅ 已删除 {fp.name}")
+        deleted += 1
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+I may have broken the loop - the "else" was for "if fp.exists()". Let me read the file to see current state.
+</think>
+
+
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/experience/experience_check.py
+  offset: 85
+  limit: 40
+
+[Tool result] Read
+
+assistant:
+<think>
+Good, the logic is correct. Now add the experience section to cunkebao-ai.mdc and the "对话结束时必执行" block. I need to find the right place in cunkebao-ai.mdc - after "十、重要规则" or before "九、目录结构", and add a new section for 经验库. Also add at the end a "对话结束时必执行" that includes 经验库检查. Looking at the file again, 存客宝 doesn't have "对话结束时必执行" - I need to add it. I'll add:
+1. A new section "经验自动捕捉与沉淀" after the 执行规则 (around 65) or in "九、目录结构" - actually 卡若 has it as "### 4. 经验自动捕捉与沉淀" under some parent. In 存客宝 we have "九、目录结构" and "十、重要规则". I'll add a new section between 八、场景速查 and 九、目录结构: "八.五、经验库" or just add as subsection. Better: add after "十、重要规则" a new "十、经验库（自动迭代）" and renumber, or add as "十一、经验库". Looking at the file structure, the sections are 一 to 十一. So I add "十、重要规则" then "十一、经验库" and the current "十一、API" becomes "十二、API" etc. Actually the current "十、重要规则" is 5条, then "十一、API 接口调用". So I'll insert after 十、重要规则 a new section "十（补充）、经验自动捕捉与沉淀" or "经验库与自动迭代"，然后加「对话结束时必执行」在合适位置。卡若是在「对话结束时必执行」里写「经验库检查」。存客宝目前没有「对话结束时必执行」这一段，需要加一段。我可以在「十、重要规则」后面加「十一、经验库与自动迭代」，再在文件末尾（安全原则之前或之后）加「对话结束时必执行」。
+</think>
+正在向 `cunkebao-ai.mdc` 添加经验库规则与“对话结束时必执行”的检查项：
+
+[Tool call] TodoWrite
+  todos: [{"id":"2","content":"创建 _共享模块/experience/experience_check.py（适配存客宝）","status":"completed"},{"id":"3","content":"在 cunkebao-ai.mdc 中加入经验库规则与对话结束检查","status":"in_progress"}]
+  merge: true
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/.cursor/rules/cunkebao-ai.mdc
+  offset: 198
+  limit: 65
+
+[Tool result] TodoWrite
+
+[Tool result] Read
+
+assistant:
+<think>
+I'll add after "九、目录结构" a new section for 经验库 (so before 十、重要规则), and in 九、目录结构 add _经验库 to the tree. Then add "对话结束时必执行" after "十、重要规则" or at the end. Actually 卡若 has 经验库 in the directory tree and a full section "### 4. 经验自动捕捉与沉淀". I'll:
+1. In 九、目录结构, add _经验库/ to the tree.
+2. After 九、目录结构, add "## 九.五、经验库与自动迭代" or "## 十、经验库与自动迭代" and renumber 十→十一, 十一→十二. That would be messy. Simpler: add a subsection under 九、目录结构 for 经验库说明, and add a new section "## 十、经验库（自动迭代）" between 九 and 十，然后把现在的十、十一改成十一、十二。或者不改编号，在「十、重要规则」里加第6条：经验库超过10个文档自动迭代。然后在后面加「对话结束时必执行」小块。更简单：在「十、重要规则」后插入新章节「经验自动捕捉与沉淀」和「对话结束时必执行」，不改变原有十、十一的编号，用「十（补充）」或直接「经验库与自动迭代」作为标题。看存客宝 目录结构里已经有 experience/ 了，只是没有 _经验库/。我加 _经验库/ 到目录树，然后加一整段「经验自动捕捉与沉淀」和「对话结束时必执行」。
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/.cursor/rules/cunkebao-ai.mdc
+  old_string: ```
+存客宝AI/
+├── 00_存客宝AI总索引.md      # 本文件（唯一主入口）
+├── 01_运维组/                 # 运维类技能
+├── 02_项目组/                 # 项目管理类技能
+├── 03_开发组/                 # 开发类技能
+├── 04_测试组/                 # 测试类技能
+├── _共享模块/                 # 通用工具
+│   ├── task_decomposer/      # 任务拆解模块
+│   ├── tool_registry/        # 工具注册
+│   └── experience/           # 经验库
+├── _执行日志/                 # 日报、周报
+└── _归档/                     # 历史文件
+```
+
+---
+
+## 十、重要规则（5条）
+  new_string: ```
+存客宝AI/
+├── 00_存客宝AI总索引.md      # 本文件（唯一主入口）
+├── 01_运维组/                 # 运维类技能
+├── 02_项目组/                 # 项目管理类技能
+├── 03_开发组/                 # 开发类技能
+├── 04_测试组/                 # 测试类技能
+├── _共享模块/                 # 通用工具
+│   ├── task_decomposer/      # 任务拆解模块
+│   ├── tool_registry/        # 工具注册
+│   └── experience/           # 经验库检查脚本
+├── _经验库/                   # 学习沉淀：待沉淀→已整理，>10 自动迭代
+│   ├── 转化记录.md
+│   ├── 待沉淀/
+│   └── 已整理/
+├── _执行日志/                 # 日报、周报
+└── _归档/                     # 历史文件
+```
+
+---
+
+## 十、经验库与自动迭代（>10 自动吸收）
+
+### 规则：每次经验对话都沉淀
+当对话中出现以下情况时，**直接**存入经验库（无需二次确认）：
+- ✅ 完成一个完整的问题解决闭环
+- ✅ 出现「操作步骤」「解决方案」「配置方法」「最佳实践」
+- ✅ 调研类任务产出有价值的资源汇总
+- ✅ 踩坑后找到解决方案
+
+```
+💡 发现可沉淀经验：[主题] → 直接存入 _经验库/待沉淀/
+```
+
+### 规则：已整理 > 10 触发 Skill 吸收（自动迭代经验）
+- **检查时机**：每次执行过程中（对话结束前）自动检查
+- **触发条件**：`_经验库/已整理/` 下文件总数 **> 10**
+- **执行动作**：分配相应 Skill 学习吸收 → 吸收完成后删除原文件
+
+| 分类 | 分配 Skill | 负责组 |
+|:---|:---|:---|
+| 开发经验 | 全栈开发、代码修复 | 开发组 |
+| 运维经验 | 服务器管理、Docker管理、存客宝私域SDK | 运维组 |
+| 项目经验 | 需求拆解、飞书管理、项目管理 | 项目组 |
+| 工具技巧 | 文件整理、开发模板 | 项目组/开发组 |
+
+### 经验库目录
+```
+_经验库/
+├── 转化记录.md      ← 仅此文档记录吸收历史（无已转化目录，不汇报）
+├── 待沉淀/          ← 新捕捉，每次对话直接存入
+└── 已整理/          ← 按分类存放（>10 触发吸收，吸收后直接删除）
+```
+
+### 沉淀与检查流程
+1. **每次对话** → 有价值内容 → 直接存入「待沉淀」
+2. **定期整理** → 移入「已整理」
+3. **执行时检查**（每次必做）→ 对话结束前执行 `python3 _共享模块/experience/experience_check.py`
+4. **若已整理 > 10** → 分配 Skill 吸收 → 吸收完成 → 删除原文件（自动迭代经验）
+
+---
+
+## 十一、重要规则（5条）
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/.cursor/rules/cunkebao-ai.mdc
+  old_string: 5. **接口变更要通知**：API变更需通知相关前端开发
+
+---
+
+## 十一、API 接口调用
+  new_string: 5. **接口变更要通知**：API变更需通知相关前端开发
+
+---
+
+## 📋 对话结束时必执行
+
+1. **经验库检查**：执行 `python3 _共享模块/experience/experience_check.py`
+   - 若已整理 > 10 → 分配 Skill 吸收 → 吸收完成 → 删除原文件（自动迭代经验，不汇报）
+2. **本次调用汇报**：必要时汇报执行组与结果
+
+---
+
+## 十二、API 接口调用
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/.cursor/rules/cunkebao-ai.mdc
+  old_string: ## 十一、API 接口调用
+
+### 存客宝AI 调用接口
+  new_string: ## 十二、API 接口调用
+
+### 存客宝AI 调用接口
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+The third replace failed because I had already changed "十一" to "十二" in the first replace - so the section was already "十二、API 接口调用". Let me fix the remaining "十一" references in the file (安全原则、存客宝私域SDK 调用等)。
+</think>
+
+
+[Tool call] Grep
+  pattern: ^## 十
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/.cursor/rules/cunkebao-ai.mdc
+
+[Tool result] Grep
+
+assistant:
+<think>
+Good - the numbering is already correct (十、十一、十二). The second replace had already added "十二、API" so the third replace was redundant and failed. No more changes needed for numbering. Now update 00_存客宝AI总索引.md to add _经验库 to the directory structure and a short note about 经验库检查.
+</think>
+
+
+[Tool call] TodoWrite
+  todos: [{"id":"3","content":"在 cunkebao-ai.mdc 中加入经验库规则与对话结束检查","status":"completed"},{"id":"4","content":"更新 00_存客宝AI总索引 目录与经验库说明","status":"in_progress"}]
+  merge: true
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/00_存客宝AI总索引.md
+  old_string: ├── _共享模块/                 # 通用工具
+│   ├── task_decomposer/      # 任务拆解模块
+│   ├── tool_registry/        # 工具注册
+│   └── experience/           # 经验库
+├── _执行日志/                 # 日报、周报
+└── _归档/                     # 历史文件
+```
+  new_string: ├── _共享模块/                 # 通用工具
+│   ├── task_decomposer/      # 任务拆解模块
+│   ├── tool_registry/        # 工具注册
+│   └── experience/           # 经验库检查（>10 自动迭代）
+├── _经验库/                   # 学习沉淀：待沉淀→已整理，>10 自动触发 Skill 吸收
+│   ├── 转化记录.md
+│   ├── 待沉淀/
+│   └── 已整理/
+├── _执行日志/                 # 日报、周报
+└── _归档/                     # 历史文件
+```
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/00_存客宝AI总索引.md
+  old_string: ## 九、重要规则（5条）
+  new_string: ## 九、经验库（自动迭代）
+
+- **每次经验对话**：有价值内容 → 直接存入 `_经验库/待沉淀/`，整理后移入 `_经验库/已整理/`。
+- **超过 10 个文档**：`_经验库/已整理/` 下文件数 > 10 时，**自动触发经验迭代**：分配对应 Skill 吸收 → 吸收完成后删除原文件，仅记录于 `_经验库/转化记录.md`。
+- **检查命令**：`python3 _共享模块/experience/experience_check.py`（对话结束时执行，>10 时输出待吸收清单）。
+
+详见 [ _经验库/README.md ](_经验库/README.md)。
+
+---
+
+## 十、重要规则（5条）
+
+[Tool result] TodoWrite
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+I added "九、经验库" and then "十、重要规则"，but the original had "九、重要规则" - so now we have two "十" sections. Let me check the 总索引 - the original sections were 八、目录结构 then 九、重要规则. So I inserted 九、经验库 and made 十、重要规则. So the previous "九" was 重要规则, now it's 经验库, and 十 is 重要规则. We need to fix the following sections: 十、与卡若AI的关系 → 十一，十一、更新日志 → 十二。Checking the file...
+</think>
+
+
+[Tool call] Grep
+  pattern: ^## [九十]
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/00_存客宝AI总索引.md
+[Tool call] Read
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/00_存客宝AI总索引.md
+  offset: 218
+  limit: 100
+
+[Tool result] Grep
+
+[Tool result] Read
+
+assistant:
+<think>
+I see there are two "## 十、" - one is 十、重要规则 and one is 十、与卡若AI的关系. I need to renumber: 十、与卡若AI的关系 → 十一，十一、更新日志 → 十二. And add a row in 更新日志 for 经验库复刻.
+</think>
+
+
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/00_存客宝AI总索引.md
+  old_string: ## 十、与卡若AI的关系
+  new_string: ## 十一、与卡若AI的关系
+[Tool call] StrReplace
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/00_存客宝AI总索引.md
+  old_string: ## 十一、更新日志
+
+| 日期 | 操作 |
+|:---|:---|
+| 2026-02-03 | 从卡若AI复制创建存客宝AI团队版 |
+| 2026-02-03 | 创建四大职能组架构（运维/项目/开发/测试） |
+| 2026-02-03 | 配置25项团队共用技能 |
+| 2026-02-03 | 创建Cursor规则文件和API接口 |
+  new_string: ## 十二、更新日志
+
+| 日期 | 操作 |
+|:---|:---|
+| 2026-02-03 | 从卡若AI复制创建存客宝AI团队版 |
+| 2026-02-03 | 创建四大职能组架构（运维/项目/开发/测试） |
+| 2026-02-03 | 配置25项团队共用技能 |
+| 2026-02-03 | 创建Cursor规则文件和API接口 |
+| 2026-02-03 | 复刻经验库与吸收逻辑，已整理>10 自动迭代经验 |
+
+[Tool result] StrReplace
+
+[Tool result] StrReplace
+
+assistant:
+<think>
+Add __init__.py for experience module so it's a proper package (optional, but 存客宝 might run the script directly). The script is run as python3 _共享模块/experience/experience_check.py so __init__.py is not required. Let me add experience/__init__.py empty or with docstring for consistency. And run the check script once to verify it works.
+</think>
+
+
+[Tool call] Write
+  path: /Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI/_共享模块/experience/__init__.py
+  contents: # 存客宝AI 经验库检查模块
+# 执行: python3 _共享模块/experience/experience_check.py
+
+[Tool call] Shell
+  command: cd "/Users/karuo/Library/CloudStorage/SynologyDrive-卡若/存客宝AI" && python3 _共享模块/experience/experience_check.py
+  description: 运行经验库检查脚本验证
+[Tool call] TodoWrite
+  todos: [{"id":"4","content":"更新 00_存客宝AI总索引 目录与经验库说明","status":"completed"}]
+  merge: true
+
+[Tool result] Write
+
+[Tool result] Shell
+
+[Tool result] TodoWrite
+
+assistant:
+<think>
+All done. Let me give a short summary to the user in Chinese.
+</think>
+已把卡若AI的「经验库」和「吸收经验」逻辑复刻到存客宝AI，并接上「超过 10 个文档自动迭代经验」的规则与脚本。完成内容如下：
+
+---
+
+## 1. 新建 `_经验库/`
+
+- **README.md**：说明经验库规则、捕捉规则、目录结构、沉淀流程、>10 触发吸收、快速指令与检查脚本用法。
+- **转化记录.md**：记录「已整理 > 10 触发吸收」的规则及已转化技能表（当前为空）。
+- **待沉淀/**、**已整理/**：空目录，用 `.gitkeep` 占位。
+
+## 2. 新建 `_共享模块/experience/`
+
+- **experience_check.py**（适配存客宝）  
+  - 统计 `_经验库/已整理/` 下 `.md` 文件数。  
+  - **> 10** 时：输出待吸收清单，并按「分类→Skill」分配（开发/运维/项目/工具技巧 → 开发组/运维组/项目组对应 Skill）。  
+  - 支持 `--cleanup <文件...>`：吸收完成后删除指定已整理文件。
+- **__init__.py**：包占位。
+
+分类→Skill 映射（存客宝四大组）：
+
+| 分类     | 分配 Skill |
+|----------|------------|
+| 开发经验 | 03_开发组/全栈开发、代码修复 |
+| 运维经验 | 01_运维组/服务器管理、Docker管理、存客宝私域SDK |
+| 项目经验 | 02_项目组/需求拆解、飞书管理、项目管理 |
+| 工具技巧 | 02_项目组/文件整理、03_开发组/开发模板 |
+
+## 3. 规则与「对话结束检查」（cunkebao-ai.mdc）
+
+- 新增 **「十、经验库与自动迭代（>10 自动吸收）」**：  
+  每次经验对话都沉淀；**已整理 > 10** 触发 Skill 吸收；经验库目录与沉淀/检查流程说明。
+- 新增 **「对话结束时必执行」**：  
+  执行 `python3 _共享模块/experience/experience_check.py`；若已整理 > 10，分配 Skill 吸收并删除原文件（自动迭代，不汇报）。
+- 在「九、目录结构」中加入了 `_经验库/` 的目录树。
+
+## 4. 总索引（00_存客宝AI总索引.md）
+
+- 在目录结构中加入 `_经验库/` 和 `experience/` 经验库检查说明。
+- 新增 **「九、经验库（自动迭代）」**：说明「每次经验对话」沉淀、「超过 10 个文档」自动触发迭代、检查命令及 README 链接。
+- 更新日志增加一条：复刻经验库与吸收逻辑，已整理>10 自动迭代经验。
+
+---
+
+**自动迭代逻辑（与卡若一致）**  
+- 对话中出现可沉淀经验 → 直接写入 `_经验库/待沉淀/`，整理后移入 `_经验库/已整理/`。  
+- **每次对话结束前**执行：`python3 _共享模块/experience/experience_check.py`。  
+- 若 **已整理文件数 > 10**：脚本输出待吸收清单，由你（或流程）分配对应 Skill 吸收；吸收完成后用 `--cleanup` 或手动删除原文件，实现「超过 10 个文档就自动迭代经验」。
+
+已在项目根目录执行过一次检查脚本，当前已整理数为 0，输出为「未超过阈值（10），无需触发吸收」，脚本运行正常。
