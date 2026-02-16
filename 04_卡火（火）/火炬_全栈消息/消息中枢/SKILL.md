@@ -2,6 +2,10 @@
 name: 消息中枢
 description: 多通道消息整合 AI 助手平台。使用本技能当需要：(1) 整合多通道消息（WhatsApp/Telegram/Slack/Discord/iMessage 等）(2) 搭建本地 Gateway 控制平面 (3) 开发自定义 Skills 技能 (4) 实现浏览器自动化 (5) 构建语音交互助手 (6) 跨设备 AI 节点控制
 group: 火
+triggers: WhatsApp、Telegram、消息聚合
+owner: 火炬
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 消息中枢

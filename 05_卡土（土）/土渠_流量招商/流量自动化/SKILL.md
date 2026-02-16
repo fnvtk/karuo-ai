@@ -2,6 +2,10 @@
 name: 流量自动化
 description: SEO刷流量与设备伪装工具集。触发词：刷流量、SEO自动化、重置MAC、切换VPN、百度SEO、淘宝刷单、优酷顶贴、流量工具。包含网页自动浏览、设备指纹重置、VPN自动切换等核心能力。
 group: 土
+triggers: 刷流量、SEO、流量投放
+owner: 土渠
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 流量自动化

@@ -2,6 +2,10 @@
 name: 文档清洗
 description: 文档转Markdown工具。触发词：文档清洗、PDF转换、文档转Markdown、MarkItDown、OCR识别、知识库、文档处理。将PDF、PPT、Word等杂乱文档转化为AI易理解的Markdown格式，支持OCR识别图片文字。
 group: 火
+triggers: 文档清洗、PDF转MD、格式转换
+owner: 火炬
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 文档清洗

@@ -5,6 +5,7 @@ owner: 土簿
 group: 土
 triggers: [手机自动化, AutoGLM, 手机刷量, 手机流量, 自动操作手机]
 updated: "2026-02-13"
+description: 手机App自动化流量操作
 ---
 
 # 手机流量自动操作

@@ -4,6 +4,8 @@ description: 卡若AI 全栈开发（火炬）— 知己及类似项目的核心
 triggers: 全栈开发/知己项目/分销/存客宝/RAG/向量化/Next.js/知识库
 owner: 火炬
 group: 火
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 全栈开发（火炬）

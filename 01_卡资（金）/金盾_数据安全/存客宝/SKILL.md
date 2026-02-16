@@ -2,6 +2,10 @@
 name: 存客宝
 description: 存客宝私域系统开发与运维。触发词：存客宝、cunkebao、私域、获客、工作手机、场景获客、流量池。关联存客宝文档、v2/v3源码、部署与架构。
 group: 金
+triggers: 存客宝、cunkebao、客户管理
+owner: 金盾
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 存客宝

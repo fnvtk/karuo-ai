@@ -2,6 +2,10 @@
 name: 任务规划
 description: 复杂任务分解和规划。触发词：任务规划、制定计划、项目规划、先谋后动、任务书、task plan、PRD拆解、需求分解。在项目根目录生成task_plan.md任务书，固化AI思考过程，支持从PRD生成任务、依赖追踪、状态管理。参考cursor-task-master。
 group: 水
+triggers: 任务规划、制定计划、排期
+owner: 水桥
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 任务规划

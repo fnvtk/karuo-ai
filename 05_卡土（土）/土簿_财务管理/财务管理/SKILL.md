@@ -2,6 +2,10 @@
 name: 财务管理
 description: 财务报表、银行与支付渠道、iPhone短信同步。触发词：财务、报表、银行、支付、钱袋子、月报。
 group: 土
+triggers: 财务、报表、银行、收支
+owner: 土簿
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 财务管理

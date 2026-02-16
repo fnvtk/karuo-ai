@@ -5,6 +5,7 @@ owner: 金盾
 group: 金
 triggers: [远程部署, 一键部署, 装Clash, 装Cursor, 远程装环境]
 updated: "2026-02-14"
+description: 远程服务器环境一键配置与Clash代理部署
 ---
 
 # 远程环境一键部署

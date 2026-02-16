@@ -2,6 +2,10 @@
 name: 技能工厂
 description: 用自然语言生成Skill。触发词：创建技能、生成Skill、新建插件、技能工厂、制作插件。用自然语言指令生成标准化Skill代码和目录结构，无需复杂配置。
 group: 土
+triggers: 创建技能、生成Skill、技能模板
+owner: 土砖
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 技能工厂

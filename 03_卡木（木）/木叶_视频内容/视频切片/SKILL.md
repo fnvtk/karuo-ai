@@ -2,6 +2,10 @@
 name: 视频切片
 description: Soul派对视频切片处理。触发词：视频切片、Soul切片、派对切片、处理视频。
 group: 木
+triggers: 视频剪辑、切片发布、字幕烧录
+owner: 木叶
+version: "1.0"
+updated: "2026-02-16"
 ---
 
 # 视频切片

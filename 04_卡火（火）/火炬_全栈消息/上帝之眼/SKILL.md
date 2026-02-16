@@ -5,6 +5,7 @@ owner: 火眸
 group: 火
 triggers: [量化, 港股, 数据采集, 东方财富, eastmoney, emtl, BigQuant, 量化交易, 股票数据]
 updated: "2026-02-13"
+description: 全局监控与数据看板
 ---
 
 # 上帝之眼
