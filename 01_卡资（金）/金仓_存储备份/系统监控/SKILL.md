@@ -292,6 +292,20 @@ sudo killall -HUP mDNSResponder
 echo "DNS 缓存已刷新"
 ```
 
+### Cursor 上传占用降低
+
+已在 `~/Library/Application Support/Cursor/User/settings.json` 中建议或已配置：
+
+- `"redhat.telemetry.enabled": false` — 关闭 Red Hat 扩展遥测上传
+- `"telemetry.telemetryLevel": "off"` — 关闭 IDE 遥测
+- `"cursor.general.enableCodebaseIndexing": false` — 关闭代码库索引（避免整库分块上传）
+
+**需在 Cursor 内手动操作（进一步降上传）：**
+
+1. **开启 Privacy Mode**：`Cursor` → `Settings` → `General` → 打开 **Privacy Mode**（代码不存 Cursor/第三方，部分 AI 能力会受限）
+2. **少 @ 大文件**：对话里少引用整文件，只 @ 必要片段，可明显减少单次请求上传量
+3. **不用时关扩展**：禁用暂时不用的扩展，减少后台同步与遥测
+
 ---
 
 ## 8. 性能基准
@@ -391,6 +405,7 @@ echo "=========================================="
 | Finder 无响应 | `killall Finder` |
 | Docker 异常 | 重启 Docker Desktop 或 `docker system prune` |
 | 网络异常 | 刷新 DNS：`sudo dscacheutil -flushcache` |
+| Cursor 上传大 | 关遥测/关代码库索引见上文「Cursor 上传占用降低」；可开 Privacy Mode |
 | iCloud 不同步 | `killall bird && killall cloudd` |
 | Spotlight 搜索慢 | `sudo mdutil -E /` 重建索引 |
 

@@ -85,10 +85,16 @@ fi
 log "提交成功：${CHANGED_COUNT} 个文件"
 
 # ============================================
-# Step 4: 推送到 Gitea
+# Step 4: 推送到 Gitea（智能：局域网用 IP，外网用域名+代理）
 # ============================================
-git push "$REMOTE" "$BRANCH" --quiet 2>&1
-PUSH_RESULT=$?
+PUSH_SCRIPT="$REPO_DIR/01_卡资（金）/金仓_存储备份/Gitea管理/脚本/gitea_push_smart.sh"
+if [ -x "$PUSH_SCRIPT" ]; then
+    bash "$PUSH_SCRIPT" "$REPO_DIR" "$REMOTE" "$BRANCH" 2>&1 | tee -a "$LOG_FILE"
+    PUSH_RESULT=${PIPESTATUS[0]}
+else
+    git push "$REMOTE" "$BRANCH" --quiet 2>&1
+    PUSH_RESULT=$?
+fi
 
 if [ $PUSH_RESULT -eq 0 ]; then
     log "推送成功 → gitea/$BRANCH"

@@ -59,127 +59,144 @@ def simple_template_render(template: str, data: dict) -> str:
 
 
 def generate_html(data: dict, template_path: Path) -> str:
-    """生成HTML内容"""
-    # 读取模板
+    """生成HTML内容（101场风格：分享人/精益/流程图/热点研讨含深度思考/下次分享/项目推进）"""
+    import re
     with open(template_path, "r", encoding="utf-8") as f:
         template = f.read()
     
-    # 添加生成日期
     data["generate_date"] = datetime.now().strftime("%Y年%m月%d日 %H:%M")
     
-    # 生成分享人HTML
+    # 一、分享人介绍：4色卡+白底图标+性格/项目标签（与101场一致）
+    head_colors = ["blue", "orange", "green", "purple"]
+    flow_icons = ["🎙️", "👥", "💡", "🤝", "📋"]
     speakers_html = ""
-    for speaker in data.get("speakers", []):
+    for i, speaker in enumerate(data.get("speakers", [])[:4]):
+        hc = head_colors[i % len(head_colors)]
+        name = speaker.get("name", "")
+        role = speaker.get("role", "")
+        topics = speaker.get("topics", "")
+        tags = speaker.get("tags", speaker.get("pills", []))
+        if isinstance(tags, str):
+            tags = [tags] if tags else []
+        pills_html = ""
+        pill_colors = ["blue", "orange", "green", "purple", "red"]
+        for pi, tag in enumerate(tags[:5]):
+            pc = pill_colors[pi % len(pill_colors)]
+            pills_html += f'<span class="pill {pc}">{tag}</span>'
+        if pills_html:
+            pills_html = f'<div class="pills">{pills_html}</div>'
         speakers_html += f'''
-        <div class="speaker-card glass-card glass-gray">
-          <p><span class="name">{speaker["name"]}</span> <span class="role">/ {speaker["role"]}</span></p>
-          <p class="topics">{speaker["topics"]}</p>
+        <div class="speaker-card">
+          <div class="head {hc}"><span class="head-icon">👤</span>{name or "分享人"}</div>
+          <div class="body"><p class="role">{role}</p><p class="topics">{topics}</p>{pills_html}</div>
         </div>
         '''
     
-    # 生成核心模块HTML
+    # 二、精益介绍：3卡+图标（与101场：项目/产品/运营/商业标签可放在 points 前）
+    lean_colors = ["orange", "blue", "green"]
+    lean_icons = ["📌", "✓", "⚙️"]
     modules_html = ""
-    for i, module in enumerate(data.get("modules", []), 1):
-        color = module.get("color", "blue")
-        border_color = BORDER_COLORS.get(color, "#e2e8f0")
-        
-        items_html = ""
-        for item in module.get("items", []):
-            points_html = ""
+    for i, module in enumerate(data.get("modules", [])[:3]):
+        lc = lean_colors[i % len(lean_colors)]
+        icon = lean_icons[i % len(lean_icons)]
+        title = module.get("title", "")
+        body_parts = []
+        for item in module.get("items", [])[:2]:
+            pts = []
             for point in item.get("points", []):
                 if isinstance(point, dict):
-                    cls = point.get("class", "")
                     text = point.get("text", "")
+                    pts.append(f'<li>{text}</li>')
                 else:
-                    cls = ""
-                    text = point
-                points_html += f'<li class="{cls}">{text}</li>'
-            
-            items_html += f'''
-            <div class="module-card glass-card glass-{color}">
-              <h4>{item.get("title", "")}</h4>
-              <ul>{points_html}</ul>
-            </div>
-            '''
-        
-        modules_html += f'''
-        <div style="margin-bottom: 24px;">
-          <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 16px; padding-bottom: 8px; border-bottom: 2px solid {border_color};">
-            {i}️⃣ {module.get("title", "")}
-          </h3>
-          <div class="grid grid-2">
-            {items_html}
-          </div>
-        </div>
-        '''
+                    pts.append(f'<li>{point}</li>')
+            body_parts.append(f'<h4>{item.get("title", "")}</h4><ul>{"".join(pts)}</ul>')
+        body_inner = "".join(body_parts)
+        modules_html += f'<div class="lean-card {lc}"><div class="head {lc}"><span class="lean-icon">{icon}</span>{title}</div><div class="body">{body_inner}</div></div>\n'
     
-    # 生成重点片段HTML
+    # 三、会议流程图：彩色圆+白图标+步骤号（与101场一致）
+    time_slots = data.get("flow_times") or ["06:00-06:10", "06:10-07:30", "07:30-08:00", "08:00-08:40", "08:40-09:00"]
+    if isinstance(time_slots, str):
+        time_slots = ["06:00", "06:30", "07:30", "08:00", "08:50"]
+    labels = ["开场介绍", "嘉宾分享", "干货提炼", "项目对接", "总结收尾"]
+    circle_colors = ["blue", "purple", "orange", "red", "green"]
+    flow_steps_html = ""
+    for j, label in enumerate(labels):
+        t = time_slots[j] if j < len(time_slots) else ""
+        cc = circle_colors[j % len(circle_colors)]
+        icon = flow_icons[j] if j < len(flow_icons) else "•"
+        flow_steps_html += f'<div class="flow-node"><div class="circle {cc}">{icon}</div><span class="label">{label}</span><span class="time">{t}</span></div>\n'
+        if j < len(labels) - 1:
+            flow_steps_html += '<span class="flow-arrow">→</span>\n'
+    
+    # 四、热点研讨：信号标签（AI思考/用户观点/专家洞察/AI提问）+ Q: + 重点黄框（与101场一致）
+    signal_map = {"ai": "AI思考", "user": "用户观点", "expert": "专家洞察", "question": "AI提问"}
+    signal_class = {"ai": "ai", "user": "user", "expert": "expert", "question": "question"}
     highlights_html = ""
     for highlight in data.get("highlights", []):
-        color = highlight.get("color", "blue")
-        emoji = COLOR_EMOJIS.get(color, "💡")
+        sig = highlight.get("signal", "user")
+        sig_text = signal_map.get(sig, "用户观点")
+        sig_cls = signal_class.get(sig, "user")
+        title = highlight.get("title", "")
+        time_val = highlight.get("time", "")
+        content = highlight.get("content", "")
+        insight = highlight.get("insight", "")
         highlights_html += f'''
-        <div class="highlight-card glass-card glass-{color}">
-          <div class="header-row">
-            <h4>{emoji} {highlight.get("title", "")}</h4>
-            <span class="time">{highlight.get("time", "")}</span>
+        <div class="hot-item">
+          <div class="top-row">
+            <div><span class="signal-tag {sig_cls}">{sig_text}</span><div class="signal-time">{time_val}</div></div>
+            <div class="topic-wrap"><span class="q-icon">Q:</span><span class="topic-title">{title}</span></div>
           </div>
-          <p class="content">{highlight.get("content", "")}</p>
-          <p class="insight">💡 {highlight.get("insight", "")}</p>
+          <div class="content">{content}</div>
+          <div class="key-point"><span class="label">重点</span><br/>{insight}</div>
         </div>
         '''
     
-    # 生成干货分享HTML
-    takeaways_html = ""
-    for takeaway in data.get("takeaways", []):
-        color = takeaway.get("color", "yellow")
-        emoji = COLOR_EMOJIS.get(color, "💡")
-        points_html = "".join([f"<li>{p}</li>" for p in takeaway.get("points", [])])
-        takeaways_html += f'''
-        <div class="takeaway-card glass-card glass-{color}">
-          <h4>{emoji} {takeaway.get("title", "")}</h4>
-          <ul>{points_html}</ul>
-        </div>
-        '''
+    # 五、下次分享：4卡 橙/蓝/紫/红 + 图标（与101场一致）
+    actions_list = data.get("actions", [])
+    takeaways_list = data.get("takeaways", [])
+    next_sources = list(actions_list[2:6]) if len(actions_list) > 2 else []
+    takeaways_copy = list(takeaways_list)
+    while len(next_sources) < 4 and takeaways_copy:
+        tw = takeaways_copy.pop(0)
+        pt = (tw.get("points", []) or [""])[0]
+        desc = pt[:80] if isinstance(pt, str) else str(pt)[:80]
+        next_sources.append({"content": tw.get("title", ""), "note": desc})
+    while len(next_sources) < 4:
+        next_sources.append({"content": "待定", "note": "下期公布"})
+    next_colors = ["orange", "blue", "purple", "red"]
+    next_icons = ["📌", "🎯", "📋", "💡"]
+    next_share_html = ""
+    for i, item in enumerate(next_sources[:4]):
+        title = item.get("content", item.get("title", "待定"))[:22]
+        desc = (item.get("note", "") or "")[:85]
+        nc = next_colors[i % len(next_colors)]
+        ni = next_icons[i % len(next_icons)]
+        next_share_html += f'<div class="next-card {nc}"><div class="next-icon">{ni}</div><div class="title">{title}</div><div class="desc">{desc}</div></div>\n'
     
-    # 生成行动项HTML
+    # 六、项目推进：绿/蓝两卡 + 图标（与101场一致）
+    progress_icons = ["🚀", "📊"]
     actions_html = ""
-    for i, action in enumerate(data.get("actions", [])):
-        colors = ["blue", "purple", "green", "orange"]
-        color = colors[i % len(colors)]
-        note_html = f'<p class="note">💬 {action.get("note", "")}</p>' if action.get("note") else ""
-        actions_html += f'''
-        <div class="action-card glass-card glass-{color}">
-          <p class="content">{action.get("content", "")}</p>
-          {note_html}
-        </div>
-        '''
+    for i, action in enumerate((data.get("actions", []))[:2]):
+        content = action.get("content", "")
+        note = action.get("note", "")
+        card_class = "blue" if i == 1 else ""
+        icon = progress_icons[i] if i < len(progress_icons) else "🚀"
+        actions_html += f'<div class="progress-card {card_class}"><div class="progress-icon">{icon}</div><div class="title">项目推进</div><div class="desc">{content}<br/><small style="color:#6b7280;">{note}</small></div></div>\n'
     
-    # 替换模板中的占位符
     html = template
-    
-    # 替换列表部分
-    # 移除模板语法，插入生成的HTML
-    import re
-    
-    # 替换 speakers
-    html = re.sub(r'\{\{#speakers\}\}.*?\{\{/speakers\}\}', speakers_html, html, flags=re.DOTALL)
-    
-    # 替换 modules
-    html = re.sub(r'\{\{#modules\}\}.*?\{\{/modules\}\}', modules_html, html, flags=re.DOTALL)
-    
-    # 替换 highlights
-    html = re.sub(r'\{\{#highlights\}\}.*?\{\{/highlights\}\}', highlights_html, html, flags=re.DOTALL)
-    
-    # 替换 takeaways
-    html = re.sub(r'\{\{#takeaways\}\}.*?\{\{/takeaways\}\}', takeaways_html, html, flags=re.DOTALL)
-    
-    # 替换 actions
-    html = re.sub(r'\{\{#actions\}\}.*?\{\{/actions\}\}', actions_html, html, flags=re.DOTALL)
-    
-    # 替换简单变量
+    # 支持两种模板：有 {{/xxx}} 的块替换，或仅 {{#xxx}} 的单占位符替换
+    def replace_block(html, name, content):
+        block_pattern = r'\{\{#' + name + r'\}\}.*?\{\{/' + name + r'\}\}'
+        if re.search(block_pattern, html, flags=re.DOTALL):
+            return re.sub(block_pattern, content.strip(), html, flags=re.DOTALL)
+        return html.replace('{{#' + name + '}}', content.strip())
+    html = replace_block(html, 'speakers', speakers_html)
+    html = replace_block(html, 'modules', modules_html)
+    html = replace_block(html, 'flow_steps', flow_steps_html)
+    html = replace_block(html, 'highlights', highlights_html)
+    html = replace_block(html, 'next_share', next_share_html)
+    html = replace_block(html, 'actions', actions_html)
     html = simple_template_render(html, data)
-    
     return html
 
 
@@ -361,6 +378,7 @@ def main():
     parser.add_argument("--demo", action="store_true", help="生成示例文件")
     parser.add_argument("--input", "-i", type=str, help="输入JSON文件路径")
     parser.add_argument("--output", "-o", type=str, help="输出HTML文件路径")
+    parser.add_argument("--template", "-t", type=str, default="meeting.html", help="模板文件名，如 meeting.html 或 meeting_alt.html")
     parser.add_argument("--interactive", action="store_true", help="交互式输入")
     
     args = parser.parse_args()
@@ -389,7 +407,10 @@ def main():
         output_path = OUTPUT_DIR / output_name
     
     # 生成HTML
-    template_path = TEMPLATE_DIR / "meeting.html"
+    template_name = args.template if hasattr(args, "template") and args.template else "meeting.html"
+    template_path = TEMPLATE_DIR / template_name
+    if not template_path.exists():
+        template_path = TEMPLATE_DIR / "meeting.html"
     html = generate_html(data, template_path)
     
     # 写入文件
