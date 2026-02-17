@@ -27,7 +27,11 @@ def get_cookie():
     if cookie:
         return cookie
     if COOKIE_FILE.exists():
-        return COOKIE_FILE.read_text(encoding="utf-8", errors="ignore").strip().splitlines()[0].strip()
+        raw = COOKIE_FILE.read_text(encoding="utf-8", errors="ignore").strip().splitlines()
+        for line in raw:
+            line = line.strip()
+            if line and not line.startswith("#") and "PASTE_YOUR" not in line:
+                return line
     return ""
 
 
