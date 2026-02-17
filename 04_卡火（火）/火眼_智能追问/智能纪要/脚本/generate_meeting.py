@@ -19,10 +19,11 @@ from pathlib import Path
 # 脚本目录
 SCRIPT_DIR = Path(__file__).parent
 TEMPLATE_DIR = SCRIPT_DIR.parent / "templates"
-OUTPUT_DIR = SCRIPT_DIR.parent / "output"
+# 输出统一到卡若Ai的文件夹（见 运营中枢/参考资料/输出目录规范.md）
+OUTPUT_DIR = Path("/Users/karuo/Documents/卡若Ai的文件夹/报告/智能纪要")
 
 # 确保输出目录存在
-OUTPUT_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # 颜色映射
 COLOR_EMOJIS = {

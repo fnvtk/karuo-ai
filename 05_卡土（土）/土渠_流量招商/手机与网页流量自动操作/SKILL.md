@@ -62,7 +62,7 @@ echo '根据以下商品列表，帮我选择最值得购买的：
 ```python
 import sys
 sys.path.append("/Users/karuo/Documents/个人/卡若AI")
-from _共享模块.task_router import auto_route, should_use_local_model
+from 运营中枢.task_router import auto_route, should_use_local_model
 
 # 自动判断
 result = auto_route("帮我选择一个Cursor账号")

@@ -1,7 +1,7 @@
 ---
 name: 服务器管理
 description: 宝塔服务器统一管理与自动化部署
-triggers: 服务器、宝塔、部署、SSL、HTTPS、Nginx、PM2
+triggers: 服务器、宝塔、部署、SSL、HTTPS、Nginx、PM2、内网穿透、域名、kr-ai、ngrok
 owner: 金仓
 group: 金
 version: "1.0"
@@ -45,6 +45,14 @@ kr宝塔:   qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT
 ---
 
 ## 一键操作
+
+### 0. 卡若AI 网关 / 内网穿透（固定域名 kr-ai.quwanzhi.com）
+
+- **标准方案**（阿里云 DNS + 宝塔 Nginx + 网关部署）：读 `references/内网穿透与域名配置_卡若AI标准方案.md`。
+- **kr宝塔**（网关所在）：一键部署 `bash 01_卡资（金）/金仓_存储备份/服务器管理/scripts/部署卡若AI网关到kr宝塔.sh`
+- **存客宝**（站点用宝塔 API）：部署到存客宝的站点/域名**一律用宝塔 API** 处理。卡若AI 站点：`python3 scripts/存客宝_宝塔API_卡若AI网关站点.py`（需将执行机 IP 加入存客宝面板 API 白名单）。
+- **调用命令**：`curl -s -X POST "https://kr-ai.quwanzhi.com/v1/chat" -H "Content-Type: application/json" -d '{"prompt":"你的问题"}' | jq -r '.reply'`
+- 以后需配置内网穿透/新域名时，不询问用户，直接按该方案生成子域名并配置；存客宝上改站点/Nginx 用 API，见 `references/宝塔api接口文档.md`。
 
 ### 1. 检查服务器状态
 
@@ -287,10 +295,15 @@ ss -tlnp | grep :端口号
 
 ---
 
+## 复盘与输出规范
+
+- **卡若复盘**：每次对话结束必须按 **`运营中枢/参考资料/卡若复盘格式_固定规则.md`** 输出复盘块；**反思** 1～3 点，每点一句，简洁可执行，不超过 3 条。
+
 ## 相关文档
 
 | 文档 | 内容 | 位置 |
 |------|------|------|
+| `卡若复盘格式_固定规则.md` | 复盘格式（目标·结果·达成率、过程、反思 1～3 点、总结、下一步） | `运营中枢/参考资料/` |
 | `宝塔API接口文档.md` | 宝塔API完整接口说明 | `./references/` |
 | `端口配置表.md` | 完整端口分配表 | `./references/` |
 | `常见问题手册.md` | 问题解决方案大全 | `./references/` |

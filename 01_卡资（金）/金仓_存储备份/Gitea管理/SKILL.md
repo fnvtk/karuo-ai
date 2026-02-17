@@ -122,7 +122,7 @@ git push -u gitea main
 | 项目 | 脚本 | 说明 |
 |------|------|------|
 | 卡若AI | `bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/自动同步.sh` | 代码+百科+代码管理 |
-| 分布式算力矩阵 | `bash 01_卡资（金）/_团队成员/金仓/Gitea管理/scripts/auto_sync_suanli_juzhen.sh` | 代码 |
+| 分布式算力矩阵 | `bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/auto_sync_suanli_juzhen.sh` | 代码 |
 
 **Webhook 说明**：Webhook 是 Gitea→外部（push 后通知飞书/触发部署），**不能**实现本地→Gitea。本地→Gitea 用上述脚本，可定时执行或对话结束时执行。详见 `references/Webhook与本地协同方案.md`。
 

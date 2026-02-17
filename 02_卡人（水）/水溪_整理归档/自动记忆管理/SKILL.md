@@ -172,7 +172,7 @@ mm.save_content("完成了本地模型集成", category="项目")
 #### 执行代码
 ```python
 # 自动执行（在对话开始时）
-from _共享模块.memory import MemoryManager
+from 运营中枢.memory import MemoryManager
 mm = MemoryManager()
 memories = mm.read_all_memories()
 ```

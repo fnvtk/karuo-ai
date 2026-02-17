@@ -375,7 +375,7 @@ owner: 火眼
 # 导入本地模型SDK
 import sys
 sys.path.append("/Users/karuo/Documents/个人/卡若AI")
-from _共享模块.local_llm import generate_questions, analyze_task
+from 运营中枢.local_llm import generate_questions, analyze_task
 
 # 生成追问问题（离线可用）
 topic = "私域流量变现"

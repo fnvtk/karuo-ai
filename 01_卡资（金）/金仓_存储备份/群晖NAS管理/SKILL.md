@@ -1,7 +1,7 @@
 ---
 name: 群晖NAS管理
 description: 群晖NAS矩阵运维与Docker容器管理
-triggers: NAS、群晖、Docker、Synology、QuickConnect
+triggers: NAS、群晖、Docker、Synology、QuickConnect、Time Machine、时间机器、DiskStation.local、备份红点
 owner: 金仓
 group: 金
 version: "1.0"
@@ -618,6 +618,54 @@ ssh nas "netstat -tlnp | grep 27017"
 
 ---
 
+## Time Machine / 家里 DiskStation 备份错误（全自动处理）
+
+**适用**：系统设置 → 时间机器 → 「共享 - DiskStation.local」红点、提示「正在等待完成第一次备份」。
+
+### 处理原则
+
+- **能命令行自动做的**：直接执行，不追问用户。
+- **做不了的**：由执行者（卡若AI/卡资）读取本 Skill 指定的**参考资料**按步骤处理，不向用户索要材料。
+- **解决后**：运行验证脚本确认；若已解决，把本次处理要点追加到本 Skill 或 `参考资料/Time_Machine_DiskStation_错误排查.md`。
+
+### 1. 全自动检测（先执行）
+
+```bash
+# 本机执行（与家里 NAS 同网时）
+/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/群晖NAS管理/scripts/time_machine_diskstation_auto.sh
+```
+
+脚本会：检查 192.168.110.29 连通性、DSM 5000 与 SMB 端口、本机 Time Machine 目标；若不可达或端口未开，会输出**参考资料路径**，由执行者按材料处理。
+
+### 2. 无法自动时的处理（不追问用户）
+
+执行者**直接**读取并按以下材料操作，不向用户要任何信息：
+
+| 材料 | 路径 |
+|------|------|
+| Time Machine 排查步骤 | `01_卡资（金）/金仓_存储备份/群晖NAS管理/参考资料/Time_Machine_DiskStation_错误排查.md` |
+
+- **NAS 端**：在 DSM（http://192.168.110.29:5000）按材料「一、NAS 端」检查：启用 Time Machine、SMB 高级（SMB3/租约/持久句柄）、Bonjour、共享文件夹权限与回收站、空间与配额。
+- **Mac 端**：按材料「二、Mac 端」移除并重新添加备份磁盘、必要时用 `smb://192.168.110.29/共享名` 连接后再选为备份目标。
+
+家里 NAS 凭证与公司 NAS 不同，若需登录 DSM：见双 NAS 区分文档或本 Skill 中「家里 NAS」相关说明（admin / zhiqun1984，小写）。
+
+### 3. 解决后验证与 Skill 更新
+
+- **验证**：再次运行上面的 `time_machine_diskstation_auto.sh`，确认网络与端口正常；在系统设置中确认红点消失或显示「正在备份」。
+- **更新 Skill**：若本次通过某一步（如 DSM 某选项、Mac 重选磁盘）解决问题，将该要点**追加**到 `参考资料/Time_Machine_DiskStation_错误排查.md` 或本小节，便于下次全自动/半自动复用。
+
+### 家里 NAS 速查（Time Machine 用）
+
+| 项目 | 值 |
+|------|-----|
+| 内网 IP | 192.168.110.29 |
+| 主机名 | DiskStation.local |
+| DSM | http://192.168.110.29:5000 |
+| 账号 | admin（密码见上，小写） |
+
+---
+
 ## 运维规范
 
 ### 安全准则
@@ -645,6 +693,7 @@ ssh nas "netstat -tlnp | grep 27017"
 
 | 脚本 | 功能 | 位置 | 快速运行 |
 |------|------|------|----------|
+| `time_machine_diskstation_auto.sh` | Time Machine → 家里 DiskStation 检测/验证，输出材料路径供按参考资料处理 | `./scripts/` | `./scripts/time_machine_diskstation_auto.sh` |
 | `optimize_macos_vm_compose.sh` | 本机→NAS：macOS VM 流畅度优化 | `./scripts/` | 需本机与 NAS 同网 |
 | `optimize_macos_vm_on_nas.sh` | **NAS 上直接执行**：macOS VM 流畅度优化（外网推荐） | `./scripts/` | SSH 登录 NAS 后运行 |
 | `nas_status.sh` | 一键检查NAS状态（内存/磁盘/容器/端口） | `./scripts/` | `./scripts/nas_status.sh` |

@@ -366,7 +366,7 @@ playwright install chromium
 # 导入本地模型SDK
 import sys
 sys.path.append("/Users/karuo/Documents/个人/卡若AI")
-from _共享模块.local_llm import summarize, extract_info, check_service
+from 运营中枢.local_llm import summarize, extract_info, check_service
 
 # 检查本地模型服务
 status = check_service()
@@ -399,7 +399,7 @@ highlights = extract_info(meeting_text, "核心观点和金句")
 
 ```python
 # parse_chatlog.py 中添加
-from _共享模块.local_llm import summarize, extract_info, check_service
+from 运营中枢.local_llm import summarize, extract_info, check_service
 
 def smart_extract(text):
     """智能提取：本地优先"""

@@ -22,7 +22,7 @@ updated: "2026-02-16"
 # 所有助手都可以这样调用
 import sys
 sys.path.append("/Users/karuo/Documents/个人/卡若AI")
-from _共享模块.local_llm import summarize, classify, generate_questions
+from 运营中枢.local_llm import summarize, classify, generate_questions
 
 # 或者直接导入SDK
 sys.path.append("/Users/karuo/Documents/个人/卡若AI/04_卡火（火）/本地模型/scripts")
@@ -48,7 +48,7 @@ from local_llm_sdk import summarize, check_service
 ### 控制提醒显示
 
 ```python
-from _共享模块.local_llm import summarize
+from 运营中枢.local_llm import summarize
 
 # 默认：在控制台打印提醒
 result = summarize("文本内容")
@@ -60,7 +60,7 @@ result = summarize("文本内容", with_notice=True)  # 结果包含提醒前缀
 ### 获取提醒文本
 
 ```python
-from _共享模块.local_llm import get_usage_notice_text, format_response_with_notice
+from 运营中枢.local_llm import get_usage_notice_text, format_response_with_notice
 
 # 获取提醒文本
 notice = get_usage_notice_text("qwen2.5:0.5b", "summarize")
@@ -153,7 +153,7 @@ cloudflared tunnel --url http://localhost:11434
 ```python
 import sys
 sys.path.append("/Users/karuo/Documents/个人/卡若AI")
-from _共享模块.local_llm import summarize, generate_questions
+from 运营中枢.local_llm import summarize, generate_questions
 
 result = summarize("你的长文本...")
 ```
@@ -526,7 +526,7 @@ if __name__ == "__main__":
 ### SDK便捷函数速查
 
 ```python
-from _共享模块.local_llm import *
+from 运营中枢.local_llm import *
 
 # 文本摘要（智能纪要、读书笔记）
 summary = summarize("长文本...", max_words=100)
@@ -602,7 +602,7 @@ status = check_service()
 **适用场景**：长文本生成、实时对话、用户体验优化
 
 ```python
-from _共享模块.local_llm import stream_generate
+from 运营中枢.local_llm import stream_generate
 
 def on_chunk(chunk: str):
     """实时输出每个chunk"""
@@ -628,7 +628,7 @@ full_text = stream_generate(
 **适用场景**：需要调用外部工具、API、数据库查询
 
 ```python
-from _共享模块.local_llm import function_calling
+from 运营中枢.local_llm import function_calling
 
 # 定义工具
 tools = [{
@@ -674,7 +674,7 @@ print(result["response"])  # 模型会调用get_weather并返回结果
 **适用场景**：需要固定格式的输出、数据提取、API响应
 
 ```python
-from _共享模块.local_llm import structured_output
+from 运营中枢.local_llm import structured_output
 
 # 定义JSON Schema
 schema = {
@@ -712,7 +712,7 @@ print(result["data"])  # {"name": "张三", "age": 25, "skills": ["Python", "Jav
 **适用场景**：图像理解、OCR、图像描述、视觉问答
 
 ```python
-from _共享模块.local_llm import multimodal_chat
+from 运营中枢.local_llm import multimodal_chat
 
 # 需要先安装视觉模型
 # ollama pull llava:7b
@@ -740,7 +740,7 @@ print(result["response"])
 **核心思路**：向量数据库 + 语义搜索 + 本地模型生成
 
 ```python
-from _共享模块.local_llm import embed, semantic_search, generate
+from 运营中枢.local_llm import embed, semantic_search, generate
 
 # 1. 构建知识库（向量化）
 documents = [
@@ -817,7 +817,7 @@ results = asyncio.run(batch_process())
 
 **示例代码**：
 ```python
-from _共享模块.local_llm import multimodal_chat, function_calling
+from 运营中枢.local_llm import multimodal_chat, function_calling
 
 # 识别截图中的设备信息
 def analyze_device_screenshot(image_path: str):
@@ -864,7 +864,7 @@ def auto_connect_iphone():
 
 **示例代码**：
 ```python
-from _共享模块.local_llm import structured_output, semantic_search
+from 运营中枢.local_llm import structured_output, semantic_search
 
 # 结构化输出追问问题
 def generate_structured_questions(topic: str):
@@ -908,7 +908,7 @@ def avoid_duplicate_questions(new_question: str, history: List[str]):
 
 **示例代码**：
 ```python
-from _共享模块.local_llm import summarize, structured_output, multimodal_chat
+from 运营中枢.local_llm import summarize, structured_output, multimodal_chat
 
 # 章节摘要
 def summarize_chapter(chapter_text: str):

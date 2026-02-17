@@ -71,18 +71,25 @@ if git diff --cached --quiet 2>/dev/null; then
 fi
 
 # ============================================
-# Step 3: 提交
+# Step 3: 提交（提交说明写具体更新内容，不写「变更 N 个文件」）
 # ============================================
 CHANGED_COUNT=$(git diff --cached --numstat | wc -l | tr -d ' ')
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M')
-COMMIT_MSG="🔄 卡若AI 同步 $TIMESTAMP | 变更 ${CHANGED_COUNT} 个文件 | 排除 >${MAX_SIZE_MB}MB: ${LARGE_COUNT} 个"
+SUMMARY_SCRIPT="$REPO_DIR/01_卡资（金）/金仓_存储备份/Gitea管理/脚本/生成同步说明.py"
+if [ -f "$SUMMARY_SCRIPT" ]; then
+    SUMMARY=$(git diff --cached --name-only 2>/dev/null | python3 "$SUMMARY_SCRIPT" 2>/dev/null)
+    [ -z "$SUMMARY" ] && SUMMARY="多目录更新"
+else
+    SUMMARY="多目录更新"
+fi
+COMMIT_MSG="🔄 卡若AI 同步 $TIMESTAMP | 更新：$SUMMARY | 排除 >${MAX_SIZE_MB}MB: ${LARGE_COUNT} 个"
 
 git commit -m "$COMMIT_MSG" --quiet 2>/dev/null
 if [ $? -ne 0 ]; then
     log "错误：提交失败"
     exit 1
 fi
-log "提交成功：${CHANGED_COUNT} 个文件"
+log "提交成功：$COMMIT_MSG"
 
 # ============================================
 # Step 4: 推送到 Gitea（智能：局域网用 IP，外网用域名+代理）
