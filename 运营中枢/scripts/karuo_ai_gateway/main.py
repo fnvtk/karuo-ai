@@ -5,6 +5,7 @@
 from pathlib import Path
 import os
 import re
+from typing import Tuple
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -29,7 +30,7 @@ def load_registry() -> str:
     return "技能注册表未找到。"
 
 
-def match_skill(prompt: str) -> tuple[str, str]:
+def match_skill(prompt: str) -> Tuple[str, str]:
     """根据 prompt 在 SKILL_REGISTRY 中匹配技能，返回 (技能名, 路径)。"""
     text = load_registry()
     lines = text.split("\n")
