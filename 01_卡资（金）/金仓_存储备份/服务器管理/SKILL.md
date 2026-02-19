@@ -66,8 +66,8 @@ kr宝塔:   qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT
 ### 1. 检查服务器状态
 
 ```bash
-# 运行快速检查脚本
-python3 /Users/karuo/Documents/个人/卡若AI/01_系统管理/服务器管理/scripts/快速检查服务器.py
+# 运行快速检查脚本（需各服务器 API 白名单含本机 IP）
+python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/服务器管理/脚本/快速检查服务器.py"
 ```
 
 ### 2. 部署 Node 项目（标准流程）
@@ -98,13 +98,20 @@ rm /tmp/项目名_update.tar.gz
 
 ```bash
 # 检查所有服务器SSL证书状态
-python3 /Users/karuo/Documents/个人/卡若AI/01_系统管理/服务器管理/scripts/ssl证书检查.py
+python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/服务器管理/脚本/ssl证书检查.py"
 
 # 自动修复过期证书
-python3 /Users/karuo/Documents/个人/卡若AI/01_系统管理/服务器管理/scripts/ssl证书检查.py --fix
+python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/服务器管理/脚本/ssl证书检查.py" --fix
 ```
 
-### 4. 常用诊断命令
+### 4. kr宝塔 网络卡/服务器卡 · 检查与处理
+
+- **文档**：`references/kr宝塔_网络与服务器卡顿_检查与处理.md`
+- **SSH**：`ssh -p 22022 -i "服务器管理项目/Steam/id_ed25519" root@43.139.27.93`（私钥须 `chmod 600`）
+- 本机快速检查：`ping 43.139.27.93`、`nc -zv 43.139.27.93 22022`
+- 服务器内诊断：登录后执行文档中「2.2 一键诊断」命令块；若 SSH 被关闭可改用宝塔面板终端。
+
+### 5. 常用诊断命令（小型宝塔等）
 
 ```bash
 # 检查端口占用

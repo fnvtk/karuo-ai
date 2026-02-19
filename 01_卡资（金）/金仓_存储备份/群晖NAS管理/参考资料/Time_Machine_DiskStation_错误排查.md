@@ -1,6 +1,8 @@
 # Time Machine 备份到家里 DiskStation 报错排查
 
-**现象**：系统设置 → 时间机器 → 「共享 - DiskStation.local」显示**红点**，提示「正在等待完成第一次备份」。
+**现象**：
+- 系统设置 → 时间机器 → 「共享 - DiskStation.local」显示**红点**，提示「正在等待完成第一次备份」
+- 或弹窗 **「未识别备份磁盘」** / **「磁盘 DiskStation.local 可能已被更改」**
 
 **家里 NAS**：DiskStation（192.168.110.29 / DiskStation.local）
 

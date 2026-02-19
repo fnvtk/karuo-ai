@@ -34,6 +34,79 @@ REFERER = "https://meetings.feishu.cn/minutes/me"
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36"
 
 
+def _cookie_from_browser() -> str:
+    """从本机浏览器读取飞书 Cookie（与 download_soul_minutes_101_to_103 一致）。"""
+    c = os.environ.get("FEISHU_MINUTES_COOKIE", "").strip()
+    if c and len(c) > 100 and "PASTE_YOUR" not in c:
+        return c
+    try:
+        import browser_cookie3
+        for domain in ("cunkebao.feishu.cn", "feishu.cn", ".feishu.cn"):
+            for loader in (browser_cookie3.safari, browser_cookie3.chrome, browser_cookie3.chromium, browser_cookie3.firefox, browser_cookie3.edge):
+                try:
+                    cj = loader(domain_name=domain)
+                    s = "; ".join([f"{c.name}={c.value}" for c in cj])
+                    if len(s) > 100:
+                        return s
+                except Exception:
+                    continue
+    except ImportError:
+        pass
+    try:
+        import subprocess
+        import shutil
+        import tempfile
+        import sqlite3
+        import hashlib
+        for name in ("Doubao Browser Safe Storage", "Doubao Safe Storage"):
+            try:
+                key = subprocess.run(["security", "find-generic-password", "-s", name, "-w"], capture_output=True, text=True, timeout=5).stdout.strip()
+                if not key:
+                    continue
+            except Exception:
+                continue
+            for profile in ("Default", "Profile 1", "Profile 2", "Profile 3"):
+                db = Path.home() / "Library/Application Support/Doubao" / profile / "Cookies"
+                if not db.exists():
+                    continue
+                try:
+                    tmp = tempfile.mktemp(suffix=".db")
+                    shutil.copy2(db, tmp)
+                    conn = sqlite3.connect(tmp)
+                    cur = conn.cursor()
+                    cur.execute("SELECT host_key, name, encrypted_value FROM cookies WHERE host_key LIKE '%feishu%' OR host_key LIKE '%cunkebao%'")
+                    rows = cur.fetchall()
+                    conn.close()
+                    Path(tmp).unlink(missing_ok=True)
+                except Exception:
+                    continue
+                if not rows:
+                    continue
+                from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+                derived = hashlib.pbkdf2_hmac("sha1", key.encode("utf-8"), b"saltysalt", 1003, dklen=16)
+                parts = []
+                for host, name, enc in rows:
+                    if enc[:3] != b"v10":
+                        continue
+                    raw = enc[3:]
+                    dec = Cipher(algorithms.AES(derived), modes.CBC(b" " * 16)).decryptor()
+                    pt = dec.update(raw) + dec.finalize()
+                    pad = pt[-1]
+                    if isinstance(pad, int) and 1 <= pad <= 16:
+                        pt = pt[:-pad]
+                    for i in range(min(len(pt), 48)):
+                        if i + 4 <= len(pt) and all(32 <= pt[j] < 127 for j in range(i, min(i + 8, len(pt)))):
+                            val = pt[i:].decode("ascii", errors="ignore")
+                            if val and "\x00" not in val:
+                                parts.append(f"{name}={val}")
+                            break
+                if len(parts) > 5:
+                    return "; ".join(parts)
+    except Exception:
+        pass
+    return ""
+
+
 def get_cookie_from_args_or_file(cookie_arg: str | None) -> str:
     if cookie_arg and cookie_arg.strip() and "PASTE_YOUR" not in cookie_arg:
         return cookie_arg.strip()
@@ -43,7 +116,7 @@ def get_cookie_from_args_or_file(cookie_arg: str | None) -> str:
             line = line.strip()
             if line and not line.startswith("#") and "PASTE_YOUR" not in line:
                 return line
-    return ""
+    return _cookie_from_browser()
 
 
 def get_bv_csrf_token(cookie: str) -> str:
@@ -59,64 +132,69 @@ def get_bv_csrf_token(cookie: str) -> str:
     return cookie[start:end].strip()
 
 
-def build_headers(cookie: str):
-    """与 feishu_downloader.py 完全一致的请求头。"""
+def build_headers(cookie: str, require_bv: bool = True):
+    """请求头。require_bv=True 时必须有 36 位 bv_csrf_token；False 时能带就带。"""
     bv = get_bv_csrf_token(cookie)
-    if len(bv) != 36:
+    h = {
+        "User-Agent": USER_AGENT,
+        "cookie": cookie,
+        "referer": REFERER,
+        "content-type": "application/x-www-form-urlencoded",
+    }
+    if len(bv) == 36:
+        h["bv-csrf-token"] = bv
+    if require_bv and len(bv) != 36:
         raise ValueError(
             "Cookie 中未包含有效的 bv_csrf_token（需 36 位）。"
             "请从 飞书妙记主页 → F12 → 网络 → list?size=20& 请求 中复制完整 Cookie。"
         )
-    return {
-        "User-Agent": USER_AGENT,
-        "cookie": cookie,
-        "bv-csrf-token": bv,
-        "referer": REFERER,
-        "content-type": "application/x-www-form-urlencoded",
-    }
+    return h
 
 
 def export_transcript(cookie: str, object_token: str, format_txt: bool = True, add_speaker: bool = True, add_timestamp: bool = False) -> str | None:
     """
-    调用妙记导出接口，与 GitHub feishu_downloader.get_minutes_url 一致：
-    POST export，params: object_token, add_speaker, add_timestamp, format (2=txt, 3=srt)。
+    调用妙记导出接口。先试 meetings，再试 cunkebao；请求头可无 bv_csrf_token（能带就带）。
     返回导出的文本，失败返回 None。
     """
     if not requests:
         return None
-    # format: 2=txt, 3=srt（与 config.ini 一致）
     params = {
         "object_token": object_token,
         "add_speaker": "true" if add_speaker else "false",
         "add_timestamp": "true" if add_timestamp else "false",
         "format": 2 if format_txt else 3,
     }
-    headers = build_headers(cookie)
-    try:
-        r = requests.post(EXPORT_URL, params=params, headers=headers, timeout=20)
-        r.encoding = "utf-8"
-        if r.status_code != 200:
-            return None
-        text = (r.text or "").strip()
-        if not text or len(text) < 20:
-            return None
-        # 可能是 JSON 包装
-        if text.startswith("{"):
-            try:
-                j = r.json()
-                data = j.get("data")
-                if isinstance(data, str):
-                    return data
-                if isinstance(data, dict):
-                    return data.get("content") or data.get("text") or data.get("transcript")
-            except Exception:
-                pass
-            return None
-        if "<html" in text.lower()[:100] or "Something went wrong" in text:
-            return None
-        return text
-    except Exception:
-        return None
+    headers = build_headers(cookie, require_bv=False)
+    for url, ref in [
+        (EXPORT_URL, REFERER),
+        ("https://cunkebao.feishu.cn/minutes/api/export", "https://cunkebao.feishu.cn/minutes/"),
+    ]:
+        headers = {**headers, "referer": ref}
+        try:
+            r = requests.post(url, params=params, headers=headers, timeout=20)
+            r.encoding = "utf-8"
+            if r.status_code != 200:
+                continue
+            text = (r.text or "").strip()
+            if not text or len(text) < 20:
+                continue
+            if text.startswith("{"):
+                try:
+                    j = r.json()
+                    data = j.get("data")
+                    if isinstance(data, str):
+                        return data
+                    if isinstance(data, dict):
+                        return data.get("content") or data.get("text") or data.get("transcript")
+                except Exception:
+                    pass
+                continue
+            if "<html" in text.lower()[:100] or "Something went wrong" in text:
+                continue
+            return text
+        except Exception:
+            continue
+    return None
 
 
 def extract_token_from_url(url_or_token: str) -> str:
@@ -162,16 +240,16 @@ def main() -> int:
 
     object_token = args.object_token or extract_token_from_url(args.url_or_token)
     if not object_token:
-        object_token = "obcnxrkz6k459k669544228c"  # 104 场默认
+        object_token = "obcnyg5nj2l8q281v32de6qz"  # 104 场
 
     try:
-        build_headers(cookie)
+        build_headers(cookie, require_bv=False)
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 1
 
     print(f"📝 object_token: {object_token}")
-    print("📡 使用 meetings.feishu.cn 导出接口（GitHub 同款）…")
+    print("📡 导出中（meetings / cunkebao）…")
     text = export_transcript(cookie, object_token, format_txt=True, add_speaker=not args.no_speaker, add_timestamp=args.timestamp)
     if not text:
         print("❌ 导出失败。请确认：", file=sys.stderr)
