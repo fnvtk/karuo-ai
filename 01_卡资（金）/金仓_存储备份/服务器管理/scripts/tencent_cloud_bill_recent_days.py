@@ -40,13 +40,12 @@ def _read_creds_from_index():
             break
         if not in_tencent:
             continue
-        m = re.search(r"\|\s*(?:密钥|SecretId|Secret\s*Id)\s*\|\s*`([^`]+)`", line, re.I)
+        # 支持 "SecretId（密钥）" 或 "SecretId" 列名
+        m = re.search(r"\|\s*[^|]*(?:SecretId|密钥)[^|]*\|\s*`([^`]+)`", line, re.I)
         if m:
             val = m.group(1).strip()
             if val.startswith("AKID"):
                 secret_id = val
-            else:
-                secret_key = val
         m = re.search(r"\|\s*SecretKey\s*\|\s*`([^`]+)`", line, re.I)
         if m:
             secret_key = m.group(1).strip()
