@@ -2,6 +2,23 @@
 
 本机通过 Docker 运行宝塔官方镜像，与腾讯云服务器上的宝塔面板一致，后续网站与相关服务可在此 Docker 宝塔中运行。
 
+---
+
+## 使用方式（速查）
+
+| 你要做的事 | 怎么做 |
+|------------|--------|
+| **打开面板** | 浏览器访问：**http://127.0.0.1:8888/btpanel** |
+| **登录** | 首次：`btpanel` / `btpaneldocker`；改密后：**ckb** / **Zhiqun1984** |
+| **开/关容器** | 启动：`bash 01_卡资（金）/金仓_存储备份/服务器管理/scripts/本机Docker宝塔_启动.sh`<br>停止：`docker stop baota` |
+| **建站/绑域名** | 在面板里【网站】→ 添加站点，与腾讯云宝塔操作一致 |
+| **网站文件放哪** | 本机目录 **~/baota_docker_data/website_data/** 即容器内 `/www/wwwroot`，也可在面板【文件】里操作 |
+| **看容器是否在跑** | `docker ps -a --filter name=baota` |
+
+当前已用 **btpanel/baota:latest** 跑起；若需自带 LNMP 的一键环境，可再拉取 `btpanel/baota:lnmp` 后重建容器（或先在面板里【软件商店】安装 Nginx、MySQL 等）。
+
+---
+
 ## 镜像与数据
 
 - **镜像**：`btpanel/baota:lnmp`（推荐，带 LNMP）或 `btpanel/baota:latest`（仅面板，需在面板内安装 Nginx/MySQL 等）
