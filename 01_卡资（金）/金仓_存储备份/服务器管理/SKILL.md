@@ -308,6 +308,7 @@ ss -tlnp | grep :端口号
 | `快速检查服务器.py` | 一键检查所有服务器状态 | `./scripts/` |
 | `一键部署.py` | 根据配置文件部署项目 | `./scripts/` |
 | `ssl证书检查.py` | 检查/修复SSL证书 | `./scripts/` |
+| `腾讯云镜像快照备份到CKB_NAS/tencent_image_snapshot_backup_to_nas.py` | 腾讯云镜像/快照元数据备份到 CKB NAS，1000G 限制与超限邮件告警 | `./scripts/腾讯云镜像快照备份到CKB_NAS/` |
 
 ---
 
