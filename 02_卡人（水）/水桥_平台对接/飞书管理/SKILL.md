@@ -1,7 +1,7 @@
 ---
 name: 飞书管理
 description: 飞书日志/文档自动写入与知识库管理
-triggers: 飞书日志、写入飞书、飞书知识库
+triggers: 飞书日志、写入飞书、飞书知识库、飞书运营报表、派对效果数据、104场写入
 owner: 水桥
 group: 水
 version: "1.0"
@@ -186,6 +186,43 @@ python3 /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/飞书管理/s
 
 ---
 
+## 飞书运营报表（Soul 派对效果数据）
+
+将 Soul 派对效果数据按**场次**写入飞书「火：运营报表」表格，**竖列**填入对应日期/场次列。
+
+### 填写规则（以后都按此逻辑）
+
+| 规则 | 说明 |
+|:---|:---|
+| **按数字填写** | 时长、推流、进房、互动、礼物、灵魂力、增加关注、最高在线 等均按**数字类型**写入，不按文本，便于表格公式与图表 |
+| **不填比率三项** | 推流进房率、1分钟进多少人、加微率 由表格内公式自动计算，**导入时不填** |
+| **只填前 10 项** | 主题、时长、Soul推流人数、进房人数、人均时长、互动数量、礼物、灵魂力、增加关注、最高在线 |
+| **主题（标题）** | 从聊天记录提炼，**≤12 字**，须含**具体内容、干货与数值**（如：号商几毛卖十几 日销两万） |
+| **竖列写入** | 表格结构为 A 列指标名、各列为日期/场次，数据写入该场次列的第 3～12 行（竖列） |
+
+### 一键写入
+
+```bash
+# 写入 104 场（默认）
+python3 /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/飞书管理/脚本/soul_party_to_feishu_sheet.py
+
+# 指定场次
+python3 .../soul_party_to_feishu_sheet.py 103
+python3 .../soul_party_to_feishu_sheet.py 104
+```
+
+### 表格与配置
+
+| 项目 | 值 |
+|:---|:---|
+| 运营报表 | https://cunkebao.feishu.cn/wiki/wikcnIgAGSNHo0t36idHJ668Gfd?sheet=7A3Cy9 |
+| 工作表 | 2026年2月 soul 书卡若创业派对（sheetId=7A3Cy9） |
+| Token | 使用同目录 `.feishu_tokens.json`（与 auto_log 共用） |
+
+新增场次时在脚本内 `ROWS` 中增加对应场次与 10 项数据即可。
+
+---
+
 ## 飞书项目（玩值电竞 · 存客宝）
 
 将玩值电竞 30 天/90 天甘特图任务同步到飞书项目需求管理。
@@ -215,9 +252,10 @@ python3 scripts/wanzhi_feishu_project_sync.py
 └── scripts/
     ├── auto_log.py              # 一键日志脚本（推荐）
     ├── write_today_custom.py     # 自定义今日内容写入（写入后自动打开飞书）
+    ├── soul_party_to_feishu_sheet.py  # 飞书运营报表：Soul 派对效果数据（按场次竖列、数字、不填比率）
     ├── wanzhi_feishu_project_sync.py  # 玩值电竞→飞书项目任务同步
     ├── feishu_api.py             # 后端服务
-    ├── feishu_video_clip.py      # 视频智能切片（新增）
+    ├── feishu_video_clip.py      # 视频智能切片
     ├── feishu_video_clip_README.md # 切片工具说明
     └── .feishu_tokens.json       # Token存储
 ```

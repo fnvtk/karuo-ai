@@ -42,7 +42,8 @@
 | 项 | 值 |
 |----|-----|
 | APPID | `1251077262` |
-| 密钥 | `AKIDjc6yO3nPeOuK2OKsJPBBVbTiiz0aPNHl` |
+| SecretId（密钥） | `AKIDjc6yO3nPeOuK2OKsJPBBVbTiiz0aPNHl` |
+| SecretKey | （请到 控制台 → 访问管理 → API密钥 获取并填写，用于账单等 API） |
 
 ### 阿里云
 | 项 | 值 |

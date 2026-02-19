@@ -46,6 +46,8 @@ FEISHU_APP_SECRET = os.environ.get("FEISHU_APP_SECRET", "dhjU0qWd5AzicGWTf4cTqhC
 # 输出目录
 SCRIPT_DIR = Path(__file__).parent
 OUTPUT_DIR = SCRIPT_DIR.parent / "output"
+# 用户身份 token 文件（可选，一行一个 access_token，用于访问个人/空间妙记）
+FEISHU_USER_TOKEN_FILE = SCRIPT_DIR / "feishu_user_token.txt"
 
 
 def get_tenant_access_token() -> str:
@@ -67,6 +69,66 @@ def get_tenant_access_token() -> str:
         print(f"❌ 请求异常: {e}")
     
     return None
+
+
+def _read_user_token_file() -> tuple[str | None, str | None]:
+    """从 feishu_user_token.txt 读取 access_token 和 refresh_token（第一行 access，第二行可选 refresh）。"""
+    if not FEISHU_USER_TOKEN_FILE.exists():
+        return (None, None)
+    try:
+        lines = [
+            L.strip() for L in FEISHU_USER_TOKEN_FILE.read_text(encoding="utf-8", errors="ignore").splitlines()
+            if L.strip() and not L.strip().startswith("#")
+        ]
+        access = lines[0] if lines and "u-" in lines[0] else None
+        refresh = lines[1] if len(lines) > 1 and lines[1].startswith("ur-") else None
+        return (access, refresh)
+    except Exception:
+        return (None, None)
+
+
+def _refresh_user_access_token(refresh_token: str) -> str | None:
+    """用 refresh_token 刷新得到新的 user access_token（须为本应用 OAuth 颁发的 refresh_token）。"""
+    # 飞书刷新用户 token：POST，app_id / app_secret / refresh_token / grant_type
+    url = "https://open.feishu.cn/open-apis/authen/v1/refresh_access_token"
+    payload = {
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+        "app_id": FEISHU_APP_ID,
+        "app_secret": FEISHU_APP_SECRET,
+    }
+    try:
+        r = requests.post(url, json=payload, timeout=10)
+        data = r.json()
+        if data.get("code") == 0:
+            return data.get("data", {}).get("access_token")
+    except Exception:
+        pass
+    return None
+
+
+def get_minutes_token() -> tuple[str | None, str]:
+    """
+    获取用于调用妙记接口的 token。优先用户身份（可访问个人/空间妙记），否则应用身份。
+    若设置 FEISHU_USE_TENANT_ONLY=1 或传入 --tenant-only，则仅用企业身份（tenant_access_token），不用浏览器/用户 token。
+    返回 (token, "user"|"app")，无 token 时 (None, "app")。
+    用户 token 须为本应用 cli_a48818290ef8100d OAuth 授权所得；若 99991668 可尝试在 feishu_user_token.txt 第二行填 refresh_token 自动刷新。
+    """
+    # 强制仅用企业身份（应用 tenant_access_token），不读用户 token
+    if os.environ.get("FEISHU_USE_TENANT_ONLY", "").strip().lower() in ("1", "true", "yes"):
+        token = get_tenant_access_token()
+        return (token, "app")
+    # 1) 环境变量：用户身份 token
+    user_token = os.environ.get("FEISHU_USER_ACCESS_TOKEN", "").strip()
+    if user_token and "u-" in user_token:
+        return (user_token, "user")
+    # 2) 脚本同目录 feishu_user_token.txt（第一行 access_token，第二行可选 refresh_token）
+    access, refresh = _read_user_token_file()
+    if access:
+        return (access, "user")
+    # 3) 应用身份
+    token = get_tenant_access_token()
+    return (token, "app")
 
 
 def extract_minute_token(url_or_token: str) -> str:
@@ -286,19 +348,36 @@ def fetch_and_save(url_or_token: str, output_dir: Path = None) -> Path:
     minute_token = extract_minute_token(url_or_token)
     print(f"📝 妙记Token: {minute_token}")
     
-    # 获取token
+    # 获取 token（优先用户身份，可访问个人/空间妙记；否则应用身份）
     print("🔑 获取飞书访问令牌...")
-    token = get_tenant_access_token()
+    token, token_type = get_minutes_token()
     if not token:
         print("❌ 无法获取访问令牌")
         return None
+    print(f"   使用: {'用户身份 (可访问个人/空间妙记)' if token_type == 'user' else '应用身份'}")
     
-    # 获取妙记信息
+    # 获取妙记信息（若仅开通「导出妙记文字」权限可能失败，则仅拉取文字）
     print("📋 获取妙记基本信息...")
     info = get_minutes_info(token, minute_token)
+    # 用户身份 token 无效(99991668)时尝试用 refresh_token 刷新后重试一次
+    if not info and token_type == "user":
+        _, refresh = _read_user_token_file()
+        if refresh:
+            print("   ⚠️ 用户 token 可能已过期，尝试刷新...")
+            new_access = _refresh_user_access_token(refresh)
+            if new_access:
+                try:
+                    FEISHU_USER_TOKEN_FILE.write_text(
+                        new_access + "\n" + refresh + "\n",
+                        encoding="utf-8",
+                    )
+                except Exception:
+                    pass
+                token = new_access
+                info = get_minutes_info(token, minute_token)
     if not info:
-        print("❌ 无法获取妙记信息")
-        return None
+        print("   ⚠️ 基本信息权限不足(2091005)，尝试仅拉取文字记录（需开通「导出妙记转写的文字内容」）...")
+        info = {"title": f"妙记_{minute_token[:12]}", "duration": 0, "create_time": str(int(datetime.now().timestamp()))}
     
     title = info.get("title", "未命名")
     duration = format_timestamp(int(info.get("duration", 0)))
@@ -427,6 +506,7 @@ def main():
     parser.add_argument("--file", "-f", type=str, help="从飞书导出的文字记录文件路径")
     parser.add_argument("--title", type=str, help="指定标题（用于导出文件）")
     parser.add_argument("--output", "-o", type=str, help="输出目录")
+    parser.add_argument("--tenant-only", action="store_true", help="仅用企业身份 tenant_access_token（APP_ID+APP_SECRET），不用用户 token")
     parser.add_argument("--generate", "-g", action="store_true", 
                         help="获取后自动生成会议纪要并发送飞书")
     parser.add_argument("--send-webhook", "-S", action="store_true",
@@ -435,6 +515,8 @@ def main():
                         help=f"飞书机器人 Webhook 地址（默认: 会议纪要群）")
     
     args = parser.parse_args()
+    if getattr(args, "tenant_only", False):
+        os.environ["FEISHU_USE_TENANT_ONLY"] = "1"
     
     if not REQUESTS_AVAILABLE:
         print("❌ 需要安装 requests: pip install requests")
