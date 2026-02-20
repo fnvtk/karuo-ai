@@ -72,9 +72,8 @@ DEFAULT_CREDENTIALS = [
 
 # 已知设备（直接内置，不需要扫描就能部署）
 KNOWN_DEVICES = [
-    {"name": "小型宝塔", "ip": "42.194.232.22", "port": 22, "user": "root", "password": "Zhiqun1984", "type": "linux"},
     {"name": "存客宝", "ip": "42.194.245.239", "port": 22, "user": "root", "password": "Zhiqun1984", "type": "linux"},
-    {"name": "kr宝塔", "ip": "43.139.27.93", "port": 22, "user": "root", "password": "Zhiqun1984", "type": "linux"},
+    {"name": "kr宝塔", "ip": "43.139.27.93", "port": 22022, "user": "root", "password": "Zhiqun1984", "type": "linux"},
     {"name": "公司NAS(CKB)", "ip": "192.168.1.201", "port": 22, "user": "fnvtk", "password": "", "type": "synology"},
     {"name": "家里NAS(Station)", "ip": "192.168.110.29", "port": 22, "user": "admin", "password": "", "type": "synology"},
     {"name": "公司NAS(外网)", "ip": "open.quwanzhi.com", "port": 22201, "user": "fnvtk", "password": "", "type": "synology"},

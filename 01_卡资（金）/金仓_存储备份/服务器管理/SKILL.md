@@ -21,9 +21,8 @@ updated: "2026-02-16"
 | 服务器 | IP | 配置 | 用途 | 宝塔面板 |
 |--------|-----|------|------|----------|
 | **本机 Docker 宝塔** | 127.0.0.1 | Docker 容器 | 本地建站、与腾讯云一致 | http://127.0.0.1:8888/btpanel |
-| **小型宝塔** | 42.194.232.22 | 2核4G 5M | 主力部署（Node项目） | https://42.194.232.22:9988/ckbpanel |
 | **存客宝** | 42.194.245.239 | 2核16G 50M | 私域银行业务 | https://42.194.245.239:9988 |
-| **kr宝塔** | 43.139.27.93 | 2核4G 5M | 辅助服务器 | https://43.139.27.93:9988 |
+| **kr宝塔** | 43.139.27.93 | 2核4G 5M | Node 项目主力、辅助 | https://43.139.27.93:9988 |
 
 ### 凭证速查
 
@@ -36,19 +35,18 @@ updated: "2026-02-16"
 # 启动: bash 01_卡资（金）/金仓_存储备份/服务器管理/scripts/本机Docker宝塔_启动.sh
 # 数据目录: ~/baota_docker_data/（website_data、mysql_data、vhost）
 
-# SSH连接（小型宝塔为例）
-ssh root@42.194.232.22
+# SSH连接（kr宝塔为例，端口 22022）
+ssh -p 22022 root@43.139.27.93
 密码: Zhiqun1984
 
-# 宝塔面板登录（小型宝塔）
-地址: https://42.194.232.22:9988/ckbpanel
+# 宝塔面板登录（kr宝塔）
+地址: https://43.139.27.93:9988
 账号: ckb
 密码: zhiqun1984
 
 # 宝塔API密钥
-小型宝塔: hsAWqFSi0GOCrunhmYdkxy92tBXfqYjd
-存客宝:   TNKjqDv5N1QLOU20gcmGVgr82Z4mXzRi
-kr宝塔:   qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT
+存客宝: TNKjqDv5N1QLOU20gcmGVgr82Z4mXzRi
+kr宝塔: qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT
 ```
 
 ---
@@ -78,11 +76,11 @@ cd /项目路径
 tar --exclude='node_modules' --exclude='.next' --exclude='.git' \
     -czf /tmp/项目名_update.tar.gz .
 
-# 2. 上传到服务器
-sshpass -p 'Zhiqun1984' scp /tmp/项目名_update.tar.gz root@42.194.232.22:/tmp/
+# 2. 上传到服务器（kr宝塔）
+sshpass -p 'Zhiqun1984' scp -P 22022 /tmp/项目名_update.tar.gz root@43.139.27.93:/tmp/
 
 # 3. SSH部署
-ssh root@42.194.232.22
+ssh -p 22022 root@43.139.27.93
 cd /www/wwwroot/项目名
 rm -rf app components lib public styles *.json *.js *.ts *.mjs *.md .next
 tar -xzf /tmp/项目名_update.tar.gz
@@ -111,23 +109,23 @@ python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储
 - 本机快速检查：`ping 43.139.27.93`、`nc -zv 43.139.27.93 22022`
 - 服务器内诊断：登录后执行文档中「2.2 一键诊断」命令块；若 SSH 被关闭可改用宝塔面板终端。
 
-### 5. 常用诊断命令（小型宝塔等）
+### 5. 常用诊断命令（kr宝塔等）
 
 ```bash
 # 检查端口占用
-ssh root@42.194.232.22 "ss -tlnp | grep :3006"
+ssh -p 22022 root@43.139.27.93 "ss -tlnp | grep :3006"
 
 # 检查PM2进程
-ssh root@42.194.232.22 "/www/server/nodejs/v22.14.0/bin/pm2 list"
+ssh -p 22022 root@43.139.27.93 "/www/server/nodejs/v22.14.0/bin/pm2 list"
 
 # 测试HTTP响应
-ssh root@42.194.232.22 "curl -I http://localhost:3006"
+ssh -p 22022 root@43.139.27.93 "curl -I http://localhost:3006"
 
 # 检查Nginx配置
-ssh root@42.194.232.22 "nginx -t"
+ssh -p 22022 root@43.139.27.93 "nginx -t"
 
 # 重载Nginx
-ssh root@42.194.232.22 "nginx -s reload"
+ssh -p 22022 root@43.139.27.93 "nginx -s reload"
 
 # DNS解析检查
 dig soul.quwanzhi.com +short @8.8.8.8
@@ -135,7 +133,7 @@ dig soul.quwanzhi.com +short @8.8.8.8
 
 ---
 
-## 端口配置表（小型宝塔 42.194.232.22）
+## 端口配置表（kr宝塔 43.139.27.93）
 
 | 端口 | 项目名 | 类型 | 域名 | 状态 |
 |------|--------|------|------|------|

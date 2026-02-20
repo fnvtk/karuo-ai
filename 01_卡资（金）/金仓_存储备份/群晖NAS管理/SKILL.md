@@ -193,6 +193,23 @@ ssh nas "/volume1/@appstore/ContainerManager/usr/bin/docker ps --format 'table {
 
 > **macOS noVNC 卡顿**：见 `references/noVNC_macOS_VM流畅度优化.md`。优先用优化 URL：`http://IP:8007/?qualityLevel=3&compressionLevel=6&resize=scale`
 
+#### macOS VM 导出到本机（打包下载到「下载」文件夹）
+
+将 NAS 上 Docker 里的 macOS 虚拟机数据打包、实时显示大小/用时、下载到当前 Mac 的「下载」文件夹，并生成使用说明（含在 Windows / Linux 上运行方式）。
+
+```bash
+# 内网（与 CKB NAS 同网时）
+/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/群晖NAS管理/scripts/export_macos_vm_to_downloads.sh
+
+# 外网（用 frp 穿透的 SSH）
+export NAS_HOST=open.quwanzhi.com NAS_PORT=22201
+/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/群晖NAS管理/scripts/export_macos_vm_to_downloads.sh
+```
+
+- 需要本机已安装 `sshpass`（`brew install sshpass`）。
+- 导出物：`~/Downloads/macos_vm_export_日期时间.tar.gz` + `~/Downloads/macos_vm_使用说明.md`。
+- 说明里含：在 Linux/NAS 上挂载运行、传到 Windows 的注意点（需 Linux 虚拟机或 WSL2 等）。
+
 #### docker-compose 示例 (Windows)
 
 ```yaml
@@ -452,9 +469,8 @@ API文档: http://192.168.1.201:8890/docs
 
 | 服务器 | IP | 用途 |
 |--------|-----|------|
-| 小型宝塔 | 42.194.232.22 | 通用项目 |
 | 存客宝 | 42.194.245.239 | 私域银行 |
-| kr宝塔 | 43.139.27.93 | 特殊项目 |
+| kr宝塔 | 43.139.27.93 | Node/网关 |
 
 ---
 
@@ -694,6 +710,7 @@ ssh nas "netstat -tlnp | grep 27017"
 | 脚本 | 功能 | 位置 | 快速运行 |
 |------|------|------|----------|
 | `time_machine_diskstation_auto.sh` | Time Machine → 家里 DiskStation 检测/验证，输出材料路径供按参考资料处理 | `./scripts/` | `./scripts/time_machine_diskstation_auto.sh` |
+| `export_macos_vm_to_downloads.sh` | CKB NAS 上 macOS VM 打包下载到本机「下载」文件夹，实时显示大小与用时，并生成使用说明 | `./scripts/` | 见下方「macOS VM 导出到本机」 |
 | `optimize_macos_vm_compose.sh` | 本机→NAS：macOS VM 流畅度优化 | `./scripts/` | 需本机与 NAS 同网 |
 | `optimize_macos_vm_on_nas.sh` | **NAS 上直接执行**：macOS VM 流畅度优化（外网推荐） | `./scripts/` | SSH 登录 NAS 后运行 |
 | `nas_status.sh` | 一键检查NAS状态（内存/磁盘/容器/端口） | `./scripts/` | `./scripts/nas_status.sh` |

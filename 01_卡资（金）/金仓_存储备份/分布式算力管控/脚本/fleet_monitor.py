@@ -11,7 +11,7 @@
 
 用法：
   python3 fleet_monitor.py --all          # 检查所有已知设备
-  python3 fleet_monitor.py --host 42.194.232.22  # 检查单个
+  python3 fleet_monitor.py --host 43.139.27.93  # 检查单个（kr宝塔）
   python3 fleet_monitor.py --quick        # 快速检查（只看容器状态）
 
 卡若账号：15880802661
@@ -30,11 +30,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 RED = "\033[91m"; GREEN = "\033[92m"; YELLOW = "\033[93m"
 BLUE = "\033[94m"; CYAN = "\033[96m"; NC = "\033[0m"
 
-# 已知设备列表
+# 已知设备列表（小型宝塔已下线）
 KNOWN_DEVICES = [
-    {"name": "小型宝塔", "ip": "42.194.232.22", "port": 22, "user": "root", "password": "Zhiqun1984"},
     {"name": "存客宝", "ip": "42.194.245.239", "port": 22, "user": "root", "password": "Zhiqun1984"},
-    {"name": "kr宝塔", "ip": "43.139.27.93", "port": 22, "user": "root", "password": "Zhiqun1984"},
+    {"name": "kr宝塔", "ip": "43.139.27.93", "port": 22022, "user": "root", "password": "Zhiqun1984"},
     {"name": "公司NAS(CKB)", "ip": "192.168.1.201", "port": 22, "user": "fnvtk", "password": ""},
     {"name": "家里NAS", "ip": "192.168.110.29", "port": 22, "user": "admin", "password": ""},
 ]

@@ -17,9 +17,10 @@ import os
 import subprocess
 import time
 
-# 默认服务器配置
+# 默认服务器配置（kr宝塔，Node 项目主力）
 默认配置 = {
-    "服务器IP": "42.194.232.22",
+    "服务器IP": "43.139.27.93",
+    "SSH端口": "22022",
     "SSH用户": "root",
     "SSH密码": "Zhiqun1984",
     "服务器根目录": "/www/wwwroot"
@@ -60,7 +61,7 @@ def 部署项目(项目名称: str, 本地路径: str):
     
     # 步骤2: 上传到服务器
     print("\n📤 步骤2: 上传到服务器...")
-    上传命令 = f"sshpass -p '{默认配置['SSH密码']}' scp -o StrictHostKeyChecking=no {压缩文件} {默认配置['SSH用户']}@{默认配置['服务器IP']}:/tmp/"
+    上传命令 = f"sshpass -p '{默认配置['SSH密码']}' scp -P {默认配置.get('SSH端口', 22)} -o StrictHostKeyChecking=no {压缩文件} {默认配置['SSH用户']}@{默认配置['服务器IP']}:/tmp/"
     code, _ = 执行命令(上传命令, False)
     if code != 0:
         print("❌ 上传失败")
@@ -70,7 +71,7 @@ def 部署项目(项目名称: str, 本地路径: str):
     # 步骤3-6: SSH远程执行
     print("\n🔧 步骤3-6: 服务器端操作...")
     
-    SSH前缀 = f"sshpass -p '{默认配置['SSH密码']}' ssh -o StrictHostKeyChecking=no {默认配置['SSH用户']}@{默认配置['服务器IP']}"
+    SSH前缀 = f"sshpass -p '{默认配置['SSH密码']}' ssh -p {默认配置.get('SSH端口', 22)} -o StrictHostKeyChecking=no {默认配置['SSH用户']}@{默认配置['服务器IP']}"
     
     # 清理旧文件
     清理命令 = f"{SSH前缀} 'cd {服务器路径} && rm -rf app components lib public styles *.json *.js *.ts *.mjs *.md .next 2>/dev/null || true'"
@@ -101,7 +102,7 @@ def 部署项目(项目名称: str, 本地路径: str):
     print("✅ 部署完成！")
     print(f"{'='*60}")
     print("\n⚠️  请在宝塔面板手动重启项目：")
-    print(f"   1. 登录 https://42.194.232.22:9988/ckbpanel")
+    print(f"   1. 登录 https://43.139.27.93:9988")
     print(f"   2. 进入【网站】→【Node项目】")
     print(f"   3. 找到 {项目名称}，点击【重启】")
     

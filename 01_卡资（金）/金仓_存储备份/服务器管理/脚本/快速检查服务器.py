@@ -17,12 +17,8 @@ import urllib3
 # 禁用SSL警告
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# 服务器配置
+# 服务器配置（小型宝塔已下线，仅存客宝、kr宝塔）
 服务器列表 = {
-    "小型宝塔": {
-        "面板地址": "https://42.194.232.22:9988",
-        "密钥": "hsAWqFSi0GOCrunhmYdkxy92tBXfqYjd"
-    },
     "存客宝": {
         "面板地址": "https://42.194.245.239:9988",
         "密钥": "TNKjqDv5N1QLOU20gcmGVgr82Z4mXzRi"
