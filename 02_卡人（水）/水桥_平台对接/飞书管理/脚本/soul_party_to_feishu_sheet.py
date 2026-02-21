@@ -35,8 +35,8 @@ ROWS = {
     '104': [ 'AI创业最赚钱一月分享', 140, 36221, 367, 7, 49, 0, 0, 11, 38 ],
     # 105场 2026-02-20：截图 138分钟/403进房/54最高在线/31关注/2礼物/24灵魂力，小助手 人均10min/互动170；推流截图中无填0
     '105': [ '创业社群AI培训6980 电竞私域', 138, 0, 403, 10, 170, 2, 24, 31, 54 ],
-    # 106场 2026-02-21：派对已关闭 135分钟/395进房/42最高在线/9关注/3礼物/24灵魂力/33312曝光，小助手 7人均/88互动
-    '106': [ '退伍军人低空经济 AI工作提效', 135, 33312, 395, 7, 88, 3, 24, 9, 42 ],
+    # 106场 2026-02-21：关闭页 135min/395进房/42最高/9关注/3礼物/24灵魂力/33312曝光，小助手 7人均/88互动
+    '106': [ '退伍军人低空经济 贴息8800', 135, 33312, 395, 7, 88, 3, 24, 9, 42 ],
 }
 # 场次→按日期列填写时的日期（表头为当月日期 1~31）
 SESSION_DATE_COLUMN = {'105': '20', '106': '21'}
@@ -211,10 +211,11 @@ def main():
     session = (sys.argv[1] if len(sys.argv) > 1 else '104').strip()
     row = ROWS.get(session)
     if not row:
-        print('❌ 未知场次，可用: 96, 97, 98, 99, 100, 103, 104, 105')
+        print('❌ 未知场次，可用: 96, 97, 98, 99, 100, 103, 104, 105, 106')
         sys.exit(1)
     token = load_token() or refresh_and_load_token()
     if not token:
+        print('❌ 无法获取飞书 Token，请先运行 auto_log.py 完成授权')
         sys.exit(1)
     raw = (row + [None] * EFFECT_COLS)[:EFFECT_COLS]
     values = [_to_cell_value(raw[0])] + [_to_cell_value(raw[i]) for i in range(1, EFFECT_COLS)]
@@ -222,6 +223,11 @@ def main():
     sheet_id = SHEET_ID
     range_read = f"{sheet_id}!A1:AG30"
     vals, read_code, read_body = read_sheet_range(token, spreadsheet_token, range_read)
+    # 401 时刷新 token 并重试读取，确保能定位到日期列
+    if (read_code == 401 or read_body.get('code') in (99991677, 99991663)) and not vals:
+        token = refresh_and_load_token()
+        if token:
+            vals, read_code, read_body = read_sheet_range(token, spreadsheet_token, range_read)
     # 优先按当天日期列填：表头第1行多为 2月、1、2、…、20、…（日期），105场 填在 2月20日 → 找列 "20"
     target_col_0based = None
     date_col = SESSION_DATE_COLUMN.get(session)
@@ -249,8 +255,7 @@ def main():
     def _maybe_send_group(sess, raw_vals):
         if sess not in ('105', '106'):
             return
-        day = SESSION_DATE_COLUMN.get(sess, '')
-        date_label = f'2月{day}日' if day else ''
+        date_label = {'105': '2月20日', '106': '2月21日'}.get(sess, sess + '场')
         lines = [
             '【Soul 派对运营报表】',
             f'链接：{OPERATION_REPORT_LINK}',
@@ -260,7 +265,8 @@ def main():
         for i, label in enumerate(LABELS_GROUP):
             val = raw_vals[i] if i < len(raw_vals) else ''
             lines.append(f'{label}：{val}')
-        lines.append(f'数据来源：soul 派对 {sess}场 202602{day}.txt')
+        src_date = {'105': '20260220', '106': '20260221'}.get(sess, '20260220')
+        lines.append(f'数据来源：soul 派对 {sess}场 {src_date}.txt')
         msg = '\n'.join(lines)
         ok, _ = send_feishu_group_message(FEISHU_GROUP_WEBHOOK, msg)
         if ok:
@@ -268,23 +274,35 @@ def main():
         else:
             print('⚠️ 飞书群推送失败（请检查 webhook）')
 
+    def _verify_write(spreadsheet_token, sheet_id, col_letter, values, token):
+        """写入后读回校验，确保写入成功"""
+        range_verify = f"{sheet_id}!{col_letter}3:{col_letter}{2 + len(values)}"
+        vvals, vcode, _ = read_sheet_range(token, spreadsheet_token, range_verify)
+        if not vvals or vcode != 200:
+            return False, '校验读取失败'
+        flat = [c for row in vvals for c in (row if isinstance(row, list) else [row])]
+        expect_first = values[0] if values else ''
+        got_first = str(flat[0]).strip() if flat else ''
+        if str(expect_first).strip() != got_first:
+            return False, f'校验不符：期望首格≈{str(expect_first)[:20]}，实际≈{got_first[:20]}'
+        return True, 'ok'
+
     if target_col_0based is not None:
         col_letter = _col_letter(target_col_0based)
         range_col = f"{sheet_id}!{col_letter}3:{col_letter}{2 + len(values)}"
         values_vertical = [[v] for v in values]
         code, body = update_sheet_range(token, spreadsheet_token, range_col, values_vertical)
-        if code == 200 and body.get('code') == 0:
-            print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter}3:{col_letter}{2+len(values)}，共{len(values)}格）')
-            _maybe_send_group(session, raw)
-            return
         if code == 401 or body.get('code') in (99991677, 99991663):
             token = refresh_and_load_token()
             if token:
                 code, body = update_sheet_range(token, spreadsheet_token, range_col, values_vertical)
-                if code == 200 and body.get('code') == 0:
-                    print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter}）')
-                    _maybe_send_group(session, raw)
-                    return
+        if code == 200 and body.get('code') == 0:
+            ok, msg = _verify_write(spreadsheet_token, sheet_id, col_letter, values, token)
+            if ok:
+                print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter}3:{col_letter}{2+len(values)}，共{len(values)}格），校验通过')
+                _maybe_send_group(session, raw)
+                return
+            print(f'⚠️ 写入成功但校验未通过：{msg}')
         err = body.get('code')
         if err == 90202 or (err and 'range' in str(body.get('msg', '')).lower()):
             all_ok = True
@@ -301,10 +319,18 @@ def main():
                         print('❌ 写入单元格失败:', one_cell, code, body)
                         break
             if all_ok:
-                print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter}3:{col_letter}{2+len(values)} 逐格）')
-                _maybe_send_group(session, raw)
-                return
-        print('❌ 按列更新失败:', code, body)
+                ok, msg = _verify_write(spreadsheet_token, sheet_id, col_letter, values, token)
+                if ok:
+                    print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter} 逐格），校验通过')
+                    _maybe_send_group(session, raw)
+                    return
+                print(f'⚠️ 逐格写入成功但校验未通过：{msg}')
+        else:
+            print('❌ 按列更新失败:', code, body)
+    # 有日期列配置但未找到列时，不降级为追加，直接失败
+    if date_col and target_col_0based is None:
+        print('❌ 未找到日期列，无法写入正确位置。请运行 python3 auto_log.py 刷新 Token 后重试。')
+        sys.exit(1)
     code, body = write_sheet_row(token, spreadsheet_token, sheet_id, values)
     if code == 200 and (body.get('code') == 0 or body.get('code') is None):
         print(f'✅ 已追加一行：{session}场 效果数据')

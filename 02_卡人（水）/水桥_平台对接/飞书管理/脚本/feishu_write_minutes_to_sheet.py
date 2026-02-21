@@ -4,9 +4,8 @@
 - 内部会议纪要：写在「内部会议纪要」这一行，按纪要上的日期（如 2月20日）填到该日期列。
 - 派对今日总结：写在「今日总结」这一行，按派对日期（如 2月19日）填到该日期列。
 不发飞书群。
-用法：
-  python3 feishu_write_minutes_to_sheet.py [内部会议图片路径] [派对总结图片路径]
-  python3 feishu_write_minutes_to_sheet.py --party-text 21 [纪要txt路径]   # 仅将派对智能纪要文本写入 2月21日 今日总结
+用法：python3 feishu_write_minutes_to_sheet.py [内部会议图片路径] [派对总结图片路径]
+  默认：内部会议 20260220-094434.jpg → 2月20日列，派对总结 20260220-094442.png → 2月19日列
 """
 import os
 import sys
@@ -109,20 +108,6 @@ def _resize_image_if_needed(path, max_bytes=MAX_IMAGE_BYTES):
         return data
 
 
-def update_cell_text(token, range_str, text, value_input_option='USER_ENTERED'):
-    """向单元格写入文本（支持换行）。"""
-    if range_str.count('!') == 1 and ':' not in range_str.split('!')[1]:
-        range_str = range_str + ':' + range_str.split('!')[1]
-    url = f'https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{WIKI_TOKEN}/values'
-    params = {'valueInputOption': value_input_option}
-    payload = {'valueRange': {'range': range_str, 'values': [[text]]}}
-    r = requests.put(url, params=params, headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}, json=payload, timeout=15)
-    try:
-        return r.status_code, r.json()
-    except Exception:
-        return r.status_code, {}
-
-
 def write_image_to_cell(token, range_str, image_path, name=None):
     """
     飞书 v2 写入图片到单元格：POST .../values_image，body 为 JSON，image 为整数数组（字节流）。
@@ -153,54 +138,6 @@ def write_image_to_cell(token, range_str, image_path, name=None):
 
 
 def main():
-    # 仅写入派对智能纪要到 2月21日 今日总结
-    if len(sys.argv) >= 4 and sys.argv[1] == '--party-text' and sys.argv[2] == '21':
-        summary_path = sys.argv[3].strip()
-        if not os.path.exists(summary_path):
-            print('❌ 纪要文件不存在:', summary_path)
-            sys.exit(1)
-        with open(summary_path, 'r', encoding='utf-8') as f:
-            summary_text = f.read().strip()
-        token = load_token() or refresh_token()
-        if not token:
-            print('❌ 无法获取飞书 Token')
-            sys.exit(1)
-        vals = read_range(token, f'{SHEET_ID}!A1:AG50')
-        if not vals or len(vals) < 2:
-            print('❌ 读取表格失败')
-            sys.exit(1)
-        header = vals[0]
-        col_21 = None
-        for idx, cell in enumerate(header):
-            if str(cell).strip() == '21':
-                col_21 = idx
-                break
-        row_party = None
-        for ri, row in enumerate(vals):
-            a1 = (row[0] if row and len(row) > 0 else '')
-            a1 = str(a1 or '').strip()
-            if '今日总结' in a1:
-                row_party = ri + 1
-                break
-        if col_21 is None or row_party is None:
-            print('❌ 未找到日期列 21 或「今日总结」行')
-            sys.exit(1)
-        range_cell = f'{SHEET_ID}!{_col_letter(col_21)}{row_party}'
-        code, body = update_cell_text(token, range_cell, summary_text)
-        if code == 200 and body.get('code') in (0, None):
-            print(f'✅ 已将派对智能纪要写入「今日总结」2月21日列（{range_cell}）')
-        else:
-            if code == 401 or body.get('code') in (99991677, 99991663):
-                token = refresh_token()
-                if token:
-                    code, body = update_cell_text(token, range_cell, summary_text)
-                    if code == 200 and body.get('code') in (0, None):
-                        print('✅ 已将派对智能纪要写入「今日总结」2月21日列')
-                        sys.exit(0)
-            print('❌ 写入纪要失败:', code, body)
-            sys.exit(1)
-        return
-
     image_internal = (sys.argv[1] if len(sys.argv) > 1 else DEFAULT_IMAGE_INTERNAL).strip()
     image_party = (sys.argv[2] if len(sys.argv) > 2 else DEFAULT_IMAGE_PARTY).strip()
 
