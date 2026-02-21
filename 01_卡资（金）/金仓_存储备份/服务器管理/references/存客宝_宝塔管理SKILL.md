@@ -25,6 +25,12 @@
 
 ---
 
+## 站点无法访问（ERR_CONNECTION_CLOSED）
+
+若 kr-kf.quwanzhi.com、lytiao.com 等无法打开：先查 **443 端口**。常见为腾讯云安全组未放行 443，或 Nginx 未监听 443。详见 `references/存客宝_站点无法访问_ERR_CONNECTION_CLOSED修复.md`。
+
+---
+
 ## 快速操作
 
 - **Node 项目**：若有 Node 项目，可参考 `references/宝塔Node项目管理_SKILL.md` 编写存客宝版批量修复脚本（PANEL、API_KEY 改为存客宝）
