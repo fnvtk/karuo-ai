@@ -87,9 +87,9 @@ python3 "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔
 # 方式一：SSH 管道执行（账号 ckb，密码 zhiqun1984，端口 22022）
 sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no ckb@43.139.27.93 'python3 -' < "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔_node项目批量修复.py"
 
-# 方式二：宝塔面板终端
-# 1. 将脚本上传到服务器 /root/ 或 /tmp/
-# 2. 在 宝塔面板 → 终端 执行：python3 /root/kr宝塔_node项目批量修复.py
+# 方式二：宝塔面板终端（SSH 不可用时）
+# 详见 references/宝塔面板终端_Node批量启动指南.md
+# 在 宝塔面板 → 终端 复制粘贴文档中的 cat > /tmp/... 整段命令执行即可
 ```
 
 **SSH 风控**：若出现 `Connection closed by remote host` 或 `Permission denied`，优先用 **宝塔面板 → 终端** 执行，减少 SSH 连接次数。
@@ -149,7 +149,17 @@ python3 "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔
 
 **处理**：优先用宝塔面板终端；或用 **ckb/zhiqun1984** 直连，端口 22022。
 
-### 4.6 宝塔与 PM2 冲突
+### 4.6 MODULE_NOT_FOUND（如 AITOUFA）
+
+**现象**：`Error: Cannot find module '/www/wwwroot/扩展/小工具/AITOUFA'`，Node 把项目根目录当入口执行。
+
+**原因**：启动命令配置错误，例如写成 `node /项目根目录` 而非 `node server.js` 或 `npm start`。
+
+**处理**：宝塔 **Node 项目 → 编辑该项目**，将启动命令改为：
+- Next.js：`cd /www/wwwroot/扩展/小工具/AITOUFA && npm run start` 或 `pnpm start`
+- 或正确的入口：`node server.js` / `node index.js`（在项目根目录执行）
+
+### 4.7 宝塔与 PM2 冲突
 
 **规则**：**一律用宝塔 Node 项目管理，禁用独立 PM2**。
 
