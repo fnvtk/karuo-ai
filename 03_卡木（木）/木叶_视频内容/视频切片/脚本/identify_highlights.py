@@ -19,6 +19,59 @@ MIN_DURATION = 45
 MAX_DURATION = 150
 
 
+def parse_srt_segments(srt_path: str) -> list:
+    """解析 SRT 为 [{start, end, text}, ...]"""
+    with open(srt_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    segments = []
+    pattern = r"(\d+)\n(\d{2}):(\d{2}):(\d{2}),(\d{3}) --> (\d{2}):(\d{2}):(\d{2}),(\d{3})\n(.*?)(?=\n\n|\Z)"
+    for m in re.findall(pattern, content, re.DOTALL):
+        sh, sm, ss = int(m[1]), int(m[2]), int(m[3])
+        eh, em, es = int(m[5]), int(m[6]), int(m[7])
+        start_sec = sh * 3600 + sm * 60 + ss
+        end_sec = eh * 3600 + em * 60 + es
+        text = m[9].strip().replace("\n", " ")
+        if len(text) > 3:
+            segments.append({
+                "start_sec": start_sec, "end_sec": end_sec,
+                "start_time": f"{sh:02d}:{sm:02d}:{ss:02d}",
+                "end_time": f"{eh:02d}:{em:02d}:{es:02d}",
+                "text": text,
+            })
+    return segments
+
+
+def fallback_highlights(transcript_path: str, clip_count: int) -> list:
+    """规则备用：按时长均匀切分，取每段首句为 Hook"""
+    segments = parse_srt_segments(transcript_path)
+    if not segments:
+        return []
+    total = segments[-1]["end_sec"] if segments else 0
+    interval = max(60, total / (clip_count + 1))
+    result = []
+    for i in range(clip_count):
+        start_sec = int(interval * (i + 0.2))
+        end_sec = min(int(start_sec + 90), int(total - 5))
+        if end_sec <= start_sec + 30:
+            continue
+        # 找该时间段内的字幕
+        texts = [s["text"] for s in segments if s["end_sec"] >= start_sec and s["start_sec"] <= end_sec]
+        excerpt = (texts[0][:50] + "..." if texts and len(texts[0]) > 50 else (texts[0] if texts else ""))
+        hook = (excerpt[:15] + "..." if len(excerpt) > 15 else excerpt) or f"精彩片段{i+1}"
+        h, m, s = start_sec // 3600, (start_sec % 3600) // 60, start_sec % 60
+        eh, em, es = end_sec // 3600, (end_sec % 3600) // 60, end_sec % 60
+        result.append({
+            "title": hook[:20],
+            "start_time": f"{h:02d}:{m:02d}:{s:02d}",
+            "end_time": f"{eh:02d}:{em:02d}:{es:02d}",
+            "hook_3sec": hook,
+            "cta_ending": DEFAULT_CTA,
+            "transcript_excerpt": excerpt,
+            "reason": "按时间均匀切分",
+        })
+    return result
+
+
 def srt_to_timestamped_text(srt_path: str) -> str:
     """将 SRT 转为带时间戳的纯文本"""
     with open(srt_path, "r", encoding="utf-8") as f:
@@ -36,8 +89,7 @@ def call_gemini(transcript: str, clip_count: int = CLIP_COUNT) -> str:
     """调用 Gemini 分析并返回 JSON（REST API，无额外依赖）"""
     import urllib.request
     import urllib.error
-    # gemini-pro 兼容性最好
-url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_KEY}"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_KEY}"
     prompt = f"""你是一个专业的短视频内容策划师，擅长从长视频中找出最有传播力的片段。
 
 分析以下视频文字稿，找出 {clip_count} 个最适合做短视频的「高光片段」。
@@ -81,12 +133,10 @@ url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:gener
             data = json.loads(r.read().decode())
     except urllib.error.HTTPError as e:
         err_body = e.read().decode() if e.fp else ""
-        print(f"Gemini API 错误: {e.code} {err_body[:500]}", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError(f"Gemini API 错误: {e.code} {err_body[:300]}")
     candidates = data.get("candidates", [])
     if not candidates:
-        print("Gemini 未返回内容", file=sys.stderr)
-        sys.exit(1)
+        raise RuntimeError("Gemini 未返回内容")
     text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
@@ -108,14 +158,17 @@ def main():
     if len(text) < 100:
         print("❌ 文字稿过短，请检查 SRT 格式", file=sys.stderr)
         sys.exit(1)
-    print("正在调用 Gemini 分析高光片段...")
-    raw = call_gemini(text, args.clips)
+    # 尝试 Gemini，失败则用规则备用
+    data = None
     try:
+        print("正在调用 Gemini 分析高光片段...")
+        raw = call_gemini(text, args.clips)
         data = json.loads(raw)
-    except json.JSONDecodeError as e:
-        print(f"JSON 解析失败: {e}", file=sys.stderr)
-        print("原始输出:", raw[:500], file=sys.stderr)
-        sys.exit(1)
+    except Exception as e:
+        print(f"Gemini 调用失败 ({e})，使用规则备用切分", file=sys.stderr)
+        data = fallback_highlights(str(transcript_path), args.clips)
+    if not data:
+        data = fallback_highlights(str(transcript_path), args.clips)
     if not isinstance(data, list):
         data = [data]
     out_path = Path(args.output)

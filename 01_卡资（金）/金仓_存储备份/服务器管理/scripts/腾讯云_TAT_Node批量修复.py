@@ -79,16 +79,23 @@ def ports(it):
     return sorted(set(ps))
 items = post("/project/nodejs/get_project_list").get("data") or post("/project/nodejs/get_project_list").get("list") or []
 for it in items:
-    name = it.get("name")
-    if not name or it.get("run") is True: continue
-    for port in ports(it):
-        for pid in pids(port): subprocess.call("kill -9 %s" % pid, shell=True)
-    pf = "/www/server/nodejs/vhost/pids/%s.pid" % name
-    if os.path.exists(pf): open(pf,"w").write("0")
-    post("/project/nodejs/stop_project", {"project_name": name})
-    r = post("/project/nodejs/start_project", {"project_name": name})
-    ok = r.get("status") is True or "成功" in str(r.get("msg",""))
-    print("%s: %s" % (name, "OK" if ok else "FAIL"))
+    try:
+        name = it.get("name")
+        if not name or it.get("run") is True: continue
+        for port in ports(it):
+            for pid in pids(port):
+                try: subprocess.call("kill -9 %s" % pid, shell=True)
+                except: pass
+        pf = "/www/server/nodejs/vhost/pids/%s.pid" % name
+        if os.path.exists(pf):
+            try: open(pf,"w").write("0")
+            except: pass
+        post("/project/nodejs/stop_project", {"project_name": name})
+        r = post("/project/nodejs/start_project", {"project_name": name})
+        ok = r.get("status") is True or "成功" in str(r.get("msg",""))
+        print("%s: %s" % (name, "OK" if ok else "FAIL"))
+    except Exception as e:
+        print("%s: ERR %s" % (name, str(e)[:80]))
     time.sleep(1)
 time.sleep(4)
 items2 = post("/project/nodejs/get_project_list").get("data") or []

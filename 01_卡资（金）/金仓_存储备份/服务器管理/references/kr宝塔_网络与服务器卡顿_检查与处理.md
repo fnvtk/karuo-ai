@@ -186,7 +186,19 @@ limit_rate 500k;               # 单连接限速 500KB/s，可按需改
 
 **带宽占比**：当前瞬时连接数较少时，无法单次采样得到稳定占比。请在服务器上运行 **6.4 的脚本** 或执行 `nethogs -t` 采样 10～30 秒，即可得到各进程的实时带宽占比（KB/s 或 %）。
 
-### 6.6 502 Bad Gateway 修复（含 soul.quwanzhi.com/admin）
+### 6.6 502 Bad Gateway 修复（含 soul、wzdj、word）
+
+**Node 项目 502**（如 wzdj.quwanzhi.com、word.quwanzhi.com）：
+
+```bash
+# 本机执行，免 SSH
+./01_卡资（金）/金仓_存储备份/服务器管理/scripts/.venv_tx/bin/python \
+  "01_卡资（金）/金仓_存储备份/服务器管理/scripts/腾讯云_TAT_修复502_Node项目.py" wzdj word
+```
+
+若 word 仍 502，在宝塔 **Node 项目** 中查看 word 的启动日志，可能是 MODULE_NOT_FOUND 或 Node 版本不匹配，按 `references/Node项目未启动_MODULE_NOT_FOUND修复指南.md` 修正启动命令。
+
+**含 soul 的 502**：
 
 **原因**：Nginx 能通，但上游（Node/后端）无响应或挂掉，导致 502。
 

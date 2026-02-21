@@ -146,9 +146,9 @@ def main():
         timeout=300,
     )
 
-    # 4. 增强（封面 + Hook + CTA）
+    # 4. 增强（封面 + Hook + CTA）；若 FFmpeg 无 drawtext 则直接复制切片
     enhanced_dir.mkdir(parents=True, exist_ok=True)
-    run(
+    ok = run(
         [
             sys.executable,
             str(SCRIPT_DIR / "enhance_clips.py"),
@@ -161,7 +161,14 @@ def main():
         ],
         "增强处理（Hook+CTA）",
         timeout=600,
+        check=False,
     )
+    import shutil
+    enhanced_count = len(list(enhanced_dir.glob("*.mp4")))
+    if enhanced_count == 0 and clips_list:
+        print("  （FFmpeg 无 drawtext 滤镜，复制原始切片到 clips_enhanced）")
+        for f in sorted(clips_dir.glob("*.mp4")):
+            shutil.copy(f, enhanced_dir / f.name)
 
     print()
     print("=" * 60)

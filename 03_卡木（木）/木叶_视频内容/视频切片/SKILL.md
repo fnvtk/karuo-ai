@@ -20,17 +20,32 @@ updated: "2026-02-16"
 
 ### 一键命令（Soul派对专用）
 
+#### 一体化流水线（推荐）
+
+```bash
+cd 03_卡木（木）/木叶_视频内容/视频切片/脚本
+conda activate mlx-whisper
+python3 soul_slice_pipeline.py --video "/path/to/soul派对会议第57场.mp4" --clips 6
+```
+
+流程：**转录 → 高光识别(AI/规则) → 批量切片 → 增强(Hook+CTA)**
+
+#### 分步命令
+
 ```bash
 # 1. 转录（MLX Whisper，约3分钟/2.5小时视频）
 eval "$(~/miniforge3/bin/conda shell.zsh hook)"
 conda activate mlx-whisper
 mlx_whisper audio.wav --model mlx-community/whisper-small-mlx --language zh --output-format all
 
-# 2. 切片（生成原始切片）
-python3 batch_clip.py
+# 2. 高光识别（Gemini AI，失败时自动用规则切分）
+python3 identify_highlights.py -t transcript.srt -o highlights.json -n 6
 
-# 3. 增强处理（封面+字幕+加速+去语气词）
-python3 enhance_clips.py
+# 3. 切片
+python3 batch_clip.py -i 视频.mp4 -l highlights.json -o clips/
+
+# 4. 增强处理（Hook+CTA 封面文字）
+python3 enhance_clips.py -c clips/ -l highlights.json -o clips_enhanced/
 ```
 
 ### 增强功能说明
