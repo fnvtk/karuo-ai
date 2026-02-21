@@ -26,7 +26,7 @@ updated: "2026-02-16"
 
 ### 凭证速查
 
-**⚠️ 强制规则**：三台宝塔（小型/存客宝/kr宝塔）SSH 统一用 **端口 22022**、**账号 root**、**密码 zhiqun1984**（小写）。每次连接必须用 `-p 22022`，勿连 22。
+**⚠️ 强制规则**：三台宝塔 SSH 统一用 **端口 22022**、**账号 ckb**、**密码 zhiqun1984**（小写）。每次直接以此连接，无需密钥。
 
 ```bash
 # 本机 Docker 宝塔（本地）
@@ -36,8 +36,8 @@ updated: "2026-02-16"
 # 启动: bash 01_卡资（金）/金仓_存储备份/服务器管理/scripts/本机Docker宝塔_启动.sh
 # 数据目录: ~/baota_docker_data/（website_data、mysql_data、vhost）
 
-# SSH 连接（三台宝塔统一：端口 22022，密码 zhiqun1984）
-sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no root@<IP>
+# SSH 连接（三台宝塔统一：端口 22022，账号 ckb，密码 zhiqun1984）
+sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no ckb@<IP>
 # 存客宝: 42.194.245.239
 # kr宝塔: 43.139.27.93
 # 小型宝塔: 42.194.232.22（若 22 可用则可用 22，否则试 22022）
@@ -53,7 +53,7 @@ kr宝塔: qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT
 
 ### 强制规则（每次执行必守）
 
-1. **SSH 统一配置**：三台宝塔一律用端口 **22022**、账号 **root**、密码 **zhiqun1984**；每次连接必须带 `-p 22022`，不要用 22。
+1. **SSH 统一配置**：三台宝塔一律用端口 **22022**、账号 **ckb**、密码 **zhiqun1984**；直接连接，无需密钥。
 2. **经验沉淀**：每次涉及服务器/宝塔/部署的操作结束后，必须把经验写入 `02_卡人（水）/水溪_整理归档/经验库/待沉淀/`，防止同类问题重复出现。
 3. **Skill 迭代**：每次有新的配置、教训、流程变更时，必须同步更新本 SKILL.md 或 references，保证下次调用时信息一致。
 4. **卡若AI 复盘**：每次任务结束必须用卡若AI 复盘格式收尾（目标·结果·达成率、过程、反思、总结、下一步）。
@@ -117,8 +117,8 @@ python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储
 脚本 `scripts/kr宝塔_node项目批量修复.py` 须在**服务器内**执行：
 
 ```bash
-# SSH 管道（若认证可用）
-sshpass -p 'zhiqun1984' ssh -p 22022 root@43.139.27.93 'python3 -' < "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔_node项目批量修复.py"
+# SSH 管道（账号 ckb，密码 zhiqun1984）
+sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no ckb@43.139.27.93 'python3 -' < "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔_node项目批量修复.py"
 ```
 
 SSH 风控时，在 **kr宝塔 宝塔面板 → 终端** 上传脚本后执行。详见 `references/宝塔Node项目管理_SKILL.md`。

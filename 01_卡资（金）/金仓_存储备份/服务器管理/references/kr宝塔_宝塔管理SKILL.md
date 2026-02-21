@@ -10,9 +10,8 @@
 |------|-----|
 | IP | 43.139.27.93 |
 | SSH 端口 | 22022 |
-| SSH 账号 | root |
+| SSH 账号 | ckb |
 | SSH 密码 | zhiqun1984 |
-| SSH 密钥 | `/Users/karuo/Documents/开发/4、小工具/服务器管理/Steam/id_ed25519`（私钥 chmod 600） |
 | 宝塔面板 | https://43.139.27.93:9988 |
 | 面板账号 | ckb |
 | 面板密码 | zhiqun1984 |
@@ -26,7 +25,7 @@
 
 脚本 `scripts/kr宝塔_node项目批量修复.py` 须在**服务器内**执行（调用 127.0.0.1:9988）。
 
-- **SSH**（低频）：`sshpass -p 'zhiqun1984' ssh -p 22022 root@43.139.27.93 'python3 -' < scripts/kr宝塔_node项目批量修复.py`
+- **SSH**：`sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no ckb@43.139.27.93 'python3 -' < scripts/kr宝塔_node项目批量修复.py`
 - **宝塔面板终端**：上传脚本后 `python3 /路径/kr宝塔_node项目批量修复.py`
 
 ### 502 修复（soul 等）

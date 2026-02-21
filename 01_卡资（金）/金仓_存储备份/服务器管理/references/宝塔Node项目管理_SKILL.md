@@ -10,18 +10,17 @@
 
 | 服务器 | IP | SSH 端口 | 账号 | 密码 | 备注 |
 |--------|-----|----------|------|------|------|
-| kr宝塔 | 43.139.27.93 | 22022 | root | zhiqun1984 | 若密码失败，改用密钥：`服务器管理/Steam/id_ed25519` |
-| 存客宝 | 42.194.245.239 | 22022 | root | zhiqun1984 | - |
+| kr宝塔 | 43.139.27.93 | 22022 | ckb | zhiqun1984 | 统一用 ckb 账号密码直连 |
+| 存客宝 | 42.194.245.239 | 22022 | ckb | zhiqun1984 | - |
 | 本机 Docker 宝塔 | 127.0.0.1 | 22 | - | - | 本地 Docker 容器 |
 
-**SSH 连接示例**：
+**SSH 连接示例**（统一用 ckb 账号密码，无需密钥）：
 
 ```bash
-# 密码方式
-sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no root@43.139.27.93
+sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no ckb@43.139.27.93
 
-# kr宝塔 密钥方式（私钥需 chmod 600）
-ssh -p 22022 -i "/Users/karuo/Documents/开发/4、小工具/服务器管理/Steam/id_ed25519" root@43.139.27.93
+# 存客宝
+sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no ckb@42.194.245.239
 ```
 
 ### 1.2 宝塔面板登录
@@ -85,8 +84,8 @@ python3 "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔
 **执行**：必须在 **kr宝塔 服务器内** 执行（本地无法直连 127.0.0.1:9988）。
 
 ```bash
-# 方式一：SSH 管道执行（低频，避免风控）
-sshpass -p 'zhiqun1984' ssh -p 22022 root@43.139.27.93 'python3 -' < "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔_node项目批量修复.py"
+# 方式一：SSH 管道执行（账号 ckb，密码 zhiqun1984，端口 22022）
+sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no ckb@43.139.27.93 'python3 -' < "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔_node项目批量修复.py"
 
 # 方式二：宝塔面板终端
 # 1. 将脚本上传到服务器 /root/ 或 /tmp/
@@ -148,12 +147,7 @@ python3 "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔
 
 **原因**：频繁 SSH 或异常登录触发风控。
 
-**处理**：
-
-1. **优先用宝塔面板终端**：在面板内执行命令，不依赖 SSH
-2. 降低 SSH 频率，一次连接完成多项操作
-3. 若用密钥，确保 `chmod 600` 私钥
-4. kr宝塔 密钥路径：`/Users/karuo/Documents/开发/4、小工具/服务器管理/Steam/id_ed25519`
+**处理**：优先用宝塔面板终端；或用 **ckb/zhiqun1984** 直连，端口 22022。
 
 ### 4.6 宝塔与 PM2 冲突
 
