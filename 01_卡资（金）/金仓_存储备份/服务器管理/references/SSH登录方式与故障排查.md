@@ -173,6 +173,16 @@ fail2ban-client set ssh-iptables unbanip 你的公网IP
 
 ---
 
+## 七.5 域名无法访问（lkdie / lytiao）
+
+当 lkdie.com、lytiao.com 出现 502 或 ERR_CONNECTION_CLOSED 时，详见：
+
+`references/宝塔_域名无法访问_lkdie_lytiao_诊断与修复.md`
+
+简要：在宝塔面板终端执行 `nginx -t && nginx -s reload`；www.lytiao.com 需在面板新增站点或添加 redirect 配置。
+
+---
+
 ## 八、存客宝 SSH 修复（Permission denied 时）
 
 存客宝若密码/密钥均 Permission denied，需在**存客宝宝塔面板 → 终端**执行修复：
