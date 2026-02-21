@@ -35,9 +35,11 @@ ROWS = {
     '104': [ 'AI创业最赚钱一月分享', 140, 36221, 367, 7, 49, 0, 0, 11, 38 ],
     # 105场 2026-02-20：截图 138分钟/403进房/54最高在线/31关注/2礼物/24灵魂力，小助手 人均10min/互动170；推流截图中无填0
     '105': [ '创业社群AI培训6980 电竞私域', 138, 0, 403, 10, 170, 2, 24, 31, 54 ],
+    # 106场 2026-02-21：派对已关闭 135分钟/395进房/42最高在线/9关注/3礼物/24灵魂力/33312曝光，小助手 7人均/88互动
+    '106': [ '退伍军人低空经济 AI工作提效', 135, 33312, 395, 7, 88, 3, 24, 9, 42 ],
 }
-# 场次→按日期列填写时的日期（表头为当月日期 1~31），如 105场 对应 2月20日 → 列名 "20"
-SESSION_DATE_COLUMN = {'105': '20'}  # 105场 填在 2月20日 列下
+# 场次→按日期列填写时的日期（表头为当月日期 1~31）
+SESSION_DATE_COLUMN = {'105': '20', '106': '21'}
 
 
 def load_token():
@@ -245,18 +247,20 @@ def main():
     LABELS_GROUP = ['主题', '时长（分钟）', 'Soul推流人数', '进房人数', '人均时长（分钟）', '互动数量', '礼物', '灵魂力', '增加关注', '最高在线']
 
     def _maybe_send_group(sess, raw_vals):
-        if sess != '105':
+        if sess not in ('105', '106'):
             return
+        day = SESSION_DATE_COLUMN.get(sess, '')
+        date_label = f'2月{day}日' if day else ''
         lines = [
             '【Soul 派对运营报表】',
             f'链接：{OPERATION_REPORT_LINK}',
             '',
-            '105场（2月20日）已登记：',
+            f'{sess}场（{date_label}）已登记：',
         ]
         for i, label in enumerate(LABELS_GROUP):
             val = raw_vals[i] if i < len(raw_vals) else ''
             lines.append(f'{label}：{val}')
-        lines.append('数据来源：soul 派对 105场 20260220.txt')
+        lines.append(f'数据来源：soul 派对 {sess}场 202602{day}.txt')
         msg = '\n'.join(lines)
         ok, _ = send_feishu_group_message(FEISHU_GROUP_WEBHOOK, msg)
         if ok:

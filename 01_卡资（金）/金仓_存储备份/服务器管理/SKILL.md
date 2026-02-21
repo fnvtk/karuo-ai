@@ -109,6 +109,7 @@ python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储
 - **SSH**：`ssh -p 22022 -i "服务器管理项目/Steam/id_ed25519" root@43.139.27.93`（私钥须 `chmod 600`）
 - 本机快速检查：`ping 43.139.27.93`、`nc -zv 43.139.27.93 22022`
 - 服务器内诊断与限流：在 **宝塔面板终端** 执行文档「六」中 6.1～6.3 命令（连接数、按 IP 统计、Nginx 限速）。
+- **502 修复（如 soul.quwanzhi.com/admin）**：API 方式运行 `scripts/kr宝塔_宝塔API_修复502.py`（需 API 白名单）；或到 kr宝塔 **宝塔面板 → 终端** 执行 `nginx -t && nginx -s reload` 后，在「Node 项目」中重启 soul 相关项目。详见文档 6.6。
 
 ### 5. 常用诊断命令（kr宝塔等）
 
