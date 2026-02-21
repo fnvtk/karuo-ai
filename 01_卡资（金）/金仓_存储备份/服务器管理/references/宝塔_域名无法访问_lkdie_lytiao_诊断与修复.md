@@ -108,7 +108,14 @@ openssl x509 -in /www/server/panel/vhost/cert/www.lkdie.com/fullchain.pem -noout
 
 | 脚本/文档 | 用途 |
 |-----------|------|
-| `scripts/kr宝塔_SSH登录.sh` | 远程执行命令（SSH 可用时） |
+| **`scripts/腾讯云_TAT_修复lkdie_lytiao.py`** | **免 SSH 一键修复**（腾讯云 TAT，推荐） |
+| `scripts/宝塔_修复lkdie_lytiao_终端执行.sh` | 宝塔面板 → 终端 复制粘贴执行 |
 | `scripts/kr宝塔_宝塔API_修复502.py` | 通过宝塔 API 重启 Nginx（需 API 白名单） |
 | `references/SSH登录方式与故障排查.md` | SSH 登录与 fail2ban 解封 |
-| `references/kr宝塔_网络与服务器卡顿_检查与处理.md` | 502 修复、带宽排查 |
+
+**一键修复命令**（本机执行）：
+```bash
+cd "/Users/karuo/Documents/个人/卡若AI"
+./01_卡资（金）/金仓_存储备份/服务器管理/scripts/.venv_tx/bin/python \
+  "01_卡资（金）/金仓_存储备份/服务器管理/scripts/腾讯云_TAT_修复lkdie_lytiao.py"
+```
