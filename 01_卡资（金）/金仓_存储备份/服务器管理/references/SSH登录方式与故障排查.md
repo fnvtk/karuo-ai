@@ -77,7 +77,21 @@ Host kr-baota
 
 ---
 
-## 四、终极备选：宝塔面板终端
+## 四、防封禁·一次配置永久有效
+
+**核心**：将本机 IP 加入 fail2ban 白名单，今后连接不再触发封禁。
+
+| 方式 | 何时用 | 命令 |
+|------|--------|------|
+| **A. SSH 可用时** | 能连上后立刻做 | `bash scripts/宝塔_永久白名单fail2ban_终端执行.sh 140.245.37.56`（IP 换成你的） |
+| **B. 腾讯云重启** | SSH 完全不通时 | `python3 scripts/腾讯云_宝塔服务器重启.py`（重启清空封禁，等 2～3 分钟再连） |
+| **C. 宝塔终端** | 重启后仍不通 | 登录面板 → 终端 → 粘贴执行 `scripts/宝塔_永久白名单fail2ban_终端执行.sh` 内容 |
+
+建议：重启解封后，**第一时间**执行 A 或 C，将当前 IP 加入白名单。
+
+---
+
+## 五、终极备选：宝塔面板终端
 
 **无需 SSH**，在浏览器中完成操作：
 
@@ -104,7 +118,19 @@ bash "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔_SS
   "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔_node项目批量修复.py"
 ```
 
-## 六、IP 封禁处理（多方案 + 优化命令）
+## 七、IP 封禁处理（多方案 + 优化命令）
+
+### 6.0 腾讯云 TAT 解封（免 SSH 顶配）
+
+用腾讯云 SecretId/SecretKey 在 kr宝塔 上执行解封 + Node 批量启动，**无需 SSH**。
+
+```bash
+cd "/Users/karuo/Documents/个人/卡若AI"
+./01_卡资（金）/金仓_存储备份/服务器管理/scripts/.venv_tx/bin/python \
+  "01_卡资（金）/金仓_存储备份/服务器管理/scripts/腾讯云_TAT_解封SSH并批量启动Node.py" 211.156.92.72
+```
+
+凭证从 `00_账号与API索引.md` 读取。将 `211.156.92.72` 换成你的公网 IP。依赖：`pip install tencentcloud-sdk-python-tat`。
 
 ### 6.1 腾讯云 API 重启（解除 fail2ban 内存封禁）
 
@@ -114,9 +140,20 @@ bash "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔_SS
 python3 "01_卡资（金）/金仓_存储备份/服务器管理/scripts/腾讯云_宝塔服务器重启.py"
 ```
 
-### 6.2 宝塔终端解封（SSH 不可用时用面板终端）
+### 6.2 永久白名单（防今后再封）
 
-在**宝塔面板 → 终端**粘贴执行。将 `你的公网IP` 替换为本机公网 IP（如 211.156.92.72，可从 https://ip.sb 或本机 `curl ifconfig.me` 获取）：
+SSH 恢复后**务必执行**，将本机 IP 加入 ignoreip：
+
+```bash
+# 本机执行（需先 SSH 通）
+sshpass -p 'Zhiqun1984' ssh -p 22022 root@43.139.27.93 'bash -s' < scripts/宝塔_永久白名单fail2ban_终端执行.sh 140.245.37.56
+```
+
+或在宝塔面板 → 终端，复制 `scripts/宝塔_永久白名单fail2ban_终端执行.sh` 内容执行，参数传你的公网 IP。
+
+### 6.3 宝塔终端解封（SSH 不可用时用面板终端）
+
+在**宝塔面板 → 终端**粘贴执行。将 `你的公网IP` 替换为本机公网 IP（如 140.245.37.56，可从 https://ip.sb 或本机 `curl ifconfig.me` 获取）：
 
 **优化单行（同时解封 sshd + ssh-iptables）：**
 
@@ -136,7 +173,7 @@ fail2ban-client set ssh-iptables unbanip 你的公网IP
 
 ---
 
-## 七、存客宝 SSH 修复（Permission denied 时）
+## 八、存客宝 SSH 修复（Permission denied 时）
 
 存客宝若密码/密钥均 Permission denied，需在**存客宝宝塔面板 → 终端**执行修复：
 

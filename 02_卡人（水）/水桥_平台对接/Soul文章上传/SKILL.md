@@ -131,12 +131,24 @@ pip3 install pymysql
 - 小程序内容来源：腾讯云 MySQL `soul_miniprogram.chapters`
 - content_upload 直连数据库，与 API 共用同一数据源
 
-### 5. 工作流建议
+### 5. 发海报到飞书
+
+上传成功后自动生成海报图片（含小程序码）并发送到飞书群，**不发链接**，直接发图。
+
+- 海报格式与小程序「生成海报」一致：Soul创业派对、标题、金句、日期、小程序码
+- 小程序码由 Soul 后端 `/api/miniprogram/qrcode` 生成
+- 需配置：`scripts/.env.feishu` 或环境变量 `FEISHU_APP_ID`、`FEISHU_APP_SECRET`（与 webhook 同租户）
+- 依赖：`pip install Pillow requests`
+
+手动发：`python3 scripts/send_poster_to_feishu.py "<文章路径>"` 或 `--id 9.15`
+仅保存本地：`python3 scripts/send_poster_to_feishu.py "<路径>" --save poster.png`
+
+### 6. 工作流建议
 
 1. 根据 Soul 派对 TXT 写好文章（按书格式：一句一行、金句开头、日期、`---` 分段）
 2. 保存为 `9.xx 第X场｜主题.md` 到第9章目录
 3. 执行 `upload_soul_article.sh "<文章路径>"`
-4. 检查返回为「创建」或「更新」即完成
+4. 检查返回为「创建」或「更新」，海报会自动发到飞书群
 
 ---
 

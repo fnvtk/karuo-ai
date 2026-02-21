@@ -101,11 +101,23 @@ print("RUN:", run_c, "STOP:", len(items2)-run_c)
 '''.encode()).decode()
 
 def build_shell(unban_ip: str) -> str:
+    # 白名单：默认 + 当前 IP + 常见办公 IP，防止多网络环境
+    allow_ips = "127.0.0.1/8 ::1 " + unban_ip + " 211.156.92.72 140.245.37.56"
+    allow_ips = " ".join(dict.fromkeys(allow_ips.split()))  # 去重
     return f'''#!/bin/bash
 set -e
-echo "=== 1. 解封 fail2ban SSH (unbanip {unban_ip}) ==="
-fail2ban-client set sshd unbanip {unban_ip} 2>/dev/null || echo "  (fail2ban 未启用或已解封)"
-echo "=== 2. Node 批量启动 ==="
+IP="{unban_ip}"
+echo "=== 1. 永久白名单：将 $IP 等加入 fail2ban（今后不再封禁）==="
+mkdir -p /etc/fail2ban/jail.d
+echo -e "[DEFAULT]\\nignoreip = {allow_ips}" > /etc/fail2ban/jail.d/99-allow-ckb-ip.conf
+echo "  已写入 99-allow-ckb-ip.conf"
+echo "=== 2. 重启 fail2ban 并立即解封 $IP ==="
+systemctl restart fail2ban 2>/dev/null || service fail2ban restart 2>/dev/null || true
+sleep 2
+fail2ban-client set sshd unbanip "$IP" 2>/dev/null || true
+fail2ban-client set ssh-iptables unbanip "$IP" 2>/dev/null || true
+echo "  已解封 $IP"
+echo "=== 3. Node 批量启动 ==="
 echo "{NODE_FIX_B64}" | base64 -d | python3 -
 echo "=== 完成 ==="
 '''
