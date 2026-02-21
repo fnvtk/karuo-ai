@@ -26,21 +26,19 @@ updated: "2026-02-16"
 
 ### 凭证速查
 
-**⚠️ 强制规则**：三台宝塔 SSH 统一用 **端口 22022**、**账号 ckb**、**密码 zhiqun1984**（小写）。每次直接以此连接，无需密钥。
+**⚠️ 强制规则**：SSH 用 **root**、密码 **Zhiqun1984**（Z 大写），端口 22022 或 22。ckb 仅为面板账号。
 
 ```bash
 # 本机 Docker 宝塔（本地）
 地址: http://127.0.0.1:8888/btpanel
 账号: ckb
 密码: zhiqun1984
-# 启动: bash 01_卡资（金）/金仓_存储备份/服务器管理/scripts/本机Docker宝塔_启动.sh
-# 数据目录: ~/baota_docker_data/（website_data、mysql_data、vhost）
 
-# SSH 连接（三台宝塔统一：端口 22022，账号 ckb，密码 zhiqun1984）
-sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no ckb@<IP>
-# 存客宝: 42.194.245.239
-# kr宝塔: 43.139.27.93
-# 小型宝塔: 42.194.232.22（若 22 可用则可用 22，否则试 22022）
+# SSH（root + Zhiqun1984 或密钥）
+sshpass -p 'Zhiqun1984' ssh -p 22022 -o PubkeyAuthentication=no root@<IP>
+# 或密钥: ssh -p 22022 -i "服务器管理/Steam/id_ed25519" root@43.139.27.93
+# 多方式封装: bash scripts/kr宝塔_SSH登录.sh "命令"
+# 存客宝: 42.194.245.239 | kr宝塔: 43.139.27.93
 
 # 宝塔面板登录（三台统一）
 账号: ckb
@@ -76,6 +74,15 @@ kr宝塔: qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT
 # 运行快速检查脚本（需各服务器 API 白名单含本机 IP）
 python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/服务器管理/脚本/快速检查服务器.py"
 ```
+
+### 1.1 磁盘臃肿 · 全方位检查与清理（SSH/API 不可用时）
+
+当 SSH 或宝塔 API 无法远程连接时，在**宝塔面板 → 终端**执行：
+
+- **脚本**：`运营中枢/工作台/宝塔_全方位检查与磁盘清理_一键脚本.sh`
+- **操作指南**：`运营中枢/工作台/宝塔_服务器检查与清理_操作指南.md`
+
+脚本会：检查负载/内存/磁盘、分析大目录与日志占用、执行 8 步清理（journalctl、apt、/tmp、网站日志、宝塔日志等）、输出清理前后 df 对比。完成后到面板【文件】→【回收站】清空。
 
 ### 2. 部署 Node 项目（标准流程）
 

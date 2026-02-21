@@ -8,19 +8,25 @@
 
 ### 1.1 SSH
 
-| 服务器 | IP | SSH 端口 | 账号 | 密码 | 备注 |
-|--------|-----|----------|------|------|------|
-| kr宝塔 | 43.139.27.93 | 22022 | ckb | zhiqun1984 | 统一用 ckb 账号密码直连 |
-| 存客宝 | 42.194.245.239 | 22022 | ckb | zhiqun1984 | - |
+| 服务器 | IP | SSH 端口 | 账号 | 密码/密钥 | 备注 |
+|--------|-----|----------|------|-----------|------|
+| kr宝塔 | 43.139.27.93 | 22022 或 22 | root | Zhiqun1984（大写 Z）或 id_ed25519 | 密码用小写会失败 |
+| 存客宝 | 42.194.245.239 | 22022 | root | Zhiqun1984 | 同 kr宝塔 |
 | 本机 Docker 宝塔 | 127.0.0.1 | 22 | - | - | 本地 Docker 容器 |
 
-**SSH 连接示例**（统一用 ckb 账号密码，无需密钥）：
+> ckb 为宝塔面板登录账号，**SSH 需用 root**。详见 `references/SSH登录方式与故障排查.md`。
+
+**SSH 连接示例**：
 
 ```bash
-sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no ckb@43.139.27.93
+# 方式一：密钥（推荐）
+ssh -p 22022 -o StrictHostKeyChecking=no -i "/Users/karuo/Documents/开发/4、小工具/服务器管理/Steam/id_ed25519" root@43.139.27.93
 
-# 存客宝
-sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no ckb@42.194.245.239
+# 方式二：密码（注意 Z 大写）
+sshpass -p 'Zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no -o PubkeyAuthentication=no root@43.139.27.93
+
+# 方式三：封装脚本（自动尝试多种方式）
+bash scripts/kr宝塔_SSH登录.sh "whoami"
 ```
 
 ### 1.2 宝塔面板登录
