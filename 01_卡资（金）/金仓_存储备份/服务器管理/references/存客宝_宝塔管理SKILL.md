@@ -10,12 +10,18 @@
 |------|-----|
 | IP | 42.194.245.239 |
 | SSH 端口 | 22022 |
-| SSH 账号 | ckb |
-| SSH 密码 | zhiqun1984 |
+| SSH 账号 | root（面板账号 ckb 仅用于 Web） |
+| SSH 密码 | Zhiqun1984（大写 Z，与 kr宝塔一致） |
 | 宝塔面板 | https://42.194.245.239:9988 |
 | 面板账号 | ckb |
 | 面板密码 | zhiqun1984 |
 | API 密钥 | TNKjqDv5N1QLOU20gcmGVgr82Z4mXzRi |
+
+---
+
+## SSH 修复（Permission denied 时）
+
+在宝塔面板 → 终端执行 `scripts/存客宝_SSH修复_宝塔终端执行.sh` 全部内容，修复后 root/Zhiqun1984 可登录。
 
 ---
 

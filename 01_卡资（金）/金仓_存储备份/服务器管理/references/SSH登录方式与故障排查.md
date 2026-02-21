@@ -1,6 +1,7 @@
-# kr宝塔 SSH 登录方式与故障排查
+# 宝塔 SSH 登录方式与故障排查
 
 > 当一种方式失败时，依次尝试其他方式。终极备选：**宝塔面板 → 终端**（无需 SSH）。
+> **存客宝 SSH 修复**：在存客宝宝塔终端执行 `scripts/存客宝_SSH修复_宝塔终端执行.sh` 内容。
 
 ---
 
@@ -132,3 +133,14 @@ fail2ban-client set ssh-iptables unbanip 你的公网IP
 ```
 
 **一键脚本**：`scripts/宝塔_IP封禁解封与优化命令.sh`，在服务器上执行 `bash 脚本路径 你的公网IP`
+
+---
+
+## 七、存客宝 SSH 修复（Permission denied 时）
+
+存客宝若密码/密钥均 Permission denied，需在**存客宝宝塔面板 → 终端**执行修复：
+
+1. 打开 https://42.194.245.239:9988 → 登录 ckb/zhiqun1984 → 左侧「终端」
+2. 复制 `scripts/存客宝_SSH修复_宝塔终端执行.sh` 的**全部内容**，粘贴到终端执行
+
+脚本会：添加本机公钥、允许密码登录、`PermitRootLogin yes`、重置 root 密码为 Zhiqun1984、解封 IP 140.245.37.56、重载 sshd。执行完成后本机即可 SSH。

@@ -124,5 +124,5 @@ python3 /tmp/kr_node_batch_fix.py
 
 ## 注意事项
 
-- **AITOUFA** 若仍报 `MODULE_NOT_FOUND`，需在宝塔 **Node 项目 → 编辑 AITOUFA** 中修正启动命令（例如改为 `npm start` 或正确入口文件）。
+- **MODULE_NOT_FOUND**：玩值大屏、wzdj、tongzhi 等若报此错，需在 **Node 项目 → 编辑** 中把启动命令改为 `cd /项目根目录 && node server.js` 或 `npm run start`，勿用目录路径当入口。详见 `references/Node项目未启动_MODULE_NOT_FOUND修复指南.md`。
 - 若某项目因端口占用失败，脚本会自动尝试清理端口后重试；若仍失败，需在面板中手动检查该项目配置。
