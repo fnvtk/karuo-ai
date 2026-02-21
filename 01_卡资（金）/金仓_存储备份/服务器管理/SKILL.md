@@ -26,21 +26,23 @@ updated: "2026-02-16"
 
 ### 凭证速查
 
+**⚠️ 强制规则**：三台宝塔（小型/存客宝/kr宝塔）SSH 统一用 **端口 22022**、**账号 root**、**密码 zhiqun1984**（小写）。每次连接必须用 `-p 22022`，勿连 22。
+
 ```bash
 # 本机 Docker 宝塔（本地）
 地址: http://127.0.0.1:8888/btpanel
 账号: ckb
-密码: Zhiqun1984
-# 首次部署后默认是 btpanel/btpaneldocker，登录后在面板里改为上述账号密码。
+密码: zhiqun1984
 # 启动: bash 01_卡资（金）/金仓_存储备份/服务器管理/scripts/本机Docker宝塔_启动.sh
 # 数据目录: ~/baota_docker_data/（website_data、mysql_data、vhost）
 
-# SSH连接（kr宝塔为例，端口 22022）
-ssh -p 22022 root@43.139.27.93
-密码: Zhiqun1984
+# SSH 连接（三台宝塔统一：端口 22022，密码 zhiqun1984）
+sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no root@<IP>
+# 存客宝: 42.194.245.239
+# kr宝塔: 43.139.27.93
+# 小型宝塔: 42.194.232.22（若 22 可用则可用 22，否则试 22022）
 
-# 宝塔面板登录（kr宝塔）
-地址: https://43.139.27.93:9988
+# 宝塔面板登录（三台统一）
 账号: ckb
 密码: zhiqun1984
 
@@ -48,6 +50,13 @@ ssh -p 22022 root@43.139.27.93
 存客宝: TNKjqDv5N1QLOU20gcmGVgr82Z4mXzRi
 kr宝塔: qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT
 ```
+
+### 强制规则（每次执行必守）
+
+1. **SSH 统一配置**：三台宝塔一律用端口 **22022**、账号 **root**、密码 **zhiqun1984**；每次连接必须带 `-p 22022`，不要用 22。
+2. **经验沉淀**：每次涉及服务器/宝塔/部署的操作结束后，必须把经验写入 `02_卡人（水）/水溪_整理归档/经验库/待沉淀/`，防止同类问题重复出现。
+3. **Skill 迭代**：每次有新的配置、教训、流程变更时，必须同步更新本 SKILL.md 或 references，保证下次调用时信息一致。
+4. **卡若AI 复盘**：每次任务结束必须用卡若AI 复盘格式收尾（目标·结果·达成率、过程、反思、总结、下一步）。
 
 ---
 
@@ -76,11 +85,11 @@ cd /项目路径
 tar --exclude='node_modules' --exclude='.next' --exclude='.git' \
     -czf /tmp/项目名_update.tar.gz .
 
-# 2. 上传到服务器（kr宝塔）
-sshpass -p 'Zhiqun1984' scp -P 22022 /tmp/项目名_update.tar.gz root@43.139.27.93:/tmp/
+# 2. 上传到服务器（kr宝塔，端口 22022，密码 zhiqun1984）
+sshpass -p 'zhiqun1984' scp -P 22022 /tmp/项目名_update.tar.gz root@43.139.27.93:/tmp/
 
 # 3. SSH部署
-ssh -p 22022 root@43.139.27.93
+sshpass -p 'zhiqun1984' ssh -p 22022 root@43.139.27.93
 cd /www/wwwroot/项目名
 rm -rf app components lib public styles *.json *.js *.ts *.mjs *.md .next
 tar -xzf /tmp/项目名_update.tar.gz
@@ -88,8 +97,9 @@ pnpm install
 pnpm run build
 rm /tmp/项目名_update.tar.gz
 
-# 4. 宝塔面板重启项目
-# 【网站】→【Node项目】→ 找到项目 → 点击【重启】
+# 4. 宝塔 Node 重启（只用宝塔 API，不用 PM2）
+# 批量启动：在服务器内执行 scripts/kr宝塔_node项目批量修复.py
+# 详见 references/宝塔Node项目管理_SKILL.md
 ```
 
 ### 3. SSL证书检查/修复
@@ -102,7 +112,18 @@ python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储
 python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/服务器管理/脚本/ssl证书检查.py" --fix
 ```
 
-### 4. kr宝塔 网络卡/服务器卡 · 检查与处理
+### 4. Node 项目批量启动（kr宝塔，只用宝塔 API，不用 PM2）
+
+脚本 `scripts/kr宝塔_node项目批量修复.py` 须在**服务器内**执行：
+
+```bash
+# SSH 管道（若认证可用）
+sshpass -p 'zhiqun1984' ssh -p 22022 root@43.139.27.93 'python3 -' < "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔_node项目批量修复.py"
+```
+
+SSH 风控时，在 **kr宝塔 宝塔面板 → 终端** 上传脚本后执行。详见 `references/宝塔Node项目管理_SKILL.md`。
+
+### 5. kr宝塔 网络卡/服务器卡 · 检查与处理
 
 - **文档**：`references/kr宝塔_网络与服务器卡顿_检查与处理.md`
 - **带宽使用情况（近24h）**：运行 `scripts/kr宝塔_腾讯云带宽与CPU近24h.py`（建议用 `scripts/.venv_tx/bin/python`，依赖 tencentcloud-sdk-python-monitor）。结论：出带宽最大已顶满 5M，属带宽卡主因；处理见文档「六、直接处理」。
@@ -111,7 +132,7 @@ python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储
 - 服务器内诊断与限流：在 **宝塔面板终端** 执行文档「六」中 6.1～6.3 命令（连接数、按 IP 统计、Nginx 限速）。
 - **502 修复（如 soul.quwanzhi.com/admin）**：API 方式运行 `scripts/kr宝塔_宝塔API_修复502.py`（需 API 白名单）；或到 kr宝塔 **宝塔面板 → 终端** 执行 `nginx -t && nginx -s reload` 后，在「Node 项目」中重启 soul 相关项目。详见文档 6.6。
 
-### 5. 常用诊断命令（kr宝塔等）
+### 6. 常用诊断命令（kr宝塔等）
 
 ```bash
 # 检查端口占用
@@ -274,13 +295,14 @@ ss -tlnp | grep :端口号
 - 关闭代理软件
 - 或用手机4G网络测试
 
-### Q5: 宝塔与PM2冲突
+### Q5: 宝塔与 PM2 冲突
 
-**原因**: 同时使用root用户PM2和宝塔PM2
+**规则**：**只用宝塔 Node API 管理项目，禁用 PM2**。
 
 **解决**: 
-- 停止所有独立PM2: `pm2 kill`
-- 只使用宝塔界面管理
+- 停止所有独立 PM2: `pm2 kill`
+- 在宝塔面板【网站】→【Node 项目】管理启动/停止
+- 批量操作见 `references/宝塔Node项目管理_SKILL.md`
 
 ---
 
@@ -305,10 +327,12 @@ ss -tlnp | grep :端口号
 
 | 脚本 | 功能 | 位置 |
 |------|------|------|
-| `快速检查服务器.py` | 一键检查所有服务器状态 | `./scripts/` |
-| `一键部署.py` | 根据配置文件部署项目 | `./scripts/` |
-| `ssl证书检查.py` | 检查/修复SSL证书 | `./scripts/` |
-| `腾讯云镜像快照备份到CKB_NAS/tencent_image_snapshot_backup_to_nas.py` | 腾讯云镜像/快照元数据备份到 CKB NAS，1000G 限制与超限邮件告警 | `./scripts/腾讯云镜像快照备份到CKB_NAS/` |
+| `kr宝塔_node项目批量修复.py` | 批量启动 kr宝塔 Node 项目（服务器内执行，宝塔 API） | `./scripts/` |
+| `kr宝塔_宝塔API_修复502.py` | 修复 502（重启 Nginx + soul 相关 Node） | `./scripts/` |
+| `快速检查服务器.py` | 一键检查所有服务器状态 | `./脚本/` |
+| `一键部署.py` | 根据配置文件部署项目 | `./脚本/` |
+| `ssl证书检查.py` | 检查/修复SSL证书 | `./脚本/` |
+| `tencent_image_snapshot_backup_to_nas.py` | 腾讯云镜像/快照备份到 CKB NAS | `./scripts/腾讯云镜像快照备份到CKB_NAS/` |
 
 ---
 
@@ -316,12 +340,25 @@ ss -tlnp | grep :端口号
 
 - **卡若复盘**：每次对话结束必须按 **`运营中枢/参考资料/卡若复盘格式_固定规则.md`** 输出复盘块；**反思** 1～3 点，每点一句，简洁可执行，不超过 3 条。
 
+## 宝塔 Node 项目管理（独立 Skill）
+
+- **主 Skill**：`references/宝塔Node项目管理_SKILL.md` — 凭证、Node API、常见错误、脚本，**禁用 PM2**
+- **kr宝塔**：`references/kr宝塔_宝塔管理SKILL.md`
+- **存客宝**：`references/存客宝_宝塔管理SKILL.md`
+
+Node 项目批量启动、502 修复、EADDRINUSE 等均按主 Skill 操作。SSH 风控时优先用**宝塔面板终端**。
+
+---
+
 ## 相关文档
 
 | 文档 | 内容 | 位置 |
 |------|------|------|
+| `宝塔Node项目管理_SKILL.md` | 宝塔 Node 管理独立 Skill（凭证/错误/脚本） | `./references/` |
+| `kr宝塔_宝塔管理SKILL.md` | kr宝塔专用管理 | `./references/` |
+| `存客宝_宝塔管理SKILL.md` | 存客宝专用管理 | `./references/` |
 | `卡若复盘格式_固定规则.md` | 复盘格式（目标·结果·达成率、过程、反思 1～3 点、总结、下一步） | `运营中枢/参考资料/` |
-| `宝塔API接口文档.md` | 宝塔API完整接口说明 | `./references/` |
+| `宝塔api接口文档.md` | 宝塔API完整接口说明 | `./references/` |
 | `端口配置表.md` | 完整端口分配表 | `./references/` |
 | `常见问题手册.md` | 问题解决方案大全 | `./references/` |
 | `部署配置模板.md` | JSON配置文件模板 | `./references/` |
