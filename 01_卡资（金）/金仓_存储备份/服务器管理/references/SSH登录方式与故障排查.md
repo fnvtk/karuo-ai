@@ -103,14 +103,32 @@ bash "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔_SS
   "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔_node项目批量修复.py"
 ```
 
-## 六、服务器端可做（解除限流）
+## 六、IP 封禁处理（多方案 + 优化命令）
 
-若本机被 fail2ban 封禁，可在**宝塔面板 → 终端**或 VNC 执行：
+### 6.1 腾讯云 API 重启（解除 fail2ban 内存封禁）
+
+重启会清空 fail2ban 等进程内存，封禁自动解除。本机执行：
 
 ```bash
-# 查看是否被 ban
-fail2ban-client status sshd
-
-# 解封本机 IP（将 211.156.92.72 换成你的公网 IP）
-fail2ban-client set sshd unbanip 211.156.92.72
+python3 "01_卡资（金）/金仓_存储备份/服务器管理/scripts/腾讯云_宝塔服务器重启.py"
 ```
+
+### 6.2 宝塔终端解封（SSH 不可用时用面板终端）
+
+在**宝塔面板 → 终端**粘贴执行。将 `你的公网IP` 替换为本机公网 IP（如 211.156.92.72，可从 https://ip.sb 或本机 `curl ifconfig.me` 获取）：
+
+**优化单行（同时解封 sshd + ssh-iptables）：**
+
+```bash
+IP="你的公网IP"; for j in sshd ssh-iptables; do fail2ban-client set "$j" unbanip "$IP" 2>/dev/null && echo "✅ $j 已解封 $IP"; done
+```
+
+**分步执行：**
+
+```bash
+fail2ban-client status sshd
+fail2ban-client set sshd unbanip 你的公网IP
+fail2ban-client set ssh-iptables unbanip 你的公网IP
+```
+
+**一键脚本**：`scripts/宝塔_IP封禁解封与优化命令.sh`，在服务器上执行 `bash 脚本路径 你的公网IP`

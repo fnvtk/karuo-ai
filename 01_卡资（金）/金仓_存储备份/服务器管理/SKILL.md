@@ -51,7 +51,7 @@ kr宝塔: qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT
 
 ### 强制规则（每次执行必守）
 
-1. **SSH 统一配置**：三台宝塔一律用端口 **22022**、账号 **ckb**、密码 **zhiqun1984**；直接连接，无需密钥。
+1. **SSH 统一配置**：账号 **root**、密码 **Zhiqun1984**（Z 大写），端口 22022 或 22；或使用 id_ed25519 密钥。详见 `references/SSH登录方式与故障排查.md`。
 2. **经验沉淀**：每次涉及服务器/宝塔/部署的操作结束后，必须把经验写入 `02_卡人（水）/水溪_整理归档/经验库/待沉淀/`，防止同类问题重复出现。
 3. **Skill 迭代**：每次有新的配置、教训、流程变更时，必须同步更新本 SKILL.md 或 references，保证下次调用时信息一致。
 4. **卡若AI 复盘**：每次任务结束必须用卡若AI 复盘格式收尾（目标·结果·达成率、过程、反思、总结、下一步）。
@@ -74,6 +74,15 @@ kr宝塔: qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT
 # 运行快速检查脚本（需各服务器 API 白名单含本机 IP）
 python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/服务器管理/脚本/快速检查服务器.py"
 ```
+
+### 1.0a 腾讯云 API 重启宝塔 + IP 封禁处理
+
+```bash
+# 重启存客宝、kr宝塔（会解除 fail2ban 内存封禁）
+python3 "01_卡资（金）/金仓_存储备份/服务器管理/scripts/腾讯云_宝塔服务器重启.py"
+```
+
+IP 解封：见 `references/SSH登录方式与故障排查.md` § 六。优化单行：`IP="公网IP"; for j in sshd ssh-iptables; do fail2ban-client set "$j" unbanip "$IP" 2>/dev/null; done`
 
 ### 1.1 磁盘臃肿 · 全方位检查与清理（SSH/API 不可用时）
 
