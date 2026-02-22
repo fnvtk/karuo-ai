@@ -164,7 +164,13 @@ bash scripts/存客宝_lytiao_Docker部署.sh
 
 部署后访问 `http://42.194.245.239:8090`。详见 `references/lytiao_Docker部署说明.md`。
 
-### 5. kr宝塔 网络卡/服务器卡 · 检查与处理
+### 5. kr宝塔 运行堵塞 + Node 深度修复
+
+- **运行堵塞**（负载 100%、CPU 98%）：结束异常 node 进程、停 Node、修复 site.db、查日志、批量启动。
+- **TAT**：`./scripts/.venv_tx/bin/python scripts/腾讯云_TAT_kr宝塔_运行堵塞与Node深度修复.py`
+- **宝塔终端**（推荐）：上传 `scripts/kr宝塔_运行堵塞与Node深度修复_宝塔终端执行.sh` 后 `bash` 执行。
+
+### 5b. kr宝塔 网络卡/服务器卡 · 检查与处理
 
 - **文档**：`references/kr宝塔_网络与服务器卡顿_检查与处理.md`
 - **带宽使用情况（近24h）**：运行 `scripts/kr宝塔_腾讯云带宽与CPU近24h.py`（建议用 `scripts/.venv_tx/bin/python`，依赖 tencentcloud-sdk-python-monitor）。结论：出带宽最大已顶满 5M，属带宽卡主因；处理见文档「六、直接处理」。
