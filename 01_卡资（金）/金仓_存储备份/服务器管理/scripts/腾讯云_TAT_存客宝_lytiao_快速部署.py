@@ -26,8 +26,15 @@ def _cred():
         d = os.path.dirname(d)
     return None, None
 
-# 精简 Dockerfile：不编译扩展，拉取即用
+# 配置 Docker 镜像加速后拉取
 CMD = """set -e
+# 配置 DaoCloud 镜像加速（避免 Docker Hub 国内拉取失败）
+mkdir -p /etc/docker
+if ! grep -q registry-mirrors /etc/docker/daemon.json 2>/dev/null; then
+  echo '{"registry-mirrors":["https://docker.m.daocloud.io"]}' > /etc/docker/daemon.json
+  systemctl restart docker 2>/dev/null || systemctl restart containerd 2>/dev/null || true
+  sleep 5
+fi
 DIR="/opt/lytiao_docker"
 SRC="/www/wwwroot/www.lytiao.com"
 mkdir -p "$DIR"
