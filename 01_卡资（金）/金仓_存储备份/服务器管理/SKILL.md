@@ -52,9 +52,10 @@ kr宝塔: qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT
 ### 强制规则（每次执行必守）
 
 1. **SSH 统一配置**：账号 **root**、密码 **Zhiqun1984**（Z 大写），端口 22022 或 22；或使用 id_ed25519 密钥。详见 `references/SSH登录方式与故障排查.md`。
-2. **经验沉淀**：每次涉及服务器/宝塔/部署的操作结束后，必须把经验写入 `02_卡人（水）/水溪_整理归档/经验库/待沉淀/`，防止同类问题重复出现。
-3. **Skill 迭代**：每次有新的配置、教训、流程变更时，必须同步更新本 SKILL.md 或 references，保证下次调用时信息一致。
-4. **卡若AI 复盘**：每次任务结束必须用卡若AI 复盘格式收尾（目标·结果·达成率、过程、反思、总结、下一步）。
+2. **宝塔 443 优先**：宝塔服务器 443 不监听时，**优先**检查是否运行系统 Nginx 而非宝塔 Nginx；若是，先 `killall nginx` 后启动宝塔 Nginx。详见 Q0、`_经验库/已整理/运维经验/宝塔443不监听_系统nginx与宝塔nginx优先排查.md`。
+3. **经验沉淀**：每次涉及服务器/宝塔/部署的操作结束后，必须把经验写入 `02_卡人（水）/水溪_整理归档/经验库/待沉淀/`，防止同类问题重复出现。
+4. **Skill 迭代**：每次有新的配置、教训、流程变更时，必须同步更新本 SKILL.md 或 references，保证下次调用时信息一致。
+5. **卡若AI 复盘**：每次任务结束必须用卡若AI 复盘格式收尾（目标·结果·达成率、过程、反思、总结、下一步）。
 
 ---
 
@@ -293,6 +294,21 @@ dig soul.quwanzhi.com +short @8.8.8.8
 
 ## 常见问题速查
 
+### Q0: 宝塔 443 不监听（Connection refused）【优先检查】
+
+**现象**：80 可达、443 不可达，安全组/证书/nginx -t 均正常。
+
+**根因**：运行的是**系统 Nginx**（`/usr/sbin/nginx`），非**宝塔 Nginx**。系统 Nginx 配置不含宝塔 vhost 的 listen 443。
+
+**解决**（任选）：
+```bash
+# 宝塔终端
+killall nginx; sleep 2; /www/server/nginx/sbin/nginx -c /www/server/nginx/conf/nginx.conf
+```
+或 TAT：`python3 scripts/腾讯云_TAT_存客宝_Nginx443强制修复.py`
+
+**防重复**：宝塔服务器 443 不监听时，**先** `ps aux | grep nginx` 确认是否系统 Nginx，再查安全组/证书。详见 `_经验库/已整理/运维经验/宝塔443不监听_系统nginx与宝塔nginx优先排查.md`。
+
 ### Q1: 外网无法访问（ERR_EMPTY_RESPONSE）
 
 **原因**: 腾讯云安全组只开放443端口
@@ -363,6 +379,7 @@ ss -tlnp | grep :端口号
 | `快速检查服务器.py` | 一键检查所有服务器状态 | `./脚本/` |
 | `一键部署.py` | 根据配置文件部署项目 | `./脚本/` |
 | `ssl证书检查.py` | 检查/修复SSL证书 | `./脚本/` |
+| `腾讯云_TAT_存客宝_Nginx443强制修复.py` | **宝塔 443 不监听**：切回宝塔 Nginx | `./scripts/` |
 | `tencent_image_snapshot_backup_to_nas.py` | 腾讯云镜像/快照备份到 CKB NAS | `./scripts/腾讯云镜像快照备份到CKB_NAS/` |
 
 ---

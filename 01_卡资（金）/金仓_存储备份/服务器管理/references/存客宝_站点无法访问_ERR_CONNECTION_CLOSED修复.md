@@ -3,6 +3,9 @@
 > 现象：ERR_CONNECTION_CLOSED，面板显示 运行中  
 > 诊断结果：**443 端口外网不可达**（80 正常）
 
+**⚠️ 优先处理（2026-02 补充）**：若 443 不监听，**先**检查是否运行系统 Nginx 而非宝塔 Nginx。宝塔终端执行：
+`ps aux | grep nginx` → 若为 `/usr/sbin/nginx`，则执行 `killall nginx; sleep 2; /www/server/nginx/sbin/nginx -c /www/server/nginx/conf/nginx.conf`。详见 `references/存客宝_443无法访问_深度诊断与方案.md`。
+
 ---
 
 ## 复盘（2026-02-22 检查结果）

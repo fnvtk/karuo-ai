@@ -1,21 +1,23 @@
 ---
 name: 视频切片
-description: Soul派对视频切片处理。触发词：视频切片、Soul切片、派对切片、处理视频。
+description: Soul派对视频切片处理。触发词：视频切片、Soul切片、派对切片、处理视频。所有文档与字幕输出统一简体中文。
 group: 木
 triggers: 视频剪辑、切片发布、字幕烧录
 owner: 木叶
-version: "1.0"
-updated: "2026-02-16"
+version: "1.1"
+updated: "2026-02-22"
 ---
 
 # 视频切片
 
+> **语言**：所有文档、字幕、封面文案统一使用**简体中文**。soul_enhance 自动繁转简。
+
 ## ⭐ Soul派对切片流程（默认）
 
 ```
-原始视频 → MLX转录 → 精彩片段识别 → 批量切片 → 增强处理 → 输出成片
-                                              ↓
-                              封面+字幕+加速10%+去语气词
+原始视频 → MLX转录 → 字幕转简体 → 高光识别(Ollama→规则) → 批量切片 → soul_enhance → 输出成片
+                     ↑                        ↓
+            提取后立即繁转简+修正错误    封面+字幕(已简体)+加速10%+去语气词
 ```
 
 ### 一键命令（Soul派对专用）
@@ -26,9 +28,12 @@ updated: "2026-02-16"
 cd 03_卡木（木）/木叶_视频内容/视频切片/脚本
 conda activate mlx-whisper
 python3 soul_slice_pipeline.py --video "/path/to/soul派对会议第57场.mp4" --clips 6
+
+# 仅重新烧录（字幕转简体后重跑增强）
+python3 soul_slice_pipeline.py -v "视频.mp4" -n 6 --skip-transcribe --skip-highlights --skip-clips
 ```
 
-流程：**转录 → 高光识别(AI/规则) → 批量切片 → 增强(Hook+CTA)**
+流程：**转录 → 字幕转简体 → 高光识别 → 批量切片 → 增强**
 
 #### 分步命令
 
@@ -38,24 +43,23 @@ eval "$(~/miniforge3/bin/conda shell.zsh hook)"
 conda activate mlx-whisper
 mlx_whisper audio.wav --model mlx-community/whisper-small-mlx --language zh --output-format all
 
-# 2. 高光识别（Ollama → Groq → 规则，不依赖 Gemini）
+# 2. 高光识别（Ollama → 规则；流水线会在读取 transcript 前自动转简体）
 python3 identify_highlights.py -t transcript.srt -o highlights.json -n 6
 
 # 3. 切片
-python3 batch_clip.py -i 视频.mp4 -l highlights.json -o clips/
+python3 batch_clip.py -i 视频.mp4 -l highlights.json -o clips/ -p soul
 
-# 4. 增强处理（Hook+CTA 封面文字）
-python3 enhance_clips.py -c clips/ -l highlights.json -o clips_enhanced/
+# 4. 增强处理（封面+字幕+加速，soul_enhance）
+python3 soul_enhance.py -c clips/ -l highlights.json -t transcript.srt -o clips_enhanced/
 ```
 
 ### 增强功能说明
 
 | 功能 | 说明 |
 |------|------|
-| **封面贴片** | 前2.5秒显示Hook文字，毛玻璃背景 |
-| **字幕烧录** | 关键词金黄高亮，思源黑体 |
+| **封面贴片** | 前2.5秒 Hook，苹方/思源黑体 |
+| **字幕烧录** | 关键词加粗加大亮金黄突出，去语助词+去空格 |
 | **加速10%** | 节奏更紧凑，适合短视频 |
-| **去语气词** | 清理"嗯、啊、那个"等语气词 |
 
 ### 时间预估
 
@@ -203,12 +207,13 @@ python3 scripts/burn_subtitles_clean.py -i enhanced.mp4 -s clean.srt -o 成片.m
 
 | 脚本 | 功能 | 使用频率 |
 |------|------|---------|
-| **one_video.py** | 一键处理，输出单个成片 | ⭐⭐⭐ 最常用 |
-| burn_subtitles_clean.py | 字幕烧录（无阴影） | ⭐⭐ |
-| burn_subtitles_pro.py | 字幕烧录（有阴影） | ⭐ |
-| fix_subtitles.py | 字幕清洗（繁转简） | ⭐⭐ |
-| batch_clip.py | 批量切片 | ⭐ |
-| soul_clip.py | Soul派对专用 | ⭐ |
+| **soul_slice_pipeline.py** | Soul 切片一体化流水线 | ⭐⭐⭐ 最常用 |
+| **soul_enhance.py** | 封面+字幕(简体)+加速+去语气词 | ⭐⭐⭐ |
+| identify_highlights.py | 高光识别（Ollama→规则） | ⭐⭐ |
+| batch_clip.py | 批量切片 | ⭐⭐ |
+| one_video.py | 单视频一键成片 | ⭐⭐ |
+| burn_subtitles_clean.py | 字幕烧录（无阴影） | ⭐ |
+| fix_subtitles.py | 字幕清洗（繁转简） | ⭐ |
 
 ---
 
@@ -219,7 +224,8 @@ python3 scripts/burn_subtitles_clean.py -i enhanced.mp4 -s clean.srt -o 成片.m
 - **MLX Whisper**: `~/miniforge3/envs/mlx-whisper` ⭐ **默认转录引擎**
   - Apple Silicon优化，比CPU Whisper快10倍+
   - 2.5小时视频转录仅需3分钟
-- **字体**: `03_卡木（木）/视频切片/fonts/`
+- **字体**: `03_卡木（木）/木叶_视频内容/视频切片/fonts/`（优先）
+- **字幕**: 统一简体中文（soul_enhance 自动繁转简）
 
 ### 转录命令（默认）
 

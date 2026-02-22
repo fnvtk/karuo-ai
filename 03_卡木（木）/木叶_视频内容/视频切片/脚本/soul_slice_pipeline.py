@@ -4,7 +4,7 @@
 Soul 切片一体化流水线
 视频制作（封面/Hook格式）+ 视频切片
 
-流程：转录 → 高光识别(AI) → 批量切片 → 增强(封面+Hook+CTA)
+流程：转录 → 字幕转简体 → 高光识别(AI) → 批量切片 → 增强(封面+字幕+CTA)
 """
 import argparse
 import json
@@ -16,6 +16,53 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 SKILL_DIR = SCRIPT_DIR.parent
 FONTS_DIR = SKILL_DIR / "fonts"
+
+# 常见转录错误修正
+CORRECTIONS = {
+    '私余': '私域', '统安': '同安', '信一下': '线上', '头里': '投入',
+    '幅画': '负责', '施育': '私域', '经历论': '净利润', '成于': '乘以',
+    '马的': '码的', '猜济': '拆解', '巨圣': '矩阵', '货客': '获客',
+}
+
+# 语助词（转录后去除）
+FILLER_WORDS = [
+    '嗯', '啊', '呃', '额', '哦', '噢', '唉', '哎', '诶', '喔',
+    '那个', '就是', '然后', '这个', '所以说', '怎么说', '怎么说呢',
+    '对吧', '是吧', '好吧', '行吧', '其实', '那么', '以及', '另外',
+]
+
+
+def transcript_to_simplified(srt_path: Path) -> bool:
+    """转录后立即处理：繁转简+修正错误+去语助词+去多余空格"""
+    import re
+    try:
+        from opencc import OpenCC
+        cc = OpenCC('t2s')
+    except ImportError:
+        cc = None
+    with open(srt_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+
+    def clean_line(line: str) -> str:
+        if not line.strip() or line.strip().isdigit() or '-->' in line:
+            return line
+        s = cc.convert(line) if cc else line
+        for w, c in CORRECTIONS.items():
+            s = s.replace(w, c)
+        for w in sorted(FILLER_WORDS, key=len, reverse=True):
+            s = re.sub(rf'^{re.escape(w)}[,，、\s]*', '', s)
+            s = re.sub(rf'[,，、\s]*{re.escape(w)}$', '', s)
+            s = re.sub(rf'\s+{re.escape(w)}\s+', ' ', s)
+        s = re.sub(r'\s+', ' ', s).strip(' ，,')
+        return s
+
+    lines = content.split('\n')
+    out = []
+    for line in lines:
+        out.append(clean_line(line))
+    with open(srt_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(out))
+    return True
 
 
 def run(cmd: list, desc: str = "", check: bool = True, timeout: int = 600) -> bool:
@@ -44,6 +91,7 @@ def main():
     parser.add_argument("--clips", "-n", type=int, default=8, help="切片数量")
     parser.add_argument("--skip-transcribe", action="store_true", help="跳过转录（已有 transcript.srt）")
     parser.add_argument("--skip-highlights", action="store_true", help="跳过高光识别（已有 highlights.json）")
+    parser.add_argument("--skip-clips", action="store_true", help="跳过切片（已有 clips/，仅重新增强）")
     args = parser.parse_args()
 
     video_path = Path(args.video).resolve()
@@ -102,6 +150,10 @@ def main():
         print(f"❌ 需要 transcript.srt，请先完成转录: {transcript_path}")
         sys.exit(1)
 
+    # 1.5 字幕转简体（提取后立即处理，繁转简+修正错误）
+    transcript_to_simplified(transcript_path)
+    print("  ✓ 字幕已转简体")
+
     # 2. 高光识别
     if not args.skip_highlights:
         run(
@@ -133,18 +185,22 @@ def main():
 
     # 3. 批量切片
     clips_dir.mkdir(parents=True, exist_ok=True)
-    run(
-        [
-            sys.executable,
-            str(SCRIPT_DIR / "batch_clip.py"),
-            "--input", str(video_path),
-            "--highlights", str(highlights_path),
-            "--output", str(clips_dir),
-            "--prefix", "soul",
-        ],
-        "批量切片",
-        timeout=300,
-    )
+    if not args.skip_clips:
+        run(
+            [
+                sys.executable,
+                str(SCRIPT_DIR / "batch_clip.py"),
+                "--input", str(video_path),
+                "--highlights", str(highlights_path),
+                "--output", str(clips_dir),
+                "--prefix", "soul",
+            ],
+            "批量切片",
+            timeout=300,
+        )
+    elif not list(clips_dir.glob("*.mp4")):
+        print("❌ clips/ 为空，请去掉 --skip-clips 或先完成切片")
+        sys.exit(1)
 
     # 4. 增强（封面+字幕+加速）：soul_enhance（Pillow，无需 drawtext）
     enhanced_dir.mkdir(parents=True, exist_ok=True)

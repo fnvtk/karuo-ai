@@ -108,8 +108,10 @@ def main():
             print("  ✅ %s 已添加 443/TCP 入站" % sg_id)
             added += 1
         except Exception as e:
-            if "RuleAlreadyExists" in str(e) or "已存在" in str(e):
+            err = str(e)
+            if "RuleAlreadyExists" in err or "已存在" in err or "duplicate" in err.lower():
                 print("  ⏭ %s 443 规则已存在" % sg_id)
+                added += 1
             else:
                 print("  ❌ %s: %s" % (sg_id, e))
 
@@ -152,7 +154,10 @@ def check_rules():
             resp = vc.DescribeSecurityGroupPolicies(req)
             s = resp.SecurityGroupPolicySet
             ing = (s.Ingress or []) if hasattr(s, "Ingress") else []
-            print("  %s 入站: %s" % (sg_id, [(getattr(x,"Port",""), getattr(x,"Protocol","")) for x in ing[:8]]))
+            rules = [(getattr(x,"Port",""), getattr(x,"Protocol",""), getattr(x,"Action","")) for x in ing]
+            has443_acc = any("443" in str(r[0]) and str(r[2]).upper()=="ACCEPT" for r in rules)
+            drop443 = [r for r in rules if "443" in str(r[0]) and str(r[2]).upper()=="DROP"]
+            print("  %s 入站(共%d条) | 443 ACCEPT: %s | 443 DROP: %s" % (sg_id, len(rules), "✅" if has443_acc else "❌", "⚠️有" if drop443 else "无"))
         except Exception as e:
             print("  %s: %s" % (sg_id, e))
     return 0

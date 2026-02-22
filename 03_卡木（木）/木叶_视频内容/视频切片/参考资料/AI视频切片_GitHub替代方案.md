@@ -8,7 +8,7 @@
 | 组件 | 实现 | 说明 |
 |------|------|------|
 | **转录** | MLX Whisper | 本地、快速，无 API 依赖 |
-| **高光识别** | Ollama → Groq → 规则 | 级联，不依赖 Gemini |
+| **高光识别** | Ollama → 规则 | 级联，不依赖 Gemini/Groq |
 | **切片** | FFmpeg batch_clip | 标准工具 |
 | **增强** | soul_enhance（Pillow 封面+字幕）| 无需 drawtext |
 
@@ -54,8 +54,7 @@
 | 转录 | MLX Whisper / Ollama Whisper | ✅ 可用 |
 | 高光识别 | Ollama qwen2.5:1.5b | ✅ 可用 |
 | 切片 | FFmpeg | ✅ 可用 |
-| 封面/Hook | FFmpeg drawtext | 需 libfreetype |
-| 无 drawtext | 复制原始切片 | 流水线自动降级 |
+| 封面/字幕 | soul_enhance（Pillow）| 简体中文，自动繁转简 |
 
 ### 云端可选
 
@@ -69,7 +68,7 @@
 
 - 默认 `brew install ffmpeg` 可能无 `drawtext`（缺 libfreetype）
 - 可选：`brew install ffmpeg@7` 或自行编译 `--enable-libfreetype`
-- 当前增强：enhance_clips 用 drawtext；无 drawtext 时流水线直接复制切片
+- 当前增强：soul_enhance 用 Pillow，封面+字幕均为简体中文
 
 ---
 
@@ -84,13 +83,15 @@ Pillow
 
 # 高光识别
 # Ollama + qwen2.5:1.5b（本地，无需 pip）
-groq  # 可选，pip install groq
+
+# 字幕简体中文（可选，推荐）
+opencc-python-reimplemented  # 繁转简，soul_enhance 可用
 ```
 
 ---
 
 ## 五、推荐组合（最简）
 
-1. **本地全流程**：MLX Whisper → Ollama → FFmpeg（无 drawtext 则复制切片）
-2. **提升质量**：设置 `GROQ_API_KEY`，Ollama 失败时自动用 Groq
-3. **无需 Gemini**：当前方案已完全脱离 Gemini 依赖
+1. **本地全流程**：MLX Whisper → Ollama → FFmpeg → soul_enhance（简体中文）
+2. **无需 Gemini/Groq**：只用 Ollama + 规则
+3. **字幕**：自动繁转简，统一简体中文

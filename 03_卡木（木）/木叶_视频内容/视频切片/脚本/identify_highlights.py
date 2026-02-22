@@ -100,7 +100,7 @@ def _build_prompt(transcript: str, clip_count: int) -> str:
 - transcript_excerpt: 片段内容前50字
 - reason: 推荐理由
 
-时长 {MIN_DURATION}-{MAX_DURATION} 秒，相邻间隔30秒。只输出 JSON 数组，不要其他文字或```包裹。
+时长 {MIN_DURATION}-{MAX_DURATION} 秒，相邻间隔30秒。输出必须使用简体中文。只输出 JSON 数组，不要其他文字或```包裹。
 
 视频文字稿：
 ---

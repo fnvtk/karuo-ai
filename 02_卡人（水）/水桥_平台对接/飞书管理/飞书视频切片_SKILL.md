@@ -18,13 +18,24 @@ python3 /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/飞书管理/s
   "飞书群webhook（可选，默认产宁团队群）"
 ```
 
+### 按剪辑方案图片切片（高峰时刻+想象的内容）
+
+按「视频剪辑方案」图片整理：7 段高峰时刻 + 加速 10% + 去语助词 + 关键词高亮。
+
+```bash
+# 1. 打开飞书链接，点击下载视频
+# 2. 下载完成后运行（或直接用 --video 指定已有视频）
+python3 /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/飞书管理/脚本/feishu_image_slice.py --url "https://cunkebao.feishu.cn/minutes/obcnzs51k1j754643vx138sx"
+
+# 若已下载，直接指定视频路径
+python3 脚本/feishu_image_slice.py --video "~/Downloads/xxx.mp4"
+```
+
 ### 示例
 
 ```bash
 # 示例：产研团队第20场会议
-python3 /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/飞书管理/scripts/feishu_one_click.py \
-  "https://cunkebao.feishu.cn/minutes/obcnjnsx2mz7vj5q843172p8" \
-  --clips 5
+python3 feishu_one_click.py "https://cunkebao.feishu.cn/minutes/obcnjnsx2mz7vj5q843172p8" --clips 5
 ```
 
 ---

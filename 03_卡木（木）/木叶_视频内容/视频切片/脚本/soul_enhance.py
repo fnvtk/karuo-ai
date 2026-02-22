@@ -39,23 +39,67 @@ SPEED_FACTOR = 1.10  # 加速10%
 SILENCE_THRESHOLD = -40  # 静音阈值(dB)
 SILENCE_MIN_DURATION = 0.5  # 最短静音时长(秒)
 
-# 语气词列表（需要清理的）
+# 繁转简（OpenCC 优先，否则用映射）
+_OPENCC = None
+def _get_opencc():
+    global _OPENCC
+    if _OPENCC is None:
+        try:
+            from opencc import OpenCC
+            _OPENCC = OpenCC('t2s')
+        except ImportError:
+            _OPENCC = False
+    return _OPENCC
+
+def _to_simplified(text: str) -> str:
+    """转为简体中文"""
+    cc = _get_opencc()
+    if cc:
+        return cc.convert(text)
+    # 常用繁简映射（无 opencc 时）
+    trad_simp = {
+        '這': '这', '個': '个', '們': '们', '來': '来', '說': '说',
+        '會': '会', '裡': '里', '麼': '么', '還': '还', '點': '点',
+        '時': '时', '對': '对', '電': '电', '體': '体', '為': '为',
+    }
+    for t, s in trad_simp.items():
+        text = text.replace(t, s)
+    return text
+
+# 常见转录错误修正（与 one_video 一致）
+CORRECTIONS = {
+    '私余': '私域', '统安': '同安', '信一下': '线上', '头里': '投入',
+    '幅画': '负责', '施育': '私域', '经历论': '净利润', '成于': '乘以',
+    '马的': '码的', '猜济': '拆解', '巨圣': '矩阵', '货客': '获客',
+}
+
+# 语助词列表（需清理，含常见口头禅）
 FILLER_WORDS = [
-    '嗯', '啊', '呃', '额', '哦', '噢', '唉', '哎',
-    '那个', '就是', '然后', '这个', '所以说', '怎么说',
-    '对吧', '是吧', '好吧', '行吧', '那', '就',
+    '嗯', '啊', '呃', '额', '哦', '噢', '唉', '哎', '诶', '喔',
+    '那个', '就是', '然后', '这个', '所以说', '怎么说', '怎么说呢',
+    '对吧', '是吧', '好吧', '行吧', '那', '就', '就是那个',
+    '其实', '那么', '然后呢', '还有就是', '以及', '另外', '等等',
+    '怎么说呢', '你知道吗', '我跟你说', '好', '对', 'OK', 'ok',
 ]
 
-# 关键词高亮
+# 关键词高亮（重点突出，按长度排序避免短词覆盖长词）
 KEYWORDS = [
-    '100万', '30万', '50万', '10万', '5万', '1万',
-    '私域', 'AI', '自动化', '矩阵', 'SOP', 'IP',
-    '获客', '变现', '分润', '转化', '复购', '裂变',
-    '阿米巴', '电商', '创业', '项目', '收益',
-    '抖音', 'Soul', '微信', '美团',
+    '100万', '50万', '30万', '10万', '5万', '1万',
+    '存客宝', '私域', '自动化', '阿米巴', '矩阵', '获客', '变现',
+    '分润', '转化', '复购', '裂变', 'AI', 'SOP', 'IP',
+    '电商', '创业', '项目', '收益', '流量', '引流',
+    '抖音', 'Soul', '微信', '美团', '方法', '技巧', '干货',
+    '核心', '关键', '重点', '赚钱', '收入', '利润',
 ]
 
-# 样式配置
+# 字体优先级（Mac 优先苹方，更清晰）
+FONT_PRIORITY = [
+    "/System/Library/Fonts/PingFang.ttc",      # 苹方-简（Mac 默认，清晰）
+    "/System/Library/Fonts/STHeiti Medium.ttc",
+    "/Library/Fonts/Arial Unicode.ttf",
+]
+
+# 样式配置（字体更大、关键词更突出）
 STYLE = {
     'cover': {
         'bg_blur': 30,
@@ -63,31 +107,33 @@ STYLE = {
         'duration': 2.5,
     },
     'hook': {
-        'font_size': 72,
+        'font_size': 76,
         'color': (255, 255, 255),
-        'outline_color': (40, 40, 80),
-        'outline_width': 4,
+        'outline_color': (30, 30, 50),
+        'outline_width': 5,
     },
     'subtitle': {
-        'font_size': 42,
+        'font_size': 44,
         'color': (255, 255, 255),
-        'outline_color': (30, 30, 30),
-        'outline_width': 3,
-        'keyword_color': (255, 215, 0),  # 金黄色
-        'bg_color': (20, 20, 40, 180),
-        'margin_bottom': 60,
+        'outline_color': (25, 25, 25),
+        'outline_width': 4,
+        'keyword_color': (255, 200, 50),   # 亮金黄
+        'keyword_outline': (80, 50, 0),    # 深黄描边
+        'keyword_size_add': 4,              # 关键词字号+4
+        'bg_color': (15, 15, 35, 200),
+        'margin_bottom': 70,
     }
 }
 
 # ============ 工具函数 ============
 
 def get_font(font_path, size):
-    """获取字体，带回退"""
-    for path in [font_path, FONT_BOLD, FALLBACK_FONT]:
-        if os.path.exists(path):
+    """获取字体，优先苹方/系统字体"""
+    for path in [font_path, FONT_BOLD] + FONT_PRIORITY + [FALLBACK_FONT]:
+        if path and os.path.exists(path):
             try:
                 return ImageFont.truetype(path, size)
-            except:
+            except Exception:
                 continue
     return ImageFont.load_default()
 
@@ -109,14 +155,21 @@ def draw_text_with_outline(draw, pos, text, font, color, outline_color, outline_
     draw.text((x, y), text, font=font, fill=color)
 
 def clean_filler_words(text):
-    """清理语气词"""
+    """清理语助词 + 去除多余空格"""
     result = text
-    for word in FILLER_WORDS:
-        # 只清理独立的语气词（前后有空格或标点或在开头结尾）
-        result = re.sub(rf'^{word}[,，、]?\s*', '', result)
-        result = re.sub(rf'\s*[,，、]?{word}$', '', result)
-        result = re.sub(rf'\s+{word}\s+', ' ', result)
-    return result.strip()
+    # 按长度降序，先删长词避免残留
+    for word in sorted(FILLER_WORDS, key=len, reverse=True):
+        if not word:
+            continue
+        result = re.sub(rf'^{re.escape(word)}[,，、\s]*', '', result)
+        result = re.sub(rf'[,，、\s]*{re.escape(word)}$', '', result)
+        result = re.sub(rf'\s+{re.escape(word)}\s+', ' ', result)
+        result = re.sub(rf'[,，、]+{re.escape(word)}[,，、\s]*', '，', result)
+    # 合并多余空格、去除首尾空格
+    result = re.sub(r'\s+', ' ', result)
+    result = re.sub(r'\s*[,，]\s*', '，', result)
+    result = re.sub(r'[,，]+', '，', result).strip(' ，,')
+    return result
 
 def parse_srt_for_clip(srt_path, start_sec, end_sec):
     """解析SRT，提取指定时间段的字幕"""
@@ -143,7 +196,10 @@ def parse_srt_for_clip(srt_path, start_sec, end_sec):
             rel_start = max(0, sub_start - start_sec)
             rel_end = sub_end - start_sec
             
-            # 清理语气词
+            # 繁转简 + 修正错误 + 清理语气词
+            text = _to_simplified(text)
+            for w, c in CORRECTIONS.items():
+                text = text.replace(w, c)
             cleaned_text = clean_filler_words(text)
             if len(cleaned_text) > 1:  # 过滤太短的
                 subtitles.append({
@@ -184,7 +240,8 @@ def get_video_info(video_path):
 # ============ 封面生成 ============
 
 def create_cover_image(hook_text, width, height, output_path, video_path=None):
-    """创建封面贴片"""
+    """创建封面贴片（简体中文）"""
+    hook_text = _to_simplified(str(hook_text))
     style = STYLE['cover']
     hook_style = STYLE['hook']
     
@@ -265,13 +322,16 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
 # ============ 字幕图片生成 ============
 
 def create_subtitle_image(text, width, height, output_path):
-    """创建字幕图片（带关键词高亮）"""
+    """创建字幕图片（关键词加粗加大突出）"""
     style = STYLE['subtitle']
     
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    font = get_font(FONT_BOLD, style['font_size'])
+    base_size = style['font_size']
+    kw_size = base_size + style.get('keyword_size_add', 4)
+    font = get_font(FONT_BOLD, base_size)
+    kw_font = get_font(FONT_HEAVY, kw_size)  # 关键词用粗体+大字
     text_w, text_h = get_text_size(draw, text, font)
     
     base_x = (width - text_w) // 2
@@ -293,15 +353,18 @@ def create_subtitle_image(text, width, height, output_path):
     img = Image.alpha_composite(img, bg_layer)
     draw = ImageDraw.Draw(img)
     
-    # 识别关键词位置
+    # 识别关键词位置（按长度降序，长词优先避免短词截断）
     highlights = []
-    for keyword in KEYWORDS:
+    for keyword in sorted(KEYWORDS, key=len, reverse=True):
         start = 0
         while True:
             pos = text.find(keyword, start)
             if pos == -1:
                 break
-            highlights.append((pos, pos + len(keyword)))
+            # 避免重叠
+            overlap = any(s <= pos < e or s < pos + len(keyword) <= e for s, e in highlights)
+            if not overlap:
+                highlights.append((pos, pos + len(keyword)))
             start = pos + 1
     highlights = sorted(highlights, key=lambda x: x[0])
     
@@ -320,15 +383,17 @@ def create_subtitle_image(text, width, height, output_path):
                 break
         
         if in_keyword:
-            # 绘制整个关键词
+            # 关键词：粗体+大字+亮金黄+深色描边
             keyword_text = text[char_idx:keyword_end]
+            kw_outline = style.get('keyword_outline', (60, 40, 0))
+            kw_ow = style.get('outline_width', 3) + 1
             draw_text_with_outline(
-                draw, (current_x, base_y), keyword_text, font,
+                draw, (current_x, base_y - 1), keyword_text, kw_font,
                 style['keyword_color'],
-                style['outline_color'],
-                style['outline_width']
+                kw_outline,
+                kw_ow
             )
-            kw_w, _ = get_text_size(draw, keyword_text, font)
+            kw_w, _ = get_text_size(draw, keyword_text, kw_font)
             current_x += kw_w
             char_idx = keyword_end
         else:

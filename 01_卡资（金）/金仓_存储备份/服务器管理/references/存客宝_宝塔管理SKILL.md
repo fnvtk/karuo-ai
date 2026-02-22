@@ -27,7 +27,18 @@
 
 ## 站点无法访问（ERR_CONNECTION_CLOSED）
 
-若 kr-kf.quwanzhi.com、lytiao.com 等无法打开：先查 **443 端口**。常见为腾讯云安全组未放行 443，或 Nginx 未监听 443。详见 `references/存客宝_站点无法访问_ERR_CONNECTION_CLOSED修复.md`。
+若 kr-kf.quwanzhi.com、lytiao.com 等无法打开：先查 **443 端口**。
+
+**⚠️ 优先处理（防重复）**：443 不监听时，**先**检查是否运行**系统 Nginx** 而非宝塔 Nginx：
+```bash
+ps aux | grep nginx   # 若 /usr/sbin/nginx → 有问题
+killall nginx; sleep 2; /www/server/nginx/sbin/nginx -c /www/server/nginx/conf/nginx.conf
+```
+或 TAT：`python3 scripts/腾讯云_TAT_存客宝_Nginx443强制修复.py`
+
+其他：安全组未放行 443、证书未部署等。详见：
+- `references/存客宝_站点无法访问_ERR_CONNECTION_CLOSED修复.md`
+- **深度诊断与替代方案**：`references/存客宝_443无法访问_深度诊断与方案.md`
 
 ---
 
