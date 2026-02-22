@@ -74,6 +74,9 @@
 | **MariaDB** | 3306 | **33062** | opennas2.quwanzhi.com:33062 |
 | **Telnet** | 23 | **2302** | opennas2.quwanzhi.com:2302 |
 | **DSM（HTTP域名）** | 5000 | **80** | http://opennas2.quwanzhi.com |
+| **SMB 文件共享** | 445 | **4452** | smb://opennas2.quwanzhi.com:4452/共享 |
+
+> SMB 需在 frpc.ini 中手动添加 `[home-nas-smb]` 段，见 `家里DiskStation_外网挂载1TB到Finder侧栏.md`。
 
 ---
 

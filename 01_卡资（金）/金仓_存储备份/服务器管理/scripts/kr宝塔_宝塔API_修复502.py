@@ -89,7 +89,7 @@ def main():
         print("  请求异常:", e)
 
     print("\n" + "=" * 56)
-    print("请刷新 soul.quwanzhi.com/admin 查看是否恢复。若仍 502，请到宝塔面板检查该站点「反向代理」上游是否运行，或重启对应 Node/PM2 项目。")
+    print("请刷新 souladmin.quwanzhi.com 查看是否恢复（soul.quwanzhi.com/admin 已停用）。")
     print("=" * 56)
     return 0
 
