@@ -50,13 +50,22 @@ def upload_image_to_doc(token: str, doc_token: str, img_path: Path) -> str | Non
 
 
 def _make_image_block(file_token: str) -> dict:
-    """生成飞书图片块，尝试 gallery 与 file 两种格式"""
+    """生成飞书图片块。优先 gallery(18)，备选 file(12) 行内展示"""
+    # 格式参考飞书文档：Gallery imageList 每项需 fileToken
     return {
         "block_type": 18,
         "gallery": {
             "imageList": [{"fileToken": file_token}],
             "galleryStyle": {"align": "center"},
         },
+    }
+
+
+def _make_file_block(file_token: str, filename: str = "image.png") -> dict:
+    """备选：file 块行内展示图片（viewType=inline）"""
+    return {
+        "block_type": 12,
+        "file": {"fileToken": file_token, "viewType": "inline", "fileName": filename},
     }
 
 
@@ -207,10 +216,11 @@ def create_doc_with_images():
         for b in raw_blocks:
             c = (b.get("text") or {}).get("elements") or []
             content = (c[0].get("text_run") or {}).get("content", "") if c else ""
+            use_file_block = os.environ.get("FEISHU_IMG_BLOCK") == "file"
             if "【配图 1" in content and tokens[0]:
-                blocks.append(_make_image_block(tokens[0]))
+                blocks.append(_make_file_block(tokens[0], "基因胶囊_概念与流程.png") if use_file_block else _make_image_block(tokens[0]))
             elif "【配图 2" in content and len(tokens) > 1 and tokens[1]:
-                blocks.append(_make_image_block(tokens[1]))
+                blocks.append(_make_file_block(tokens[1], "基因胶囊_完整工作流程图.png") if use_file_block else _make_image_block(tokens[1]))
             elif "【配图 1" in content or "【配图 2" in content:
                 blocks.append(b)
             else:
@@ -229,9 +239,11 @@ def create_doc_with_images():
             timeout=30)
         res = wr.json()
         if res.get("code") != 0:
+            if any(b.get("block_type") in (12, 13, 18) for b in batch):
+                print(f"⚠️ API 错误: code={res.get('code')} msg={res.get('msg')} debug={res.get('debug', '')}")
             # 若含图片的批次失败，则跳过图片仅写文本
-            if any(b.get("block_type") in (13, 18) for b in batch):
-                safe = [b for b in batch if b.get("block_type") not in (13, 18)]
+            if any(b.get("block_type") in (12, 13, 18) for b in batch):
+                safe = [b for b in batch if b.get("block_type") not in (12, 13, 18)]
                 if safe:
                     wr2 = requests.post(
                         f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_token}/blocks/{doc_token}/children",

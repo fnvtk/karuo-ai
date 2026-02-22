@@ -89,10 +89,8 @@ def main():
     parser.add_argument("--video", "-v", required=True, help="输入视频路径")
     parser.add_argument("--output", "-o", help="输出目录（默认：视频同目录下 视频名_output）")
     parser.add_argument("--clips", "-n", type=int, default=8, help="切片数量")
-    parser.add_argument("--mode", "-m", choices=["highlights", "theme"], default="highlights",
-                        help="highlights=高光识别(默认); theme=按完整主题分析(时间节点非固定)")
     parser.add_argument("--skip-transcribe", action="store_true", help="跳过转录（已有 transcript.srt）")
-    parser.add_argument("--skip-highlights", action="store_true", help="跳过高光/主题识别（已有 highlights.json）")
+    parser.add_argument("--skip-highlights", action="store_true", help="跳过高光识别（已有 highlights.json）")
     parser.add_argument("--skip-clips", action="store_true", help="跳过切片（已有 clips/，仅重新增强）")
     args = parser.parse_args()
 
@@ -156,31 +154,19 @@ def main():
     transcript_to_simplified(transcript_path)
     print("  ✓ 字幕已转简体")
 
-    # 2. 高光/主题识别
+    # 2. 高光识别
     if not args.skip_highlights:
-        if args.mode == "theme":
-            run(
-                [
-                    sys.executable,
-                    str(SCRIPT_DIR / "identify_theme_segments.py"),
-                    "--transcript", str(transcript_path),
-                    "--output", str(highlights_path),
-                ],
-                "完整主题分析（Ollama→规则，时间节点非固定）",
-                timeout=120,
-            )
-        else:
-            run(
-                [
-                    sys.executable,
-                    str(SCRIPT_DIR / "identify_highlights.py"),
-                    "--transcript", str(transcript_path),
-                    "--output", str(highlights_path),
-                    "--clips", str(args.clips),
-                ],
-                "高光识别（Ollama→规则）",
-                timeout=60,
-            )
+        run(
+            [
+                sys.executable,
+                str(SCRIPT_DIR / "identify_highlights.py"),
+                "--transcript", str(transcript_path),
+                "--output", str(highlights_path),
+                "--clips", str(args.clips),
+            ],
+            "高光识别（Ollama→规则）",
+            timeout=60,
+        )
     if not highlights_path.exists():
         print(f"❌ 需要 highlights.json: {highlights_path}")
         sys.exit(1)

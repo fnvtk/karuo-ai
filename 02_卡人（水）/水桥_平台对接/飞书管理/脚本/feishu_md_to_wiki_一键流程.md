@@ -55,3 +55,13 @@ python3 "02_卡人（水）/水桥_平台对接/飞书管理/脚本/feishu_wiki_
 
 - 图片块（block_type 18 gallery）若飞书 API 报 `invalid param`，会退化为文本说明，图片仍上传至文档素材，用户可手动「插入 → 图片 → 文档素材」插入
 - `image_paths` 建议用相对路径，便于 JSON 迁移
+
+## 图片块调试
+
+若需尝试 file 块（block_type 12）代替 gallery 插入图片：
+
+```bash
+FEISHU_IMG_BLOCK=file python3 "02_卡人（水）/水桥_平台对接/飞书管理/脚本/feishu_wiki_gene_capsule_article.py"
+```
+
+脚本会打印 API 错误详情（code、msg、debug）便于排查。
