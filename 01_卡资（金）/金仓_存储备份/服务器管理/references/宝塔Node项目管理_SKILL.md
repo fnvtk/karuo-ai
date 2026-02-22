@@ -179,12 +179,12 @@ python3 "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔
 
 ### 4.6 MODULE_NOT_FOUND（如 AITOUFA）
 
-**现象**：`Error: Cannot find module '/www/wwwroot/扩展/小工具/AITOUFA'`，Node 把项目根目录当入口执行。
+**现象**：`Error: Cannot find module '/www/wwwroot/ext/tools/AITOUFA'`（迁移前为 扩展/小工具），Node 把项目根目录当入口执行。
 
 **原因**：启动命令配置错误，例如写成 `node /项目根目录` 而非 `node server.js` 或 `npm start`。
 
 **处理**：宝塔 **Node 项目 → 编辑该项目**，将启动命令改为：
-- Next.js：`cd /www/wwwroot/扩展/小工具/AITOUFA && npm run start` 或 `pnpm start`
+- Next.js：`cd /www/wwwroot/ext/tools/AITOUFA && npm run start` 或 `pnpm start`
 - 或正确的入口：`node server.js` / `node index.js`（在项目根目录执行）
 
 ### 4.7 宝塔与 PM2 冲突

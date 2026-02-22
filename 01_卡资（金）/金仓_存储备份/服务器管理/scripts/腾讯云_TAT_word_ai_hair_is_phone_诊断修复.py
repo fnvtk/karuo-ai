@@ -21,9 +21,9 @@ TARGET_NAMES = ["word", "ai_hair", "is_phone"]
 
 # 已知项目路径（API 无 path 时的后备）
 PATH_MAP = {
-    "word": "/www/wwwroot/自营/word",
-    "ai_hair": "/www/wwwroot/客户/ai_hair",
-    "is_phone": "/www/wwwroot/自营/kr/kr-phone",
+    "word": "/www/wwwroot/self/word",
+    "ai_hair": "/www/wwwroot/client/ai_hair",
+    "is_phone": "/www/wwwroot/self/kr/kr-phone",
 }
 
 SHELL_SCRIPT = r'''#!/bin/bash
@@ -33,7 +33,7 @@ python3 - << 'PYEOF'
 import hashlib, json, os, subprocess, time, urllib.request, urllib.parse, ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 PANEL, K = "https://127.0.0.1:9988", "qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT"
-PATH_MAP = {"word": "/www/wwwroot/自营/word", "ai_hair": "/www/wwwroot/客户/ai_hair", "is_phone": "/www/wwwroot/自营/kr/kr-phone"}
+PATH_MAP = {"word": "/www/wwwroot/self/word", "ai_hair": "/www/wwwroot/client/ai_hair", "is_phone": "/www/wwwroot/self/kr/kr-phone"}
 def sign():
     t = int(time.time())
     s = str(t) + hashlib.md5(K.encode()).hexdigest()

@@ -92,22 +92,27 @@ KEYWORDS = [
     '核心', '关键', '重点', '赚钱', '收入', '利润',
 ]
 
-# 字体优先级（Mac 优先苹方，更清晰）
+# 字体优先级（封面用更好看的字体）
 FONT_PRIORITY = [
-    "/System/Library/Fonts/PingFang.ttc",      # 苹方-简（Mac 默认，清晰）
+    "/System/Library/Fonts/PingFang.ttc",           # 苹方-简
+    "/System/Library/Fonts/Supplemental/Songti.ttc", # 宋体-简
     "/System/Library/Fonts/STHeiti Medium.ttc",
     "/Library/Fonts/Arial Unicode.ttf",
 ]
+COVER_FONT_PRIORITY = [
+    "/System/Library/Fonts/PingFang.ttc",  # 苹方，封面优先
+    "/System/Library/Fonts/Supplemental/Songti.ttc",
+]
 
-# 样式配置（字体更大、关键词更突出）
+# 样式配置
 STYLE = {
     'cover': {
-        'bg_blur': 30,
-        'overlay_alpha': 180,
+        'bg_blur': 35,
+        'overlay_alpha': 200,
         'duration': 2.5,
     },
     'hook': {
-        'font_size': 76,
+        'font_size': 82,  # 更大更清晰
         'color': (255, 255, 255),
         'outline_color': (30, 30, 50),
         'outline_width': 5,
@@ -210,6 +215,73 @@ def parse_srt_for_clip(srt_path, start_sec, end_sec):
     
     return subtitles
 
+def _is_mostly_chinese(text):
+    if not text or not isinstance(text, str):
+        return False
+    chinese = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+    return chinese / max(1, len(text.strip())) > 0.3
+
+
+def _translate_to_chinese(text):
+    """Ollama 翻译英文为中文"""
+    if not text or _is_mostly_chinese(text):
+        return text
+    try:
+        import requests
+        r = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "qwen2.5:1.5b",
+                "prompt": f"将以下翻译成简体中文，只输出中文：\n{text[:150]}",
+                "stream": False,
+                "options": {"temperature": 0.1, "num_predict": 80},
+            },
+            timeout=15,
+        )
+        if r.status_code == 200:
+            out = r.json().get("response", "").strip().split("\n")[0][:80]
+            if out:
+                return out
+    except Exception:
+        pass
+    return text
+
+
+def detect_burned_subs(video_path, num_samples=2):
+    """检测视频是否已有烧录字幕/图片（OCR 采样底部区域）"""
+    try:
+        import pytesseract
+        pytesseract.get_tesseract_version()
+    except Exception:
+        return False  # 无 tesseract 则假定无字幕，执行烧录
+    try:
+        duration = get_video_info(video_path).get("duration", 0)
+        if duration < 1:
+            return False
+        for i in range(num_samples):
+            t = duration * (0.25 + 0.25 * i)
+            frame = tempfile.mktemp(suffix=".jpg")
+            subprocess.run([
+                "ffmpeg", "-y", "-ss", str(t), "-i", video_path,
+                "-vframes", "1", "-q:v", "2", frame
+            ], capture_output=True)
+            if os.path.exists(frame):
+                try:
+                    img = Image.open(frame)
+                    w, h = img.size
+                    crop = img.crop((0, int(h * 0.65), w, h))  # 底部 35%
+                    text = pytesseract.image_to_string(crop, lang="chi_sim+eng")
+                    os.remove(frame)
+                    if text and len(text.strip()) > 15:
+                        return True
+                except Exception:
+                    if os.path.exists(frame):
+                        os.remove(frame)
+    except Exception:
+        pass
+    return False
+
+
 def get_video_info(video_path):
     """获取视频信息"""
     cmd = [
@@ -239,8 +311,19 @@ def get_video_info(video_path):
 
 # ============ 封面生成 ============
 
+def get_cover_font(size):
+    """封面专用字体（更好看）"""
+    for path in COVER_FONT_PRIORITY + FONT_PRIORITY + [FONT_BOLD]:
+        if path and os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
+
+
 def create_cover_image(hook_text, width, height, output_path, video_path=None):
-    """创建封面贴片（简体中文）"""
+    """创建封面贴片（简体中文，字体优化）"""
     hook_text = _to_simplified(str(hook_text or "").strip())
     if not hook_text:
         hook_text = "精彩切片"
@@ -281,8 +364,8 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
         alpha = 150 - i * 40
         draw.rectangle([0, height - i*3 - 2, width, height - i*3], fill=(255, 215, 0, alpha))
     
-    # Hook文字（自动换行）
-    font = get_font(FONT_HEAVY, hook_style['font_size'])
+    # Hook 文字（封面用更好看的字体）
+    font = get_cover_font(hook_style['font_size'])
     
     # 计算换行
     max_width = width - 80
@@ -301,14 +384,13 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
     if current_line:
         lines.append(current_line)
     
-    # 绘制文字（整体向右偏移 6%，减少右侧空白）
+    # 绘制文字（完全居中）
     line_height = hook_style['font_size'] + 15
     total_height = len(lines) * line_height
     start_y = (height - total_height) // 2
-    x_offset = int(width * 0.06)  # 向右偏移
     for i, line in enumerate(lines):
         line_w, line_h = get_text_size(draw, line, font)
-        x = (width - line_w) // 2 + x_offset
+        x = (width - line_w) // 2
         y = start_y + i * line_height
         
         draw_text_with_outline(
@@ -336,9 +418,8 @@ def create_subtitle_image(text, width, height, output_path):
     kw_font = get_font(FONT_HEAVY, kw_size)  # 关键词用粗体+大字
     text_w, text_h = get_text_size(draw, text, font)
     
-    # 字幕整体向右偏移 6%，减少右侧空白
-    x_offset = int(width * 0.06)
-    base_x = (width - text_w) // 2 + x_offset
+    # 字幕完全居中
+    base_x = (width - text_w) // 2
     base_y = height - text_h - style['margin_bottom']
     
     # 背景条
@@ -480,8 +561,9 @@ def _parse_clip_index(filename: str) -> int:
     return int(m.group()) if m else 0
 
 
-def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_path):
-    """增强单个切片"""
+def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_path,
+                 force_burn_subs=False, skip_subs=False):
+    """增强单个切片。检测原片是否已有字幕，有则跳过烧录，无则烧录中文"""
     
     print(f"\n处理: {os.path.basename(clip_path)}")
     
@@ -493,36 +575,37 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     
     hook_text = highlight_info.get('hook_3sec') or highlight_info.get('title') or ''
     if not hook_text and clip_path:
-        # 从文件名提取标题（soul106_01_标题.mp4）
         m = re.search(r'\d+[_\s]+(.+?)(?:_enhanced)?\.mp4$', os.path.basename(clip_path))
         if m:
             hook_text = m.group(1).strip()
     cover_duration = STYLE['cover']['duration']
     
-    # 1. 生成封面图片
+    # 1. 生成封面
     cover_img = os.path.join(temp_dir, 'cover.png')
     create_cover_image(hook_text, width, height, cover_img, clip_path)
     print(f"  ✓ 封面生成")
     
-    # 2. 解析字幕
-    start_time = highlight_info.get('start_time', '00:00:00')
-    parts = start_time.split(':')
-    start_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
-    end_sec = start_sec + duration
-    
-    subtitles = parse_srt_for_clip(transcript_path, start_sec, end_sec)
-    print(f"  ✓ 字幕解析 ({len(subtitles)}条)")
-    
-    # 3. 生成字幕图片
+    # 2. 字幕逻辑：有字幕/图片则跳过，无则烧录中文
     sub_images = []
-    for i, sub in enumerate(subtitles[:50]):  # 限制50条
-        img_path = os.path.join(temp_dir, f'sub_{i:04d}.png')
-        create_subtitle_image(sub['text'], width, height, img_path)
-        sub_images.append({
-            'path': img_path,
-            'start': sub['start'],
-            'end': sub['end']
-        })
+    do_burn_subs = not skip_subs and (force_burn_subs or not detect_burned_subs(clip_path))
+    if skip_subs:
+        print(f"  ⊘ 跳过字幕烧录（--skip-subs）")
+    elif not do_burn_subs:
+        print(f"  ⊘ 跳过字幕烧录（检测到原片已有字幕/图片）")
+    else:
+        start_time = highlight_info.get('start_time', '00:00:00')
+        parts = start_time.split(':')
+        start_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        end_sec = start_sec + duration
+        subtitles = parse_srt_for_clip(transcript_path, start_sec, end_sec)
+        for sub in subtitles:
+            if not _is_mostly_chinese(sub['text']):
+                sub['text'] = _translate_to_chinese(sub['text']) or sub['text']
+        print(f"  ✓ 字幕解析 ({len(subtitles)}条)，已转中文")
+        for i, sub in enumerate(subtitles[:50]):
+            img_path = os.path.join(temp_dir, f'sub_{i:04d}.png')
+            create_subtitle_image(sub['text'], width, height, img_path)
+            sub_images.append({'path': img_path, 'start': sub['start'], 'end': sub['end']})
     print(f"  ✓ 字幕图片 ({len(sub_images)}张)")
     
     # 4. 检测静音
@@ -620,6 +703,8 @@ def main():
     parser.add_argument("--highlights", "-l", help="highlights.json 路径")
     parser.add_argument("--transcript", "-t", help="transcript.srt 路径")
     parser.add_argument("--output", "-o", help="输出目录")
+    parser.add_argument("--skip-subs", action="store_true", help="跳过字幕烧录（原片已有字幕时用）")
+    parser.add_argument("--force-burn-subs", action="store_true", help="强制烧录字幕（忽略检测）")
     args = parser.parse_args()
     
     clips_dir = Path(args.clips) if args.clips else CLIPS_DIR
@@ -646,9 +731,7 @@ def main():
     print("="*60)
     
     output_dir.mkdir(parents=True, exist_ok=True)
-    # 清空已有增强切片，避免重复
-    for f in output_dir.glob("*.mp4"):
-        f.unlink()
+    # 同名直接覆盖，不预先清空
     
     with open(highlights_path, 'r', encoding='utf-8') as f:
         highlights = json.load(f)
@@ -668,7 +751,9 @@ def main():
         
         temp_dir = tempfile.mkdtemp(prefix='enhance_')
         try:
-            if enhance_clip(str(clip_path), str(output_path), highlight_info, temp_dir, str(transcript_path)):
+            if enhance_clip(str(clip_path), str(output_path), highlight_info, temp_dir, str(transcript_path),
+                           force_burn_subs=getattr(args, 'force_burn_subs', False),
+                           skip_subs=getattr(args, 'skip_subs', False)):
                 success_count += 1
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)

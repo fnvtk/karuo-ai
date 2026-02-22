@@ -15,8 +15,8 @@ from pathlib import Path
 OLLAMA_URL = "http://localhost:11434"
 DEFAULT_CTA = "关注我，每天学一招私域干货"
 CLIP_COUNT = 8
-MIN_DURATION = 45
-MAX_DURATION = 150
+MIN_DURATION = 60   # 1 分钟起
+MAX_DURATION = 180  # 3 分钟
 
 
 def parse_srt_segments(srt_path: str) -> list:
@@ -42,16 +42,16 @@ def parse_srt_segments(srt_path: str) -> list:
 
 
 def fallback_highlights(transcript_path: str, clip_count: int) -> list:
-    """规则备用：按时长均匀切分，取每段首句为 Hook"""
+    """规则备用：按时长均匀切分，每段 60-180 秒"""
     segments = parse_srt_segments(transcript_path)
     if not segments:
         return []
     total = segments[-1]["end_sec"] if segments else 0
-    interval = max(60, total / (clip_count + 1))
+    interval = max(120, total / clip_count)  # 每段约 2 分钟
     result = []
     for i in range(clip_count):
-        start_sec = int(interval * (i + 0.2))
-        end_sec = min(int(start_sec + 90), int(total - 5))
+        start_sec = int(interval * i + 30)
+        end_sec = min(int(start_sec + 120), int(total - 5))  # 约 2 分钟
         if end_sec <= start_sec + 30:
             continue
         # 找该时间段内的字幕
@@ -86,14 +86,15 @@ def srt_to_timestamped_text(srt_path: str) -> str:
 
 
 def _build_prompt(transcript: str, clip_count: int) -> str:
-    """构建高光识别 prompt（完整观点+干货，全中文）"""
-    txt = transcript[:15000] if len(transcript) > 15000 else transcript
+    """构建高光识别 prompt（完整观点+干货，1-3分钟，全中文）"""
+    txt = transcript[:18000] if len(transcript) > 18000 else transcript
     return f"""你是资深短视频策划师。请从视频文字稿中识别 {clip_count} 个**完整的核心观点/干货片段**。
 
 【切片原则】
-- 每个片段必须是**完整的一句话/一个观点**，有头有尾，不能截断
-- 优先选：金句、完整故事、可操作方法论、反常识观点、情绪高点
-- 每个片段时长 {MIN_DURATION}-{MAX_DURATION} 秒，相邻片段间隔至少 30 秒
+- 每个片段必须是**完整的一个话题/观点**，有头有尾，逻辑闭环，不能截断
+- 时长 **60-180 秒（1-3 分钟）**，尽量接近 2 分钟，确保内容完整
+- 优先选：金句、完整故事、可操作方法论、反常识观点、情绪高点、成体系讲解
+- 相邻片段间隔至少 60 秒
 
 【输出字段】所有内容**必须使用简体中文**，若原文是英文请翻译后填写：
 - title: 核心观点标题（15字内，用于文件名）

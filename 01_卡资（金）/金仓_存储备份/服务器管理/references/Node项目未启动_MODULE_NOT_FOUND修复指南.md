@@ -4,6 +4,20 @@
 
 ---
 
+## 〇、中文目录改英文迁移（推荐）
+
+**彻底消除中文路径**：删除映射、重命名目录、更新 site.db 与 Nginx、只用宝塔 Nginx、启动 Node。
+```bash
+# 方式 1：宝塔终端（推荐）
+# 打开 https://43.139.27.93:9988 → 终端 → 上传 scripts/kr宝塔_中文目录改英文_宝塔终端执行.sh → 执行 bash kr宝塔_中文目录改英文_宝塔终端执行.sh
+
+# 方式 2：TAT
+./scripts/.venv_tx/bin/python scripts/腾讯云_TAT_kr宝塔_中文目录改英文迁移.py
+```
+迁移后路径：`/www/wwwroot/self/`、`/www/wwwroot/client/`、`/www/wwwroot/ext/`；子目录 `wanzhi`、`tools`。
+
+---
+
 ## 一、批量启动（先执行）
 
 在 **宝塔面板 → 终端** 执行 `references/宝塔面板终端_Node批量启动指南.md` 中的脚本，先尝试批量启动所有未运行项目。
@@ -26,16 +40,16 @@ Error: Cannot find module '/www/wwwroot/自营/wzdj'
 
 | 项目 | 根目录 | 建议启动命令 | 说明 |
 |------|--------|--------------|------|
-| **玩值大屏** | /www/wwwroot/自营/玩值/玩值大屏 | `cd /www/wwwroot/自营/玩值/玩值大屏 && node server.js` 或 `npm run start` | 先确认目录内有 server.js / package.json 的 scripts.start |
-| **wzdj** | /www/wwwroot/自营/wzdj | `cd /www/wwwroot/自营/wzdj && node server.js` 或 `npm run start` | 同上 |
-| **tongzhi** | /www/wwwroot/自营/玩值/tongzhi | `cd /www/wwwroot/自营/玩值/tongzhi && node server.js` 或 `npm run start` | 同上 |
-| **is_phone** | /www/wwwroot/自营/kr/kr-phone | `cd /www/wwwroot/自营/kr/kr-phone && node server.js` 或 `npm run start` | 同上 |
-| **ai_hair** | /www/wwwroot/客户/ai_hair | 同上 | 同上 |
-| **word** | /www/wwwroot/自营/word 或 扩展/word | `cd 项目根目录 && npm run start` | Next.js，按实际路径 |
-| **AITOUFA** | /www/wwwroot/扩展/小工具/AITOUFA | `cd /www/wwwroot/扩展/小工具/AITOUFA && npm run start` | 参考 Skill §4.6 |
-| **zhiji** | /www/wwwroot/... | 同上 | 按实际结构 |
-| **ymao** | /www/wwwroot/扩展/ymao | 同上 | 同上 |
-| **zhaoping** | /www/wwwroot/客户/zhaoping | 同上 | 同上 |
+| **玩值大屏** | /www/wwwroot/self/wanzhi/玩值大屏 | `cd /www/wwwroot/self/wanzhi/玩值大屏 && (pnpm start || npm run start)` | 迁移后使用英文路径 |
+| **wzdj** | /www/wwwroot/self/wzdj | 同上 | 同上 |
+| **tongzhi** | /www/wwwroot/self/wanzhi/tongzhi | 同上 | 同上 |
+| **is_phone** | /www/wwwroot/self/kr/kr-phone | 同上 | 同上 |
+| **ai_hair** | /www/wwwroot/client/ai_hair | 同上 | 同上 |
+| **word** | /www/wwwroot/self/word | 同上 | 同上 |
+| **AITOUFA** | /www/wwwroot/ext/tools/AITOUFA | 同上 | 同上 |
+| **zhiji** | /www/wwwroot/self/zhiji | 同上 | 同上 |
+| **ymao** | /www/wwwroot/ext/ymao | 同上 | 同上 |
+| **zhaoping** | /www/wwwroot/client/zhaoping | 同上 | 同上 |
 
 ---
 
@@ -44,6 +58,7 @@ Error: Cannot find module '/www/wwwroot/自营/wzdj'
 1. **Next.js**：`cd 项目根目录 && npm run start` 或 `pnpm start`；若用 standalone：`node .next/standalone/server.js`
 2. **Express / 普通 Node**：`cd 项目根目录 && node server.js` 或 `node index.js`
 3. **禁止**：`node /www/wwwroot/xxx/项目名`（目录不能当入口）
+4. **路径规范**：使用英文路径 `/www/wwwroot/self/`、`/www/wwwroot/client/`、`/www/wwwroot/ext/`，不再使用 自营/客户/扩展。
 
 ---
 
@@ -62,7 +77,7 @@ Error: Cannot find module '/www/wwwroot/自营/wzdj'
 在宝塔终端执行，确认各项目有入口文件：
 
 ```bash
-for d in /www/wwwroot/自营/玩值/玩值大屏 /www/wwwroot/自营/wzdj /www/wwwroot/自营/玩值/tongzhi /www/wwwroot/自营/kr/kr-phone; do
+for d in /www/wwwroot/self/wanzhi/玩值大屏 /www/wwwroot/self/wzdj /www/wwwroot/self/wanzhi/tongzhi /www/wwwroot/self/kr/kr-phone; do
   echo "=== $d ==="
   ls -la "$d/" 2>/dev/null | grep -E "server\.js|index\.js|package\.json|\.next" || echo "  (无常见入口)"
 done

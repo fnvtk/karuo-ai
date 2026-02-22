@@ -140,11 +140,12 @@ sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no ckb@43.139.27.9
 
 SSH 风控时，在 **kr宝塔 宝塔面板 → 终端** 上传脚本后执行。详见 `references/宝塔Node项目管理_SKILL.md`。
 
-**kr宝塔 中文路径 + MODULE_NOT_FOUND 全量修复**（符号链接、修正启动命令、批量重启）：
+**kr宝塔 中文目录改英文迁移**（删映射、重命名为英文、更新 site.db/Nginx、只用宝塔 Nginx、启动 Node）：
 ```bash
-./scripts/.venv_tx/bin/python scripts/腾讯云_TAT_kr宝塔_中文路径与MODULE修复.py
+# 宝塔终端执行（推荐）：上传 scripts/kr宝塔_中文目录改英文_宝塔终端执行.sh 后 bash 执行
+# 或 TAT：./scripts/.venv_tx/bin/python scripts/腾讯云_TAT_kr宝塔_中文目录改英文迁移.py
 ```
-脚本会：① 创建 ext→扩展、client→客户、self→自营 符号链接；② 修正 site.db 中 `node /path` 错误启动命令为 `cd /path && npm run start`；③ pnpm install；④ 批量重启全部 Node 项目。
+迁移后路径：`/www/wwwroot/self/`、`/www/wwwroot/client/`、`/www/wwwroot/ext/`（不再使用 自营/客户/扩展）。
 
 ### 4a. www.lytiao.com Docker 化（存客宝 · 可多服务器复用）
 
@@ -382,7 +383,8 @@ ss -tlnp | grep :端口号
 
 | 脚本 | 功能 | 位置 |
 |------|------|------|
-| `腾讯云_TAT_kr宝塔_中文路径与MODULE修复.py` | kr宝塔 符号链接+修正启动命令+批量重启（TAT） | `./scripts/.venv_tx` |
+| `腾讯云_TAT_kr宝塔_中文目录改英文迁移.py` | kr宝塔 中文目录改英文、删映射、更新 site.db/Nginx（TAT） | `./scripts/.venv_tx` |
+| `kr宝塔_中文目录改英文_宝塔终端执行.sh` | 同上，宝塔终端手动执行 | `./scripts/` |
 | `腾讯云_TAT_word_ai_hair_is_phone_诊断修复.py` | word/ai_hair/is_phone 日志诊断、MODULE_NOT_FOUND 修复、重启（宝塔 API） | `./scripts/` |
 | `kr宝塔_node项目批量修复.py` | 批量启动 kr宝塔 Node 项目（服务器内执行，宝塔 API） | `./scripts/` |
 | `kr宝塔_宝塔API_修复502.py` | 修复 502（重启 Nginx + soul 相关 Node） | `./scripts/` |
