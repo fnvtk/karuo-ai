@@ -35,15 +35,21 @@ python3 05_卡土（土）/土砖_技能复制/基因胶囊/脚本/gene_capsule.
 python3 .../gene_capsule.py pack "05_卡土（土）/土砖_技能复制/技能工厂/SKILL.md"
 ```
 
-- 输出目录：`/Users/karuo/Documents/卡若Ai的文件夹/导出/基因胶囊/`
-- 文件名：`技能名_sha256前8位.json`
+- 输出结构：每个技能独立目录 `导出/基因胶囊/技能名_hash/`
+- 目录内包含：
+  - `技能名_hash.json`：胶囊 JSON
+  - `基因胶囊功能流程图.md`：流程图
+  - `说明文档.md`：本技能说明与解包用法
 
 ### 2.2 解包（基因胶囊 → Skill）
 
 ```bash
-python3 .../gene_capsule.py unpack 技能工厂_abc12345.json
+# 按技能目录/文件名（unpack 会搜索子目录）
+python3 .../gene_capsule.py unpack 技能工厂_d6dc55cd/技能工厂_d6dc55cd.json
+# 或完整路径
+python3 .../gene_capsule.py unpack "卡若Ai的文件夹/导出/基因胶囊/技能工厂_d6dc55cd/技能工厂_d6dc55cd.json"
 # 指定输出目录
-python3 .../gene_capsule.py unpack 技能工厂_abc12345.json -o 02_卡人（水）/水溪_整理归档/
+python3 .../gene_capsule.py unpack ... -o 02_卡人（水）/水溪_整理归档/
 ```
 
 - 默认按胶囊内 `manifest.skill_path` 写回
@@ -79,14 +85,24 @@ python3 .../gene_capsule.py list
 
 ## 四、导出时产出
 
-每次 **pack** 会自动生成：
+每次 **pack** 或 **pack-all** 会为每个技能生成独立目录：
 
-| 产出 | 路径 |
+```
+导出/基因胶囊/
+├── README_基因胶囊导出说明.md      ← 主清单（含全量胶囊、总流程图）
+├── 技能工厂_d6dc55cd/
+│   ├── 技能工厂_d6dc55cd.json     ← 胶囊
+│   ├── 基因胶囊功能流程图.md      ← 流程图
+│   └── 说明文档.md                ← 本技能说明与解包用法
+├── 视频切片_4f6c42af/
+│   ├── ...
+```
+
+| 产出 | 说明 |
 |:---|:---|
-| 胶囊 JSON | `卡若Ai的文件夹/导出/基因胶囊/技能名_sha256前8位.json` |
-| **说明文档（含流程图）** | `卡若Ai的文件夹/导出/基因胶囊/README_基因胶囊导出说明.md` |
-
-说明文档内含：基因胶囊功能总览、**完整流程图**（Mermaid）、已导出胶囊清单、使用方法。
+| 胶囊 JSON | 含完整 SKILL 内容、manifest、环境指纹 |
+| 基因胶囊功能流程图.md | 基因胶囊完整流程图（Mermaid） |
+| 说明文档.md | 技能概览、解包命令、引用 |
 
 ## 五、相关文件
 

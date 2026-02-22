@@ -91,6 +91,27 @@ def _parse_frontmatter(content: str) -> tuple:
 EXPORT_README = "README_基因胶囊导出说明.md"
 
 
+def _render_skill_dir_flowchart() -> str:
+    """返回单技能目录内的流程图文档内容"""
+    return """# 基因胶囊 · 功能流程图
+
+> 本流程图说明基因胶囊在卡若AI 中的完整工作流程。
+
+""" + _render_flowchart_mermaid() + """
+
+---
+
+## 流程说明
+
+| 区块 | 说明 |
+|:---|:---|
+| **卡若AI 内部流程** | 用户任务 → 查技能 → 执行 → 复盘 → 经验沉淀 → 可选打包为胶囊 |
+| **基因胶囊 核心流程** | pack/unpack/list，导出时自动生成说明文档（含本流程图） |
+| **技能工厂联动** | 创建前先查胶囊继承，创建后可打包为胶囊 |
+| **未来对外流通** | 与 EvoMap Market 对接，实现跨 Agent 能力遗传 |
+"""
+
+
 def _render_flowchart_mermaid() -> str:
     """返回基因胶囊功能流程图 Mermaid 源码"""
     return """```mermaid
@@ -137,23 +158,81 @@ flowchart TB
 ```"""
 
 
+def _render_skill_dir_readme(manifest: dict, capsule_id: str, json_filename: str, created_at: str, skill_dir_name: str) -> str:
+    """生成单技能目录内的说明文档"""
+    name = manifest.get("name", "")
+    desc = manifest.get("description", "")
+    triggers = manifest.get("triggers", [])
+    skill_path = manifest.get("skill_path", "")
+    triggers_str = "、".join(triggers) if isinstance(triggers, list) else str(triggers)
+    full_path = f"/Users/karuo/Documents/卡若Ai的文件夹/导出/基因胶囊/{skill_dir_name}/{json_filename}"
+    return f"""# {name} · 基因胶囊说明文档
+
+> **创建时间**：{created_at}  
+> **capsule_id**：{capsule_id[:19]}
+
+---
+
+## 一、技能概览
+
+| 字段 | 值 |
+|:---|:---|
+| 名称 | {name} |
+| 描述 | {desc} |
+| 触发词 | {triggers_str} |
+| 源路径 | {skill_path} |
+
+---
+
+## 二、本目录文件
+
+| 文件 | 说明 |
+|:---|:---|
+| `{json_filename}` | 基因胶囊 JSON（含完整 SKILL 内容） |
+| `基因胶囊功能流程图.md` | 基因胶囊功能流程图 |
+| `说明文档.md` | 本说明文档 |
+
+---
+
+## 三、解包（继承能力）
+
+```bash
+cd /Users/karuo/Documents/个人/卡若AI
+python3 "05_卡土（土）/土砖_技能复制/基因胶囊/脚本/gene_capsule.py" unpack "{full_path}"
+# 或进入本目录后
+python3 .../gene_capsule.py unpack "{skill_dir_name}/{json_filename}"
+```
+
+---
+
+## 四、引用
+
+- 规范：`运营中枢/参考资料/基因胶囊规范.md`
+- 技能：`05_卡土（土）/土砖_技能复制/基因胶囊/SKILL.md`
+"""
+
+
 def _write_export_readme() -> str:
     """生成/更新导出说明文档（含流程图），返回说明文档路径"""
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     readme_path = EXPORT_DIR / EXPORT_README
 
-    # 收集已导出胶囊列表（按创建时间倒序）
+    # 收集已导出胶囊列表（仅技能子目录内，按创建时间倒序）
     caps = []
     if EXPORT_DIR.exists():
-        for f in sorted(EXPORT_DIR.glob("*.json")):
+        for f in sorted(EXPORT_DIR.rglob("*.json")):
+            if f.parent == EXPORT_DIR:
+                continue
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
                 m = data.get("manifest", {})
+                rel = f.relative_to(EXPORT_DIR)
                 caps.append({
-                    "file": f.name,
+                    "file": str(rel),
                     "name": m.get("name", ""),
                     "capsule_id": data.get("capsule_id", "")[:19],
                     "created_at": data.get("created_at", ""),
+                    "dir": str(rel.parent),
                 })
             except Exception:
                 pass
@@ -188,11 +267,13 @@ def _write_export_readme() -> str:
         "",
         "## 三、已导出胶囊清单",
         "",
-        "| 技能名 | 胶囊文件 | capsule_id | 创建时间 |",
+        "每个技能独立目录，含：胶囊 JSON + 基因胶囊功能流程图.md + 说明文档.md",
+        "",
+        "| 技能名 | 技能目录 | capsule_id | 创建时间 |",
         "|:---|:---|:---|:---|",
     ]
     for c in caps:
-        lines.append(f"| {c.get('name', '')} | {c.get('file', '')} | {c.get('capsule_id', '')} | {c.get('created_at', '')} |")
+        lines.append(f"| {c.get('name', '')} | `{c.get('dir', '')}` | {c.get('capsule_id', '')} | {c.get('created_at', '')} |")
     if not caps:
         lines.append("| （暂无） | — | — | — |")
     lines.extend([
@@ -267,21 +348,38 @@ def pack(skill_ref: str, include_audit: bool = True, write_readme: bool = True) 
 
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     safe_name = manifest["name"].replace(" ", "_").replace("/", "_")[:30]
-    out_file = EXPORT_DIR / f"{safe_name}_{capsule_id[7:15]}.json"
+    hash_prefix = capsule_id[7:15]
+    # 每个技能独立目录：{技能名}_{hash}/
+    skill_dir = EXPORT_DIR / f"{safe_name}_{hash_prefix}"
+    skill_dir.mkdir(parents=True, exist_ok=True)
+
+    out_file = skill_dir / f"{safe_name}_{hash_prefix}.json"
     out_file.write_text(json.dumps(capsule, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # 生成导出说明文档（含完整流程图）；pack_all 时由调用方统一写入
+    # 1. 流程图：复制到技能目录
+    flowchart_content = _render_skill_dir_flowchart()
+    (skill_dir / "基因胶囊功能流程图.md").write_text(flowchart_content, encoding="utf-8")
+
+    # 2. 说明文档：写入技能目录
+    skill_readme = _render_skill_dir_readme(manifest, capsule_id, out_file.name, now, f"{safe_name}_{hash_prefix}")
+    (skill_dir / "说明文档.md").write_text(skill_readme, encoding="utf-8")
+
+    # 3. 主 README（含全量清单）；pack_all 时由调用方统一写入
     if write_readme:
         readme_path = _write_export_readme()
-        return str(out_file) + "\n📄 说明文档: " + readme_path
+        return str(out_file) + "\n📁 技能目录: " + str(skill_dir) + "\n📄 说明文档: " + str(skill_dir / "说明文档.md") + "\n📄 主清单: " + readme_path
     return str(out_file)
 
 
 def unpack(capsule_path: str, target_dir: str | None = None) -> str:
-    """解包：将胶囊 JSON 解压为 SKILL.md"""
+    """解包：将胶囊 JSON 解压为 SKILL.md。支持相对路径（技能目录/xxx.json）或绝对路径。"""
     p = Path(capsule_path)
-    if not p.exists():
+    if not p.is_absolute():
         p = EXPORT_DIR / capsule_path
+    if not p.exists():
+        found = list(EXPORT_DIR.rglob(Path(capsule_path).name))
+        if found:
+            p = found[0]
     if not p.exists():
         raise FileNotFoundError(f"胶囊不存在: {capsule_path}")
 
@@ -315,18 +413,23 @@ def unpack(capsule_path: str, target_dir: str | None = None) -> str:
 
 
 def list_capsules() -> list[dict]:
-    """列表：扫描导出目录与索引"""
+    """列表：扫描导出目录与索引。仅统计技能子目录内的胶囊（技能名_hash/*.json）。"""
     result = []
     if EXPORT_DIR.exists():
-        for f in sorted(EXPORT_DIR.glob("*.json")):
+        for f in sorted(EXPORT_DIR.rglob("*.json")):
+            if f.parent == EXPORT_DIR:
+                continue
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
                 m = data.get("manifest", {})
+                rel = f.relative_to(EXPORT_DIR)
+                dir_name = str(rel.parent)
                 result.append({
-                    "file": f.name,
+                    "file": str(rel),
                     "name": m.get("name", ""),
                     "capsule_id": data.get("capsule_id", "")[:19],
                     "created_at": data.get("created_at", ""),
+                    "dir": dir_name,
                 })
             except Exception:
                 pass
@@ -404,10 +507,9 @@ def main():
                 print(f"  ... 等 {len(failed)} 项")
     elif args.cmd == "pack":
         out = pack(args.skill, include_audit=not args.no_audit)
-        parts = out.split("\n")
-        print(f"✅ 已打包: {parts[0]}")
-        if len(parts) > 1:
-            print(parts[1])
+        for line in out.split("\n"):
+            if line.strip():
+                print(line)
     elif args.cmd == "unpack":
         out = unpack(args.capsule, target_dir=args.output)
         print(f"✅ 已解包: {out}")
