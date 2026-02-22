@@ -6,6 +6,7 @@
 依赖：pip install tencentcloud-sdk-python-common tencentcloud-sdk-python-tat
 """
 import base64
+import json
 import os
 import re
 import sys
@@ -143,8 +144,16 @@ def main():
         resp2 = client.DescribeInvocationTasks(req2)
         for t in (resp2.InvocationTaskSet or []):
             print("  任务:", getattr(t, "InvocationTaskId", t), "状态:", getattr(t, "TaskStatus", "N/A"))
-            if hasattr(t, "Output") and t.Output:
-                print("  输出:", (t.Output or "")[:800])
+            tr = getattr(t, "TaskResult", None)
+            if tr:
+                try:
+                    j = json.loads(tr) if isinstance(tr, str) else {}
+                    out = j.get("Output", "")
+                    if out:
+                        out = base64.b64decode(out).decode("utf-8", errors="replace")
+                        print("  输出:", out[:1200])
+                except Exception:
+                    pass
     except Exception as e:
         print("  查询结果异常:", e)
     print("=" * 50)

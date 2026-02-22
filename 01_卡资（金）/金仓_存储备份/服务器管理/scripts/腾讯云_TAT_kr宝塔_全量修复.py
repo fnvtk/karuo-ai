@@ -7,6 +7,7 @@
 凭证：00_账号与API索引.md
 """
 import base64
+import json
 import os
 import re
 import sys
@@ -16,24 +17,16 @@ KR_INSTANCE_ID = "ins-aw0tnqjo"
 REGION = "ap-guangzhou"
 
 SHELL_SCRIPT = r'''#!/bin/bash
-set -e
 echo "=== kr宝塔 全量修复：Nginx(宝塔) + 全部 Node 项目 ==="
 
 # 1. Nginx：确认使用宝塔 Nginx，非系统 Nginx
 echo ""
 echo "【1】Nginx 检查与修复"
-NGX=$(ps aux | grep -E "nginx|nginx:" | grep -v grep | head -1 || true)
-if echo "$NGX" | grep -q "/usr/sbin/nginx"; then
-  echo "  检测到系统 Nginx，切换为宝塔 Nginx..."
-  killall nginx 2>/dev/null || true
-  sleep 2
-fi
-# 若无 nginx 或需确保宝塔 nginx
-if ! pgrep -f "/www/server/nginx" >/dev/null 2>&1; then
-  /www/server/nginx/sbin/nginx -c /www/server/nginx/conf/nginx.conf 2>/dev/null && echo "  宝塔 Nginx 已启动" || echo "  Nginx 可能已在运行"
-fi
-nginx -t 2>/dev/null && nginx -s reload 2>/dev/null && echo "  Nginx 重载完成"
-echo "  当前 Nginx: $(ps aux | grep nginx | grep -v grep | head -1 | awk '{print $11}')"
+NGX=$(ps aux | grep nginx | grep -v grep | head -1 || true)
+echo "$NGX" | grep -q "/usr/sbin/nginx" && { echo "  切换为宝塔 Nginx..."; killall nginx 2>/dev/null || true; sleep 2; }
+pgrep -f "/www/server/nginx" >/dev/null 2>&1 || /www/server/nginx/sbin/nginx -c /www/server/nginx/conf/nginx.conf 2>/dev/null || true
+nginx -t 2>/dev/null && nginx -s reload 2>/dev/null || true
+echo "  Nginx 检查完成"
 
 # 2. 全部 Node 项目批量启动（宝塔 API）
 echo ""
@@ -166,10 +159,23 @@ def main():
         req2.Filters = [f]
         r2 = client.DescribeInvocationTasks(req2)
         for t in (r2.InvocationTaskSet or []):
-            print("  状态:", getattr(t, "TaskStatus", ""))
-            out = getattr(t, "Output", None) or ""
-            if out:
-                print("  输出:\n", out[:4000])
+            st = getattr(t, "TaskStatus", "")
+            print("  状态:", st)
+            tr = getattr(t, "TaskResult", None)
+            if tr:
+                j = json.loads(tr) if isinstance(tr, str) else (vars(tr) if hasattr(tr, "__dict__") else {})
+                out = j.get("Output", "")
+                if out:
+                    try: out = base64.b64decode(out).decode("utf-8", errors="replace")
+                    except: pass
+                    print("  输出:\n", (out or "")[:4000])
+                err = j.get("Error", "")
+                if err:
+                    try: err = base64.b64decode(err).decode("utf-8", errors="replace")
+                    except: pass
+                    print("  错误:", (err or "")[:1000])
+            elif getattr(t, "Output", None):
+                print("  输出:", (t.Output or "")[:4000])
     except Exception as e:
         print("  查询:", e)
     return 0
