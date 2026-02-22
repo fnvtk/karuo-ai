@@ -20,6 +20,16 @@ REGION = "ap-guangzhou"
 SHELL_SCRIPT = r'''#!/bin/bash
 echo "========== kr宝塔 运行堵塞 + Node 深度修复 =========="
 
+# 【-1】确保宝塔面板监听 9988
+echo ""
+echo "【-1】宝塔面板"
+if ! ss -tlnp 2>/dev/null | grep -q ':9988 '; then
+  echo "  启动宝塔面板..."
+  /etc/init.d/bt start 2>/dev/null || /www/server/panel/bt start 2>/dev/null || true
+  sleep 8
+fi
+ss -tlnp 2>/dev/null | grep 9988 || echo "  9988 未监听，API 可能失败"
+
 # 【0】运行堵塞诊断
 echo ""
 echo "【0】运行堵塞诊断"
