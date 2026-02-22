@@ -112,7 +112,17 @@ python3 "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔
 
 **前置**：本机公网 IP 已加入 kr宝塔 **设置 → API 接口** 白名单。否则报「IP校验失败」。
 
-### 3.3 502 修复（kr宝塔）
+### 3.3 word/ai_hair/is_phone 诊断修复（宝塔 API + TAT）
+
+**脚本**：`scripts/腾讯云_TAT_word_ai_hair_is_phone_诊断修复.py`
+
+**执行**：通过 TAT 在服务器内调用 127.0.0.1 宝塔 API，获取项目列表与路径，查看启动日志，遇 MODULE_NOT_FOUND 则 pnpm install，最后 restart_project。
+
+```bash
+./scripts/.venv_tx/bin/python scripts/腾讯云_TAT_word_ai_hair_is_phone_诊断修复.py
+```
+
+### 3.4 502 修复（kr宝塔）
 
 **脚本**：`scripts/kr宝塔_宝塔API_修复502.py`  
 
@@ -203,6 +213,7 @@ pm2 kill
 | 脚本 | 功能 | 执行位置 |
 |------|------|----------|
 | `scripts/kr宝塔_node项目批量修复.py` | 批量 stop→清端口→start Node 项目 | 服务器内 |
+| `scripts/腾讯云_TAT_word_ai_hair_is_phone_诊断修复.py` | word/ai_hair/is_phone 日志+MODULE_NOT_FOUND+restart（宝塔 API） | 本机（TAT） |
 | `scripts/kr宝塔_宝塔API_修复502.py` | 重启 Nginx + soul 相关 Node 项目 | 本机（API） |
 | `脚本/快速检查服务器.py` | 检查多台服务器状态 | 本机（API） |
 | `scripts/kr宝塔_腾讯云带宽与CPU近24h.py` | 腾讯云监控数据 | 本机 |

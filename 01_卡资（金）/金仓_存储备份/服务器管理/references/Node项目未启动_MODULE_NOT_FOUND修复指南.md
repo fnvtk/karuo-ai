@@ -31,6 +31,7 @@ Error: Cannot find module '/www/wwwroot/自营/wzdj'
 | **tongzhi** | /www/wwwroot/自营/玩值/tongzhi | `cd /www/wwwroot/自营/玩值/tongzhi && node server.js` 或 `npm run start` | 同上 |
 | **is_phone** | /www/wwwroot/自营/kr/kr-phone | `cd /www/wwwroot/自营/kr/kr-phone && node server.js` 或 `npm run start` | 同上 |
 | **ai_hair** | /www/wwwroot/客户/ai_hair | 同上 | 同上 |
+| **word** | /www/wwwroot/自营/word 或 扩展/word | `cd 项目根目录 && npm run start` | Next.js，按实际路径 |
 | **AITOUFA** | /www/wwwroot/扩展/小工具/AITOUFA | `cd /www/wwwroot/扩展/小工具/AITOUFA && npm run start` | 参考 Skill §4.6 |
 | **zhiji** | /www/wwwroot/... | 同上 | 按实际结构 |
 | **ymao** | /www/wwwroot/扩展/ymao | 同上 | 同上 |

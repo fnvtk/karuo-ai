@@ -376,6 +376,7 @@ ss -tlnp | grep :端口号
 
 | 脚本 | 功能 | 位置 |
 |------|------|------|
+| `腾讯云_TAT_word_ai_hair_is_phone_诊断修复.py` | word/ai_hair/is_phone 日志诊断、MODULE_NOT_FOUND 修复、重启（宝塔 API） | `./scripts/` |
 | `kr宝塔_node项目批量修复.py` | 批量启动 kr宝塔 Node 项目（服务器内执行，宝塔 API） | `./scripts/` |
 | `kr宝塔_宝塔API_修复502.py` | 修复 502（重启 Nginx + soul 相关 Node） | `./scripts/` |
 | `快速检查服务器.py` | 一键检查所有服务器状态 | `./脚本/` |
