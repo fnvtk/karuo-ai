@@ -88,8 +88,150 @@ def _parse_frontmatter(content: str) -> tuple:
     return fm, parts[2].strip()
 
 
+EXPORT_README = "README_基因胶囊导出说明.md"
+
+
+def _render_flowchart_mermaid() -> str:
+    """返回基因胶囊功能流程图 Mermaid 源码"""
+    return """```mermaid
+flowchart TB
+    subgraph internal["卡若AI 内部流程"]
+        A1[用户需求/任务] --> A2{查 SKILL_REGISTRY}
+        A2 --> A3[读 SKILL.md 执行]
+        A3 --> A4[执行完成 + 复盘]
+        A4 --> A5{经验有价值?}
+        A5 -->|是| A6[写入经验库/待沉淀]
+        A5 -->|否| A7[结束]
+        A6 --> A8{要打包为胶囊?}
+    end
+
+    subgraph capsule["基因胶囊 核心流程"]
+        B1[pack: Skill 转 胶囊JSON] --> B2[导出目录 + 说明文档]
+        B2 --> B3[list: 查看本地胶囊]
+        B3 --> B4{需要继承?}
+        B4 -->|是| B5[unpack: 胶囊 转 Skill]
+        B4 -->|否| B6[保留备用]
+        B5 --> B7[写入对应成员目录]
+        B7 --> B8[更新 SKILL_REGISTRY]
+    end
+
+    subgraph factory["技能工厂联动"]
+        C1[创建 Skill 前] --> C2[list 查本地胶囊]
+        C2 --> C3{有匹配?}
+        C3 -->|是| C4[unpack 继承]
+        C3 -->|否| C5[新建 Skill]
+        C5 --> C6[创建 Skill 后]
+        C6 --> C7[pack 打包为胶囊]
+        C4 --> B7
+    end
+
+    subgraph external["未来对外流通"]
+        D1[EvoMap Market] --> D2[上传胶囊]
+        D2 --> D3[全球 Agent 继承]
+        D3 --> B5
+        B2 -.->|可选| D2
+    end
+
+    A8 -->|是| B1
+    A8 -->|否| A7
+```"""
+
+
+def _write_export_readme() -> str:
+    """生成/更新导出说明文档（含流程图），返回说明文档路径"""
+    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    readme_path = EXPORT_DIR / EXPORT_README
+
+    # 收集已导出胶囊列表（按创建时间倒序）
+    caps = []
+    if EXPORT_DIR.exists():
+        for f in sorted(EXPORT_DIR.glob("*.json")):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                m = data.get("manifest", {})
+                caps.append({
+                    "file": f.name,
+                    "name": m.get("name", ""),
+                    "capsule_id": data.get("capsule_id", "")[:19],
+                    "created_at": data.get("created_at", ""),
+                })
+            except Exception:
+                pass
+        caps.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+    lines = [
+        "# 基因胶囊 · 导出说明",
+        "",
+        "> **生成时间**：{now}  ",
+        "> **导出目录**：`卡若Ai的文件夹/导出/基因胶囊/`  ",
+        "> **规范文档**：`运营中枢/参考资料/基因胶囊规范.md`",
+        "",
+        "---",
+        "",
+        "## 一、基因胶囊功能总览",
+        "",
+        "**基因胶囊**将验证过的 Skill + 环境指纹 + 审计记录打包为可遗传能力单元，支持：",
+        "",
+        "- **pack**：Skill → 胶囊 JSON（导出）",
+        "- **unpack**：胶囊 JSON → Skill（继承）",
+        "- **list**：查看本地所有胶囊",
+        "",
+        "---",
+        "",
+        "## 二、基因胶囊完整流程图",
+        "",
+        "以下流程图展示卡若AI 中基因胶囊的完整工作流程、与技能工厂的联动，以及未来与 EvoMap 的流通路径。",
+        "",
+        _render_flowchart_mermaid(),
+        "",
+        "---",
+        "",
+        "## 三、已导出胶囊清单",
+        "",
+        "| 技能名 | 胶囊文件 | capsule_id | 创建时间 |",
+        "|:---|:---|:---|:---|",
+    ]
+    for c in caps:
+        lines.append(f"| {c.get('name', '')} | {c.get('file', '')} | {c.get('capsule_id', '')} | {c.get('created_at', '')} |")
+    if not caps:
+        lines.append("| （暂无） | — | — | — |")
+    lines.extend([
+        "",
+        "---",
+        "",
+        "## 四、使用方法",
+        "",
+        "### 解包（继承能力）",
+        "",
+        "```bash",
+        "cd /Users/karuo/Documents/个人/卡若AI",
+        'python3 "05_卡土（土）/土砖_技能复制/基因胶囊/脚本/gene_capsule.py" unpack 技能名_xxxx.json',
+        'python3 .../gene_capsule.py unpack 技能名_xxxx.json -o 目标目录/  # 指定输出目录',
+        "```",
+        "",
+        "### 列表",
+        "",
+        "```bash",
+        'python3 .../gene_capsule.py list',
+        "```",
+        "",
+        "---",
+        "",
+        "## 五、引用",
+        "",
+        "- 规范：`运营中枢/参考资料/基因胶囊规范.md`",
+        "- 技能：`05_卡土（土）/土砖_技能复制/基因胶囊/SKILL.md`",
+        "- 流程图亦可于规范文档中查看",
+        "",
+    ])
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    content = "\n".join(lines).replace("{now}", now)
+    readme_path.write_text(content, encoding="utf-8")
+    return str(readme_path)
+
+
 def pack(skill_ref: str, include_audit: bool = True) -> str:
-    """打包：将 SKILL 转为基因胶囊 JSON"""
+    """打包：将 SKILL 转为基因胶囊 JSON，并生成导出说明文档（含流程图）"""
     skill_path = _find_skill_path(skill_ref)
     content = skill_path.read_text(encoding="utf-8")
     rel_path = str(skill_path.relative_to(KARUO_AI_ROOT))
@@ -121,14 +263,16 @@ def pack(skill_ref: str, include_audit: bool = True) -> str:
     }
 
     if include_audit:
-        # 尝试从复盘目录读取最近一条（若有）
         capsule["audit"] = {"last_retro": "", "source": "pack"}
 
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     safe_name = manifest["name"].replace(" ", "_").replace("/", "_")[:30]
     out_file = EXPORT_DIR / f"{safe_name}_{capsule_id[7:15]}.json"
     out_file.write_text(json.dumps(capsule, ensure_ascii=False, indent=2), encoding="utf-8")
-    return str(out_file)
+
+    # 生成导出说明文档（含完整流程图）
+    readme_path = _write_export_readme()
+    return str(out_file) + "\n📄 说明文档: " + readme_path
 
 
 def unpack(capsule_path: str, target_dir: str | None = None) -> str:
@@ -204,7 +348,10 @@ def main():
 
     if args.cmd == "pack":
         out = pack(args.skill, include_audit=not args.no_audit)
-        print(f"✅ 已打包: {out}")
+        parts = out.split("\n")
+        print(f"✅ 已打包: {parts[0]}")
+        if len(parts) > 1:
+            print(parts[1])
     elif args.cmd == "unpack":
         out = unpack(args.capsule, target_dir=args.output)
         print(f"✅ 已解包: {out}")
