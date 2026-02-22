@@ -46,11 +46,13 @@ cp -a "$SRC" "$DIR/www"
 
 # 4. 预拉取镜像（失败不退出，compose 会再次尝试）
 echo ">>> 4. 拉取 PHP 镜像..."
+set +e
 for i in 1 2 3; do
-  if docker pull php:7.4-apache 2>/dev/null; then break; fi
+  if docker pull php:7.4-apache; then break; fi
   echo "  第 $i 次拉取失败，15s 后重试..."
   sleep 15
 done
+set -e
 
 # 5. 构建并启动
 echo ">>> 5. 构建并启动..."
