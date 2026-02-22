@@ -2,7 +2,7 @@
 name: 基因胶囊
 description: 将验证过的 Skill 打包为可遗传的能力单元（基因胶囊），支持 pack/unpack/list。触发词：基因胶囊、打包技能、解包胶囊、继承能力。
 group: 土
-triggers: 基因胶囊、打包技能、解包胶囊、继承能力、胶囊列表
+triggers: 基因胶囊、打包技能、解包胶囊、继承能力、胶囊列表、查胶囊、pack-all、全量导出
 owner: 土砖
 version: "1.0"
 updated: "2026-02-22"
@@ -49,7 +49,16 @@ python3 .../gene_capsule.py unpack 技能工厂_abc12345.json -o 02_卡人（水
 - 默认按胶囊内 `manifest.skill_path` 写回
 - 可选 `-o` 指定目录，则写入该目录下的 `SKILL.md`
 
-### 2.3 列表
+### 2.3 全量导出（所有 Skill → 基因胶囊）
+
+```bash
+cd /Users/karuo/Documents/个人/卡若AI
+python3 "05_卡土（土）/土砖_技能复制/基因胶囊/脚本/gene_capsule.py" pack-all
+```
+
+将 SKILL_REGISTRY 中**所有技能**批量打包为基因胶囊，并更新导出说明文档。
+
+### 2.4 列表
 
 ```bash
 python3 .../gene_capsule.py list

@@ -230,8 +230,8 @@ def _write_export_readme() -> str:
     return str(readme_path)
 
 
-def pack(skill_ref: str, include_audit: bool = True) -> str:
-    """打包：将 SKILL 转为基因胶囊 JSON，并生成导出说明文档（含流程图）"""
+def pack(skill_ref: str, include_audit: bool = True, write_readme: bool = True) -> str:
+    """打包：将 SKILL 转为基因胶囊 JSON，并生成导出说明文档（含流程图）。pack_all 时 write_readme=False。"""
     skill_path = _find_skill_path(skill_ref)
     content = skill_path.read_text(encoding="utf-8")
     rel_path = str(skill_path.relative_to(KARUO_AI_ROOT))
@@ -270,9 +270,11 @@ def pack(skill_ref: str, include_audit: bool = True) -> str:
     out_file = EXPORT_DIR / f"{safe_name}_{capsule_id[7:15]}.json"
     out_file.write_text(json.dumps(capsule, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # 生成导出说明文档（含完整流程图）
-    readme_path = _write_export_readme()
-    return str(out_file) + "\n📄 说明文档: " + readme_path
+    # 生成导出说明文档（含完整流程图）；pack_all 时由调用方统一写入
+    if write_readme:
+        readme_path = _write_export_readme()
+        return str(out_file) + "\n📄 说明文档: " + readme_path
+    return str(out_file)
 
 
 def unpack(capsule_path: str, target_dir: str | None = None) -> str:
@@ -331,6 +333,45 @@ def list_capsules() -> list[dict]:
     return result
 
 
+def _extract_skill_paths_from_registry() -> list[str]:
+    """从 SKILL_REGISTRY.md 提取所有 SKILL 路径"""
+    import re
+    registry = KARUO_AI_ROOT / "SKILL_REGISTRY.md"
+    if not registry.exists():
+        return []
+    text = registry.read_text(encoding="utf-8")
+    # 匹配 `01_xxx/xxx/SKILL.md` 格式
+    pattern = r"`([^`]+SKILL\.md)`"
+    matches = re.findall(pattern, text)
+    seen = set()
+    out = []
+    for m in matches:
+        m = m.strip()
+        if m and m not in seen and (KARUO_AI_ROOT / m).exists():
+            seen.add(m)
+            out.append(m)
+    return out
+
+
+def pack_all(include_audit: bool = True) -> tuple[int, int, list[str]]:
+    """全量打包：将 SKILL_REGISTRY 中所有技能导出为基因胶囊。返回 (成功数, 失败数, 失败列表)"""
+    paths = _extract_skill_paths_from_registry()
+    ok, fail = 0, 0
+    failed = []
+    for i, rel_path in enumerate(paths, 1):
+        try:
+            pack(rel_path, include_audit=include_audit, write_readme=False)
+            ok += 1
+            print(f"  [{i}/{len(paths)}] ✅ {Path(rel_path).parent.name}")
+        except Exception as e:
+            fail += 1
+            failed.append(f"{rel_path}: {e}")
+            print(f"  [{i}/{len(paths)}] ❌ {Path(rel_path).parent.name}: {e}")
+    # 最后统一更新说明文档（避免每次 pack 都覆盖，这里只调用一次）
+    _write_export_readme()
+    return ok, fail, failed
+
+
 def main():
     parser = argparse.ArgumentParser(description="基因胶囊 · pack/unpack/list")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -344,9 +385,24 @@ def main():
     p_unpack.add_argument("-o", "--output", help="输出目录，默认按 manifest.skill_path")
     # list
     p_list = sub.add_parser("list", help="列出本地胶囊")
+    # pack-all
+    p_pack_all = sub.add_parser("pack-all", help="全量导出：将 SKILL_REGISTRY 中所有技能打包为基因胶囊")
+    p_pack_all.add_argument("--no-audit", action="store_true", help="不包含审计信息")
     args = parser.parse_args()
 
-    if args.cmd == "pack":
+    if args.cmd == "pack-all":
+        paths = _extract_skill_paths_from_registry()
+        print(f"📦 全量导出 {len(paths)} 个技能...")
+        ok, fail, failed = pack_all(include_audit=not getattr(args, "no_audit", False))
+        print(f"\n✅ 成功: {ok} | ❌ 失败: {fail}")
+        print(f"📄 说明文档: {EXPORT_DIR / EXPORT_README}")
+        if failed:
+            print("\n失败项:")
+            for f in failed[:10]:
+                print(f"  - {f}")
+            if len(failed) > 10:
+                print(f"  ... 等 {len(failed)} 项")
+    elif args.cmd == "pack":
         out = pack(args.skill, include_audit=not args.no_audit)
         parts = out.split("\n")
         print(f"✅ 已打包: {parts[0]}")
