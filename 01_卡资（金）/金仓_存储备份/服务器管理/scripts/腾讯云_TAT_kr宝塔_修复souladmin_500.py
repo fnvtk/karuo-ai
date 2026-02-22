@@ -19,11 +19,7 @@ def sg(): t=int(time.time()); return {'request_time':t,'request_token':hashlib.m
 def post(u,d=None): pl=sg(); (pl.update(d) if d else None); r=urllib.request.Request(P+u,data=urllib.parse.urlencode(pl).encode()); return json.loads(urllib.request.urlopen(r,timeout=15).read().decode())
 items=post('/project/nodejs/get_project_list').get('data')or post('/project/nodejs/get_project_list').get('list')or[]
 soul_proj=[x for x in items if x.get('name') and ('soul' in (x.get('name')or'').lower() or 'souladmin' in (x.get('name')or'').lower())]
-if not soul_proj:
-    soul_proj=[x for x in items if x.get('name')]
-    print('soul 相关: 无，重启全部 Node',len(soul_proj),'个')
-else:
-    print('soul 相关:',[x.get('name') for x in soul_proj])
+print('soul 相关:',[x.get('name') for x in soul_proj])
 for it in soul_proj:
     n=it.get('name')
     try:

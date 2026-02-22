@@ -216,15 +216,16 @@ python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储
 # 1. 重载 Nginx
 nginx -t && nginx -s reload
 
-# 2. 重启 soul 相关 Node（仅用宝塔 API，禁用 PM2）
-# 本机执行 kr宝塔_宝塔API_修复502.py（需 API 白名单）；或宝塔面板「Node 项目」中对该站点点击「重启」
+# 2. 重启 soul 相关 Node/PM2（按你实际项目名调整）
+pm2 list
+pm2 restart soul       # 或 souladmin、soul-api 等
+# 若用宝塔「Node 项目」管理，请在面板里对该站点点击「重启」
 ```
 
 **方式三：SSH**（当连接可用时）
 
 ```bash
-ssh -p 22022 -i "服务器管理/Steam/id_ed25519" root@43.139.27.93 "nginx -s reload"
-# 然后通过宝塔 API 或面板重启 Node 项目（禁用 PM2）
+ssh -p 22022 -i "服务器管理/Steam/id_ed25519" root@43.139.27.93 "nginx -s reload; pm2 restart soul"
 ```
 
 修复后刷新 soul.quwanzhi.com/admin 或 souladmin.quwanzhi.com 查看是否恢复。

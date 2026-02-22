@@ -1,7 +1,7 @@
 ---
 name: 服务器管理
-description: 宝塔服务器统一管理与自动化部署。核心规则：宝塔服务器优先判断，仅用宝塔 API + 宝塔 Node，禁用 PM2。
-triggers: 服务器、宝塔、部署、SSL、HTTPS、Nginx、内网穿透、域名、kr-ai、ngrok
+description: 宝塔服务器统一管理与自动化部署
+triggers: 服务器、宝塔、部署、SSL、HTTPS、Nginx、宝塔Node、内网穿透、域名、kr-ai、ngrok
 owner: 金仓
 group: 金
 version: "1.0"
@@ -51,9 +51,9 @@ kr宝塔: qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT
 
 ### 强制规则（每次执行必守）
 
-1. **宝塔服务器优先判断**：涉及腾讯云 43.139.27.93（kr宝塔）、42.194.245.239（存客宝）等服务器时，**优先判断是否为宝塔服务器**；若是，一律**仅用宝塔 API + 宝塔 Node** 操作，**禁用 PM2**。
-2. **SSH 统一配置**：账号 **root**、密码 **Zhiqun1984**（Z 大写），端口 22022 或 22；或使用 id_ed25519 密钥。详见 `references/SSH登录方式与故障排查.md`。
-3. **宝塔 443 优先**：宝塔服务器 443 不监听时，**优先**检查是否运行系统 Nginx 而非宝塔 Nginx；若是，先 `killall nginx` 后启动宝塔 Nginx。详见 Q0、`_经验库/已整理/运维经验/宝塔443不监听_系统nginx与宝塔nginx优先排查.md`。
+1. **宝塔优先确认**：操作腾讯云服务器时，**先确认是否为宝塔服务器**。若是，**统一用宝塔 API + 宝塔 Node 管理，禁止使用 PM2**。所有 Node 项目启停、重启、状态查询一律通过宝塔面板 API（`/project/nodejs/start_project`、`stop_project`、`get_project_list`）。
+2. **SSH 统一配置**：账号 **root**、密码 **Zhiqun1984**（Z 大写），端口 22022 或 22；或使用 id_ed25519 密钥。详见 `references/SSH登录方式与故障排查.md`。SSH 不通时用 TAT（腾讯云自动化助手）。
+3. **宝塔 443 优先**：宝塔服务器 443 不监听时，**优先**检查是否运行系统 Nginx 而非宝塔 Nginx；若是，先 `killall nginx` 后启动宝塔 Nginx。
 4. **经验沉淀**：每次涉及服务器/宝塔/部署的操作结束后，必须把经验写入 `02_卡人（水）/水溪_整理归档/经验库/待沉淀/`，防止同类问题重复出现。
 5. **Skill 迭代**：每次有新的配置、教训、流程变更时，必须同步更新本 SKILL.md 或 references，保证下次调用时信息一致。
 6. **卡若AI 复盘**：每次任务结束必须用卡若AI 复盘格式收尾（目标·结果·达成率、过程、反思、总结、下一步）。
@@ -180,7 +180,7 @@ bash scripts/存客宝_lytiao_Docker部署.sh
 - **SSH**：`ssh -p 22022 -i "服务器管理项目/Steam/id_ed25519" root@43.139.27.93`（私钥须 `chmod 600`）
 - 本机快速检查：`ping 43.139.27.93`、`nc -zv 43.139.27.93 22022`
 - 服务器内诊断与限流：在 **宝塔面板终端** 执行文档「六」中 6.1～6.3 命令（连接数、按 IP 统计、Nginx 限速）。
-- **502/500 修复（souladmin.quwanzhi.com）**：仅用宝塔 API。本机执行 `kr宝塔_宝塔API_修复502.py`（需将本机 IP 加入 API 白名单）；或 TAT 执行 `腾讯云_TAT_kr宝塔_修复souladmin_500.py`。soul.quwanzhi.com/admin 已停用。详见文档 6.6。
+- **502 修复（如 soul.quwanzhi.com/admin）**：API 方式运行 `scripts/kr宝塔_宝塔API_修复502.py`（需 API 白名单）；或到 kr宝塔 **宝塔面板 → 终端** 执行 `nginx -t && nginx -s reload` 后，在「Node 项目」中重启 soul 相关项目。详见文档 6.6。
 
 ### 6. 常用诊断命令（kr宝塔等）
 
@@ -188,8 +188,8 @@ bash scripts/存客宝_lytiao_Docker部署.sh
 # 检查端口占用
 ssh -p 22022 root@43.139.27.93 "ss -tlnp | grep :3006"
 
-# 检查PM2进程
-ssh -p 22022 root@43.139.27.93 "/www/server/nodejs/v22.14.0/bin/pm2 list"
+# ⚠️ 禁止使用 PM2，统一用宝塔 API 管理 Node 项目
+# 查看 Node 项目状态：用宝塔 API get_project_list 或 TAT 脚本
 
 # 测试HTTP响应
 ssh -p 22022 root@43.139.27.93 "curl -I http://localhost:3006"
@@ -360,12 +360,12 @@ ss -tlnp | grep :端口号
 - 关闭代理软件
 - 或用手机4G网络测试
 
-### Q5: 宝塔与 PM2 冲突
+### Q5: 禁止 PM2（强制）
 
-**规则**：**只用宝塔 Node API 管理项目，禁用 PM2**。
+**规则**：**所有腾讯云宝塔服务器，Node 项目统一用宝塔 Node API 管理（启停/重启/状态），严禁使用 PM2**。操作前先确认是否为宝塔服务器。
 
 **解决**: 
-- 停止所有独立 PM2: `pm2 kill`
+- 如发现 PM2 残留: `pm2 kill`（清理后不再使用）
 - 在宝塔面板【网站】→【Node 项目】管理启动/停止
 - 批量操作见 `references/宝塔Node项目管理_SKILL.md`
 
@@ -453,4 +453,4 @@ Node 项目批量启动、502 修复、EADDRINUSE 等均按主 Skill 操作。SS
 - 部署位置: /www/wwwroot/soul
 - 域名: soul.quwanzhi.com
 - 端口: 3006
-- 部署流程: 压缩→上传→解压→安装依赖→构建→PM2启动→配置Nginx→配置SSL
+- 部署流程: 压缩→上传→解压→安装依赖→构建→宝塔Node项目添加→配置Nginx→配置SSL（禁止 PM2）
