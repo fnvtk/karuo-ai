@@ -391,6 +391,7 @@ ss -tlnp | grep :端口号
 ## 宝塔 Node 项目管理（独立 Skill）
 
 - **主 Skill**：`references/宝塔Node项目管理_SKILL.md` — 凭证、Node API、常见错误、脚本，**禁用 PM2**
+- **强制**：所有 Node 项目统一用 **宝塔 Node 管理**，不用 PM2；确保项目在宝塔上运行
 - **kr宝塔**：`references/kr宝塔_宝塔管理SKILL.md`
 - **存客宝**：`references/存客宝_宝塔管理SKILL.md`
 
