@@ -14,9 +14,9 @@ from pathlib import Path
 
 OLLAMA_URL = "http://localhost:11434"
 DEFAULT_CTA = "关注我，每天学一招私域干货"
-CLIP_COUNT = 8
-MIN_DURATION = 60   # 1 分钟起
-MAX_DURATION = 180  # 3 分钟
+CLIP_COUNT = 15
+MIN_DURATION = 60   # 最少 1 分钟
+MAX_DURATION = 300  # 最多 5 分钟
 
 
 def parse_srt_segments(srt_path: str) -> list:
@@ -42,22 +42,23 @@ def parse_srt_segments(srt_path: str) -> list:
 
 
 def fallback_highlights(transcript_path: str, clip_count: int) -> list:
-    """规则备用：按时长均匀切分，每段 60-180 秒"""
+    """规则备用：每段 60-300 秒（1-5 分钟）"""
     segments = parse_srt_segments(transcript_path)
     if not segments:
         return []
     total = segments[-1]["end_sec"] if segments else 0
-    interval = max(120, total / clip_count)  # 每段约 2 分钟
+    seg_dur = min(300, max(60, total / clip_count))  # 每段 1-5 分钟
     result = []
     for i in range(clip_count):
-        start_sec = int(interval * i + 30)
-        end_sec = min(int(start_sec + 120), int(total - 5))  # 约 2 分钟
-        if end_sec <= start_sec + 30:
+        start_sec = int(i * seg_dur)
+        end_sec = min(int(start_sec + seg_dur), int(total - 5))
+        if end_sec <= start_sec + 59:  # 不足 1 分钟跳过
             continue
         # 找该时间段内的字幕
         texts = [s["text"] for s in segments if s["end_sec"] >= start_sec and s["start_sec"] <= end_sec]
-        excerpt = (texts[0][:50] + "..." if texts and len(texts[0]) > 50 else (texts[0] if texts else ""))
-        hook = (excerpt[:15] + "..." if len(excerpt) > 15 else excerpt) or f"精彩片段{i+1}"
+        joined = " ".join(texts)[:80] if texts else ""
+        excerpt = (joined + "..." if len(joined) > 50 else joined) or f"精彩片段{i+1}"
+        hook = (excerpt[:18] + "..." if len(excerpt) > 18 else excerpt) or f"精彩片段{i+1}"
         h, m, s = start_sec // 3600, (start_sec % 3600) // 60, start_sec % 60
         eh, em, es = end_sec // 3600, (end_sec % 3600) // 60, end_sec % 60
         result.append({
@@ -85,27 +86,66 @@ def srt_to_timestamped_text(srt_path: str) -> str:
     return "\n".join(lines)
 
 
+def _sec_to_hhmmss(sec: float) -> str:
+    """秒数转为 HH:MM:SS"""
+    s = int(sec)
+    h, m = s // 3600, (s % 3600) // 60
+    ss = s % 60
+    return f"{h:02d}:{m:02d}:{ss:02d}"
+
+
+def _parse_time_to_sec(t: str) -> float:
+    """解析 HH:MM:SS、HH:MM:SS.mmm、HH:MM:SS,mmm 为秒"""
+    t = str(t).strip().replace(",", ".")
+    parts = re.split(r"[:.]", t)
+    if len(parts) >= 3:
+        try:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        except (ValueError, TypeError):
+            pass
+    # 纯数字视为秒
+    m = re.match(r"^(\d+(?:\.\d+)?)\s*$", t)
+    if m:
+        return float(m.group(1))
+    return 0
+
+
+def _filter_short_clips(data: list) -> list:
+    """过滤掉时长 < 60 秒的切片"""
+    result = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        st = item.get("start_time") or item.get("start") or "00:00:00"
+        et = item.get("end_time") or item.get("end") or "00:01:00"
+        dur = _parse_time_to_sec(et) - _parse_time_to_sec(st)
+        if dur >= 60:
+            result.append(item)
+        else:
+            print(f"  过滤短片段: {item.get('title','?')} (仅{dur:.0f}秒)", file=sys.stderr)
+    return result
+
+
 def _build_prompt(transcript: str, clip_count: int) -> str:
-    """构建高光识别 prompt（完整观点+干货，1-3分钟，全中文）"""
-    txt = transcript[:18000] if len(transcript) > 18000 else transcript
-    return f"""你是资深短视频策划师。请从视频文字稿中识别 {clip_count} 个**完整的核心观点/干货片段**。
+    """构建高光识别 prompt（1-5分钟，主题与内容必须一致，全中文）"""
+    txt = transcript[:25000] if len(transcript) > 25000 else transcript
+    return f"""你是资深短视频策划师。请从视频文字稿中识别尽可能多的**完整干货片段**，目标 {clip_count} 个以上。
+
+【时长要求】每个片段 **60-300 秒（1-5 分钟）**，少于 60 秒的不要输出。
+【主题一致】title、hook_3sec、transcript_excerpt 必须**完全对应**该时间段内的实际内容，禁止泛泛而谈。
+  - title：从该段时间内的核心观点提炼，15字内
+  - hook_3sec：从该段第一句或核心金句提炼，15字内
+  - transcript_excerpt：该段内容的中文摘要，50字内
 
 【切片原则】
-- 每个片段必须是**完整的一个话题/观点**，有头有尾，逻辑闭环，不能截断
-- 时长 **60-180 秒（1-3 分钟）**，尽量接近 2 分钟，确保内容完整
-- 优先选：金句、完整故事、可操作方法论、反常识观点、情绪高点、成体系讲解
+- 每段必须是完整话题，有头有尾
+- 优先：金句、故事、方法论、反常识、情绪高点
 - 相邻片段间隔至少 60 秒
+- 从文字稿时间戳精确提取 start_time、end_time
 
-【输出字段】所有内容**必须使用简体中文**，若原文是英文请翻译后填写：
-- title: 核心观点标题（15字内，用于文件名）
-- start_time: "HH:MM:SS"（从文字稿时间戳精确提取）
-- end_time: "HH:MM:SS"
-- hook_3sec: 封面 Hook 文案（15字内，吸引点击）
-- cta_ending: "{DEFAULT_CTA}"
-- transcript_excerpt: 本片段核心内容摘要（50字内，中文）
-- reason: 推荐理由（中文）
+【输出字段】全部**简体中文**，英文原文需翻译：
+- title、start_time、end_time、hook_3sec、cta_ending（用"{DEFAULT_CTA}"）、transcript_excerpt、reason
 
-【强制】title、hook_3sec、transcript_excerpt、reason 必须全部简体中文，禁止英文。
 只输出 JSON 数组，不要 ``` 或其他文字。
 
 视频文字稿：
@@ -233,8 +273,24 @@ def main():
         data = fallback_highlights(str(transcript_path), args.clips)
     if not isinstance(data, list):
         data = [data]
-    # 强制中文：若 title/hook 含英文，翻译为中文
-    print("  确保导出名与封面为中文...")
+    # 过滤短于 1 分钟的切片
+    data = _filter_short_clips(data)
+    # 统一 start_time/end_time 为 HH:MM:SS（兼容 Ollama 返回秒数）
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        st = item.get("start_time") or item.get("start")
+        if isinstance(st, (int, float)):
+            item["start_time"] = _sec_to_hhmmss(st)
+        et = item.get("end_time") or item.get("end")
+        if isinstance(et, (int, float)):
+            item["end_time"] = _sec_to_hhmmss(et)
+    # 若 AI 返回的片段全被过滤，用规则备用
+    if not data and transcript_path.exists():
+        print("  AI 片段时长无效，改用规则切分（1-5 分钟）", file=sys.stderr)
+        data = fallback_highlights(str(transcript_path), args.clips)
+    # 强制中文
+    print("  确保导出名与封面为简体中文...")
     data = _ensure_chinese_highlights(data)
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)

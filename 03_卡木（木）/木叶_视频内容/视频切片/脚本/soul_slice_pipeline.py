@@ -93,6 +93,8 @@ def main():
     parser.add_argument("--skip-highlights", action="store_true", help="跳过高光识别（已有 highlights.json）")
     parser.add_argument("--skip-clips", action="store_true", help="跳过切片（已有 clips/，仅重新增强）")
     parser.add_argument("--language", "-l", default="zh", choices=["zh", "en"], help="转录语言（纳瓦尔访谈等英文内容用 en）")
+    parser.add_argument("--skip-subs", action="store_true", help="跳过字幕烧录（原片已有字幕时用）")
+    parser.add_argument("--force-burn-subs", action="store_true", help="强制烧录字幕（忽略检测）")
     args = parser.parse_args()
 
     video_path = Path(args.video).resolve()
@@ -205,19 +207,19 @@ def main():
 
     # 4. 增强（封面+字幕+加速）：soul_enhance（Pillow，无需 drawtext）
     enhanced_dir.mkdir(parents=True, exist_ok=True)
-    ok = run(
-        [
-            sys.executable,
-            str(SCRIPT_DIR / "soul_enhance.py"),
-            "--clips", str(clips_dir),
-            "--highlights", str(highlights_path),
-            "--transcript", str(transcript_path),
-            "--output", str(enhanced_dir),
-        ],
-        "增强处理（封面+字幕+加速）",
-        timeout=900,
-        check=False,
-    )
+    enhance_cmd = [
+        sys.executable,
+        str(SCRIPT_DIR / "soul_enhance.py"),
+        "--clips", str(clips_dir),
+        "--highlights", str(highlights_path),
+        "--transcript", str(transcript_path),
+        "--output", str(enhanced_dir),
+    ]
+    if getattr(args, "skip_subs", False):
+        enhance_cmd.append("--skip-subs")
+    if getattr(args, "force_burn_subs", False):
+        enhance_cmd.append("--force-burn-subs")
+    ok = run(enhance_cmd, "增强处理（封面+字幕+加速）", timeout=900, check=False)
     import shutil
     enhanced_count = len(list(enhanced_dir.glob("*.mp4")))
     if enhanced_count == 0 and clips_list:

@@ -594,8 +594,14 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         print(f"  ⊘ 跳过字幕烧录（检测到原片已有字幕/图片）")
     else:
         start_time = highlight_info.get('start_time', '00:00:00')
-        parts = start_time.split(':')
-        start_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        try:
+            if isinstance(start_time, (int, float)):
+                start_sec = float(start_time)
+            else:
+                parts = str(start_time).strip().split(':')
+                start_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        except (IndexError, ValueError):
+            start_sec = 0
         end_sec = start_sec + duration
         subtitles = parse_srt_for_clip(transcript_path, start_sec, end_sec)
         for sub in subtitles:
@@ -606,7 +612,8 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
             img_path = os.path.join(temp_dir, f'sub_{i:04d}.png')
             create_subtitle_image(sub['text'], width, height, img_path)
             sub_images.append({'path': img_path, 'start': sub['start'], 'end': sub['end']})
-    print(f"  ✓ 字幕图片 ({len(sub_images)}张)")
+    if sub_images:
+        print(f"  ✓ 字幕图片 ({len(sub_images)}张)")
     
     # 4. 检测静音
     silences = detect_silence(clip_path, SILENCE_THRESHOLD, SILENCE_MIN_DURATION)
