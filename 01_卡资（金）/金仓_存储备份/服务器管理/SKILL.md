@@ -166,7 +166,9 @@ bash scripts/存客宝_lytiao_Docker部署.sh
 
 ### 5. kr宝塔 运行堵塞 + Node 深度修复
 
-- **运行堵塞**（负载 100%、CPU 98%）：结束异常 node 进程、停 Node、修复 site.db、查日志、批量启动。
+- **负载诊断**：`./scripts/.venv_tx/bin/python scripts/腾讯云_TAT_kr宝塔_负载诊断.py`（只读，输出负载/CPU/Node 进程）
+- **负载分析文档**：`references/kr宝塔_负载100_原因分析与处理.md`
+- **运行堵塞修复**：结束异常 node、停 Node、修复 site.db、批量启动。
 - **TAT**：`./scripts/.venv_tx/bin/python scripts/腾讯云_TAT_kr宝塔_运行堵塞与Node深度修复.py`
 - **宝塔终端**（推荐）：上传 `scripts/kr宝塔_运行堵塞与Node深度修复_宝塔终端执行.sh` 后 `bash` 执行。
 
