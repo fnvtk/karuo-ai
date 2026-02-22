@@ -39,7 +39,7 @@ DIR="/opt/lytiao_docker"
 SRC="/www/wwwroot/www.lytiao.com"
 mkdir -p "$DIR"
 cat > "$DIR/Dockerfile" << 'EOF'
-FROM php:7.1-apache
+FROM php:7.4-apache
 RUN a2enmod rewrite
 WORKDIR /var/www/html
 EXPOSE 80
@@ -79,8 +79,8 @@ def main():
     req.CommandName = "CKB_lytiao_Quick"
     r = client.RunCommand(req)
     print("已下发（精简构建，约 2 分钟）InvocationId:", r.InvocationId)
-    print("等待 150s 获取结果...")
-    time.sleep(150)
+    print("等待 240s 获取结果...")
+    time.sleep(240)
     req2 = models.DescribeInvocationTasksRequest()
     f = models.Filter(); f.Name, f.Values = "invocation-id", [r.InvocationId]
     req2.Filters = [f]
