@@ -44,14 +44,22 @@ echo ">>> 3. 复制网站文件..."
 rm -rf "$DIR/www"
 cp -a "$SRC" "$DIR/www"
 
-# 4. 构建并启动
-echo ">>> 4. 构建并启动（约 2～5 分钟）..."
+# 4. 预拉取镜像（失败不退出，compose 会再次尝试）
+echo ">>> 4. 拉取 PHP 镜像..."
+for i in 1 2 3; do
+  if docker pull php:7.4-apache 2>/dev/null; then break; fi
+  echo "  第 $i 次拉取失败，15s 后重试..."
+  sleep 15
+done
+
+# 5. 构建并启动
+echo ">>> 5. 构建并启动..."
 cd "$DIR"
 docker compose down 2>/dev/null || true
 docker compose up -d --build
 
-# 5. 验证
-echo ">>> 5. 验证..."
+# 6. 验证
+echo ">>> 6. 验证..."
 docker ps -a --filter name=lytiao
 curl -sI -o /dev/null -w "本机 8090: HTTP %{http_code}\n" http://127.0.0.1:8090/ 2>/dev/null || echo "curl 待重试"
 
