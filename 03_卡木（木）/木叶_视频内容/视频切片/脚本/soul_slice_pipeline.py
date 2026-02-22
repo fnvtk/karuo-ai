@@ -92,6 +92,7 @@ def main():
     parser.add_argument("--skip-transcribe", action="store_true", help="跳过转录（已有 transcript.srt）")
     parser.add_argument("--skip-highlights", action="store_true", help="跳过高光识别（已有 highlights.json）")
     parser.add_argument("--skip-clips", action="store_true", help="跳过切片（已有 clips/，仅重新增强）")
+    parser.add_argument("--language", "-l", default="zh", choices=["zh", "en"], help="转录语言（纳瓦尔访谈等英文内容用 en）")
     args = parser.parse_args()
 
     video_path = Path(args.video).resolve()
@@ -133,7 +134,7 @@ def main():
                 "mlx_whisper",
                 str(audio_path),
                 "--model", "mlx-community/whisper-small-mlx",
-                "--language", "zh",
+                "--language", args.language,
                 "--output-format", "srt",
                 "--output-dir", str(base_dir),
                 "--output-name", "transcript",

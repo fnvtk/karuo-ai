@@ -128,8 +128,8 @@ STYLE = {
 # ============ 工具函数 ============
 
 def get_font(font_path, size):
-    """获取字体，优先苹方/系统字体"""
-    for path in [font_path, FONT_BOLD] + FONT_PRIORITY + [FALLBACK_FONT]:
+    """获取字体，优先苹方（支持中文），避免 default 导致封面文字不显示"""
+    for path in FONT_PRIORITY + [font_path, FONT_BOLD, FALLBACK_FONT]:
         if path and os.path.exists(path):
             try:
                 return ImageFont.truetype(path, size)
@@ -241,7 +241,9 @@ def get_video_info(video_path):
 
 def create_cover_image(hook_text, width, height, output_path, video_path=None):
     """创建封面贴片（简体中文）"""
-    hook_text = _to_simplified(str(hook_text))
+    hook_text = _to_simplified(str(hook_text or "").strip())
+    if not hook_text:
+        hook_text = "精彩切片"
     style = STYLE['cover']
     hook_style = STYLE['hook']
     
@@ -299,14 +301,14 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
     if current_line:
         lines.append(current_line)
     
-    # 绘制文字
+    # 绘制文字（整体向右偏移 6%，减少右侧空白）
     line_height = hook_style['font_size'] + 15
     total_height = len(lines) * line_height
     start_y = (height - total_height) // 2
-    
+    x_offset = int(width * 0.06)  # 向右偏移
     for i, line in enumerate(lines):
         line_w, line_h = get_text_size(draw, line, font)
-        x = (width - line_w) // 2
+        x = (width - line_w) // 2 + x_offset
         y = start_y + i * line_height
         
         draw_text_with_outline(
@@ -334,7 +336,9 @@ def create_subtitle_image(text, width, height, output_path):
     kw_font = get_font(FONT_HEAVY, kw_size)  # 关键词用粗体+大字
     text_w, text_h = get_text_size(draw, text, font)
     
-    base_x = (width - text_w) // 2
+    # 字幕整体向右偏移 6%，减少右侧空白
+    x_offset = int(width * 0.06)
+    base_x = (width - text_w) // 2 + x_offset
     base_y = height - text_h - style['margin_bottom']
     
     # 背景条
@@ -487,7 +491,12 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     
     print(f"  分辨率: {width}x{height}, 时长: {duration:.1f}秒")
     
-    hook_text = highlight_info.get('hook_3sec', highlight_info.get('title', ''))
+    hook_text = highlight_info.get('hook_3sec') or highlight_info.get('title') or ''
+    if not hook_text and clip_path:
+        # 从文件名提取标题（soul106_01_标题.mp4）
+        m = re.search(r'\d+[_\s]+(.+?)(?:_enhanced)?\.mp4$', os.path.basename(clip_path))
+        if m:
+            hook_text = m.group(1).strip()
     cover_duration = STYLE['cover']['duration']
     
     # 1. 生成封面图片
@@ -637,6 +646,9 @@ def main():
     print("="*60)
     
     output_dir.mkdir(parents=True, exist_ok=True)
+    # 清空已有增强切片，避免重复
+    for f in output_dir.glob("*.mp4"):
+        f.unlink()
     
     with open(highlights_path, 'r', encoding='utf-8') as f:
         highlights = json.load(f)

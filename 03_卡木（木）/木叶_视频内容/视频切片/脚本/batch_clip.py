@@ -51,20 +51,27 @@ def _to_simplified(text: str) -> str:
         return str(text)
 
 
-def sanitize_filename(name: str, max_length: int = 50) -> str:
-    """清理文件名，移除非法字符，标题统一简体"""
+def _is_mostly_chinese(text: str) -> bool:
+    """判断是否主要为中文"""
+    if not text or not isinstance(text, str):
+        return False
+    chinese = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+    return chinese / max(1, len(text.strip())) > 0.3
+
+
+def sanitize_filename(name: str, max_length: int = 50, chinese_only: bool = True) -> str:
+    """清理文件名，统一简体中文；若含英文则仅保留中文部分"""
     name = _to_simplified(str(name))
-    # 保留字母、数字、中文、空格、下划线、连字符
     safe_chars = []
     for c in name:
-        if c.isalnum() or c in " _-" or '\u4e00' <= c <= '\u9fff':
+        if c in " _-" or "\u4e00" <= c <= "\u9fff":
             safe_chars.append(c)
-    
+        elif not chinese_only and (c.isalnum() or c.isdigit()):
+            safe_chars.append(c)
     result = "".join(safe_chars).strip()
     if len(result) > max_length:
         result = result[:max_length]
-    
-    return result or "clip"
+    return result.strip(" _-") or "片段"
 
 
 def clip_video(input_path: str, start_time: str, end_time: str, output_path: str, 
@@ -148,6 +155,9 @@ def batch_clip(input_video: str, highlights_json: str, output_dir: str = None,
     else:
         output_dir = input_path.parent / "clips"
     output_dir.mkdir(parents=True, exist_ok=True)
+    # 清空已有切片，避免重复
+    for f in output_dir.glob("*.mp4"):
+        f.unlink()
     
     print("="*60)
     print("✂️  批量切片")

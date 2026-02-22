@@ -17,16 +17,29 @@ KR_INSTANCE_ID = "ins-aw0tnqjo"
 REGION = "ap-guangzhou"
 
 SHELL_SCRIPT = r'''#!/bin/bash
-echo "=== kr宝塔 全量修复：Nginx(宝塔) + 全部 Node 项目 ==="
+echo "=== kr宝塔 全量修复：宝塔面板 + Nginx(仅宝塔) + 全部 Node 项目 ==="
 
-# 1. Nginx：确认使用宝塔 Nginx，非系统 Nginx
+# 0. 宝塔面板：确保 9988 可访问
 echo ""
-echo "【1】Nginx 检查与修复"
-NGX=$(ps aux | grep nginx | grep -v grep | head -1 || true)
-echo "$NGX" | grep -q "/usr/sbin/nginx" && { echo "  切换为宝塔 Nginx..."; killall nginx 2>/dev/null || true; sleep 2; }
-pgrep -f "/www/server/nginx" >/dev/null 2>&1 || /www/server/nginx/sbin/nginx -c /www/server/nginx/conf/nginx.conf 2>/dev/null || true
+echo "【0】宝塔面板检查"
+if ! ss -tlnp 2>/dev/null | grep -q ':9988 '; then
+  echo "  9988 未监听，启动宝塔面板..."
+  /etc/init.d/bt start 2>/dev/null || /www/server/panel/bt start 2>/dev/null || true
+  sleep 5
+fi
+echo "  面板状态检查完成"
+
+# 1. Nginx：强制使用宝塔 Nginx（禁止系统 /usr/sbin/nginx）
+echo ""
+echo "【1】Nginx 强制宝塔化（禁用系统 nginx）"
+# 若有系统 nginx（/usr/sbin/nginx）则全部杀掉
+ps aux | grep nginx | grep -v grep | grep -q "/usr/sbin/nginx" && {
+  echo "  检测到系统 Nginx，切为宝塔 Nginx..."; killall nginx 2>/dev/null || true; sleep 2;
+}
+# 确保宝塔 Nginx 运行（/www/server/nginx）
+pgrep -f "/www/server/nginx" >/dev/null 2>&1 || /www/server/nginx/sbin/nginx -c /www/server/nginx/conf/nginx.conf
 nginx -t 2>/dev/null && nginx -s reload 2>/dev/null || true
-echo "  Nginx 检查完成"
+echo "  Nginx 已使用宝塔版本"
 
 # 2. 全部 Node 项目批量启动（宝塔 API）
 echo ""

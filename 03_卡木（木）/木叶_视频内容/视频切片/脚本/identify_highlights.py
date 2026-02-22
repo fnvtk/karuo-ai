@@ -86,21 +86,26 @@ def srt_to_timestamped_text(srt_path: str) -> str:
 
 
 def _build_prompt(transcript: str, clip_count: int) -> str:
-    """构建高光识别 prompt（Ollama/Groq 通用）"""
-    # 限制长度，Ollama 上下文有限
-    txt = transcript[:12000] if len(transcript) > 12000 else transcript
-    return f"""你是一个专业的短视频内容策划师。分析以下视频文字稿，找出 {clip_count} 个最适合做短视频的高光片段。
+    """构建高光识别 prompt（完整观点+干货，全中文）"""
+    txt = transcript[:15000] if len(transcript) > 15000 else transcript
+    return f"""你是资深短视频策划师。请从视频文字稿中识别 {clip_count} 个**完整的核心观点/干货片段**。
 
-每个片段需包含：
-- title: 简短标题
-- start_time: "HH:MM:SS"（从文字稿提取）
+【切片原则】
+- 每个片段必须是**完整的一句话/一个观点**，有头有尾，不能截断
+- 优先选：金句、完整故事、可操作方法论、反常识观点、情绪高点
+- 每个片段时长 {MIN_DURATION}-{MAX_DURATION} 秒，相邻片段间隔至少 30 秒
+
+【输出字段】所有内容**必须使用简体中文**，若原文是英文请翻译后填写：
+- title: 核心观点标题（15字内，用于文件名）
+- start_time: "HH:MM:SS"（从文字稿时间戳精确提取）
 - end_time: "HH:MM:SS"
-- hook_3sec: 前3秒Hook，15字内
-- cta_ending: 结尾CTA（可用 "{DEFAULT_CTA}"）
-- transcript_excerpt: 片段内容前50字
-- reason: 推荐理由
+- hook_3sec: 封面 Hook 文案（15字内，吸引点击）
+- cta_ending: "{DEFAULT_CTA}"
+- transcript_excerpt: 本片段核心内容摘要（50字内，中文）
+- reason: 推荐理由（中文）
 
-时长 {MIN_DURATION}-{MAX_DURATION} 秒，相邻间隔30秒。输出必须使用简体中文。只输出 JSON 数组，不要其他文字或```包裹。
+【强制】title、hook_3sec、transcript_excerpt、reason 必须全部简体中文，禁止英文。
+只输出 JSON 数组，不要 ``` 或其他文字。
 
 视频文字稿：
 ---
@@ -119,6 +124,56 @@ def _parse_ai_json(text: str) -> list:
     if m:
         return json.loads(m.group())
     return json.loads(text)
+
+
+def _is_mostly_chinese(text: str) -> bool:
+    """判断文本是否主要为中文"""
+    if not text or not isinstance(text, str):
+        return True
+    chinese = sum(1 for c in text if "\u4e00" <= c <= "\u9fff")
+    return chinese / max(1, len(text.strip())) > 0.3
+
+
+def _translate_to_chinese(text: str) -> str:
+    """用 Ollama 将英文翻译为中文"""
+    if not text or _is_mostly_chinese(text):
+        return text
+    import requests
+    try:
+        r = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": "qwen2.5:1.5b",
+                "prompt": f"将以下英文翻译成简体中文，只输出中文翻译结果，不要其他内容：\n{text[:200]}",
+                "stream": False,
+                "options": {"temperature": 0.1, "num_predict": 100},
+            },
+            timeout=30,
+        )
+        if r.status_code == 200:
+            out = r.json().get("response", "").strip()
+            if out and _is_mostly_chinese(out):
+                return out.split("\n")[0][:50]
+    except Exception:
+        pass
+    return text
+
+
+def _ensure_chinese_highlights(data: list) -> list:
+    """确保 title、hook_3sec、transcript_excerpt 全为中文，无英文"""
+    for i, item in enumerate(data):
+        if not isinstance(item, dict):
+            continue
+        for key in ["title", "hook_3sec", "transcript_excerpt"]:
+            val = item.get(key)
+            if val and not _is_mostly_chinese(str(val)):
+                translated = _translate_to_chinese(str(val))
+                item[key] = (translated if translated else f"片段{i+1}")[:20 if key != "transcript_excerpt" else 50]
+        if item.get("cta_ending") and not _is_mostly_chinese(str(item["cta_ending"])):
+            item["cta_ending"] = DEFAULT_CTA
+        if item.get("reason") and not _is_mostly_chinese(str(item.get("reason", ""))):
+            item["reason"] = _translate_to_chinese(str(item["reason"]))[:80] or "干货观点"
+    return data
 
 
 def call_ollama(transcript: str, clip_count: int = CLIP_COUNT) -> str:
@@ -177,6 +232,9 @@ def main():
         data = fallback_highlights(str(transcript_path), args.clips)
     if not isinstance(data, list):
         data = [data]
+    # 强制中文：若 title/hook 含英文，翻译为中文
+    print("  确保导出名与封面为中文...")
+    data = _ensure_chinese_highlights(data)
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:

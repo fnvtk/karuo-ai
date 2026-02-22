@@ -37,9 +37,10 @@
 
 | 来源 | 说明 |
 |------|------|
-| `<source src="...">` | 视频标签中的 CDN 直链 |
-| `window._ROUTER_DATA` | JSON 中的 play_addr.url_list 或 url_list |
+| **play_addr.url_list**（优先） | ROUTER_DATA 中的 `play_addr.url_list`，格式为 `aweme.snssdk.com/aweme/v1/play/...`，带 Referer 可 302 到真实 CDN |
+| `<source src="...">` | 备选，可能返回封面图，需校验 Content-Type |
 | 无水印 | 将 URL 中的 `playwm` 替换为 `play` |
+| 下载需 | `Referer: https://www.douyin.com/`，否则 CDN 返回 403 或封面图 |
 
 ---
 

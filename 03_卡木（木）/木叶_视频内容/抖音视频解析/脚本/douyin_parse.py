@@ -9,8 +9,10 @@
 import argparse
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
+
 import requests
 
 # 默认输出目录：卡若Ai的文件夹/视频
@@ -50,8 +52,11 @@ def fetch_and_parse(url: str) -> tuple[dict, str | None]:
         except Exception as e:
             return {"error": str(e), "aweme_id": None}, None
     else:
+        session = requests.Session()
+        session.headers.update({"User-Agent": MOBILE_UA})
         try:
-            r = requests.get(url, headers={"User-Agent": MOBILE_UA, "Referer": "https://www.douyin.com/"}, timeout=15)
+            session.get("https://www.douyin.com/", timeout=10)
+            r = session.get(url, headers={"Referer": "https://www.douyin.com/"}, timeout=15)
             r.raise_for_status()
             html = r.text
         except Exception as e:
@@ -79,39 +84,30 @@ def fetch_and_parse(url: str) -> tuple[dict, str | None]:
         if m:
             info[key] = m.group(1)
 
-    # 2. 从 <source src="..."> 提取视频 URL
-    src_match = re.search(r'<source[^>]+src=["\']([^"\']+)["\']', html)
-    if src_match:
-        video_url = src_match.group(1)
-        if "&amp;" in video_url:
-            video_url = video_url.replace("&amp;", "&")
-
-    # 3. 从 ROUTER_DATA 提取视频 URL 和文案（备选）
+    # 2. 从 ROUTER_DATA 提取视频 URL（优先，避免拿到封面图）
     router = re.search(r"window\._ROUTER_DATA\s*=\s*(\{.*?\});?\s*</script>", html, re.DOTALL)
     if router:
         try:
             data = json.loads(router.group(1).strip())
             # 深度查找 play_addr / url_list
-            def find_url(obj):
+            def find_play_addr(obj):
                 if isinstance(obj, dict):
                     if "play_addr" in obj and "url_list" in obj.get("play_addr", {}):
                         return obj["play_addr"]["url_list"][0]
-                    if "url_list" in obj and obj["url_list"]:
-                        return obj["url_list"][0]
                     for v in obj.values():
-                        u = find_url(v)
+                        u = find_play_addr(v)
                         if u:
                             return u
                 elif isinstance(obj, list):
                     for item in obj:
-                        u = find_url(item)
+                        u = find_play_addr(item)
                         if u:
                             return u
                 return None
 
-            u = find_url(data)
-            if u and not video_url:
-                video_url = u.replace("playwm", "play")  # 无水印
+            u = find_play_addr(data)
+            if u:
+                video_url = u.replace("playwm", "play")  # 无水印；优先 play_addr
 
             # 文案
             def find_desc(obj, key="desc"):
@@ -132,6 +128,18 @@ def fetch_and_parse(url: str) -> tuple[dict, str | None]:
             info["desc"] = find_desc(data) or info["desc"]
         except json.JSONDecodeError:
             pass
+
+    # 3. 备选：从 <source src="..."> 提取 douyinvod CDN 链接
+    if not video_url:
+        for m in re.finditer(r'<source[^>]+src=["\']([^"\']+douyinvod[^"\']*)["\']', html, re.I):
+            u = m.group(1).replace("&amp;", "&")
+            if "tos-cn-v" in u or "video" in u:  # 视频 CDN 路径特征
+                video_url = u
+                break
+        if not video_url:
+            m = re.search(r'<source[^>]+src=["\']([^"\']+douyinvod[^"\']*)["\']', html, re.I)
+            if m:
+                video_url = m.group(1).replace("&amp;", "&")
 
     # 4. 从 <title> 提取标题（含文案）
     title_match = re.search(r"<title>([^<]+)</title>", html)
@@ -159,18 +167,42 @@ def fetch_and_parse(url: str) -> tuple[dict, str | None]:
     return info, video_url
 
 
-def download_video(url: str, out_path: Path) -> bool:
-    """下载视频到本地"""
+def download_video(url: str, out_path: Path) -> tuple[bool, str]:
+    """
+    下载视频到本地。需要 Referer 等头，否则 CDN 返回 403 或封面图。
+    返回 (成功?, 错误信息)
+    """
+    headers = {
+        "User-Agent": MOBILE_UA,
+        "Referer": "https://www.douyin.com/",
+        "Accept": "*/*",
+        "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "Origin": "https://www.douyin.com",
+    }
     try:
-        r = requests.get(url, headers={"User-Agent": MOBILE_UA}, stream=True, timeout=60)
+        r = requests.get(url, headers=headers, stream=True, timeout=120)
         r.raise_for_status()
+        # 检查 Content-Type，避免下载到图片
+        ct = r.headers.get("Content-Type", "").lower()
+        if "image" in ct or "jpeg" in ct or "png" in ct:
+            return False, f"URL 返回的是图片而非视频 (Content-Type: {ct})"
         with open(out_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
+            for chunk in r.iter_content(chunk_size=65536):
                 if chunk:
                     f.write(chunk)
-        return True
-    except Exception:
-        return False
+        # 校验：至少 100KB，且非 JPEG 魔数
+        size = out_path.stat().st_size
+        if size < 100_000:
+            out_path.unlink(missing_ok=True)
+            return False, f"下载文件过小 ({size} bytes)，疑似非视频"
+        with open(out_path, "rb") as f:
+            magic = f.read(12)
+        if magic[:2] == b"\xff\xd8":
+            out_path.unlink(missing_ok=True)
+            return False, "下载到的是 JPEG 图片而非视频"
+        return True, ""
+    except requests.RequestException as e:
+        return False, str(e)
 
 
 def main():
@@ -203,13 +235,38 @@ def main():
     print(f"✅ 文案已保存: {caption_path}")
 
     # 4. 下载视频
-    if not args.no_download and video_url:
-        safe_title = re.sub(r'[^\w\s-]', '', info.get("title", aweme_id))[:50]
-        out_file = args.output / f"{aweme_id}_{safe_title}.mp4"
-        if download_video(video_url, out_file):
-            print(f"✅ 视频已下载: {out_file}")
+    if not args.no_download:
+        safe_title = re.sub(r'[^\w\s\u4e00-\u9fff]+', '_', (info.get("title") or aweme_id))[:50].strip("_")
+        out_file = args.output / f"{aweme_id}_{safe_title or 'video'}.mp4"
+        ok = False
+        if video_url:
+            ok, err = download_video(video_url, out_file)
+            if not ok:
+                print(f"⚠️ 直链下载失败: {err}", file=sys.stderr)
         else:
-            print("⚠️ 视频下载失败，请检查网络或尝试 MCP 浏览器获取页面", file=sys.stderr)
+            print("⚠️ 未解析到视频 URL", file=sys.stderr)
+        # yt-dlp 兜底（需 cookie 时可能仍失败）
+        if not ok:
+            print("尝试 yt-dlp 兜底下载...", file=sys.stderr)
+            try:
+                subprocess.run(
+                    [
+                        "yt-dlp",
+                        "-f", "best",
+                        "-o", str(out_file),
+                        "--no-warnings",
+                        f"https://www.douyin.com/video/{aweme_id}",
+                    ],
+                    check=True,
+                    capture_output=True,
+                    timeout=180,
+                )
+                if out_file.exists() and out_file.stat().st_size > 100_000:
+                    ok = True
+            except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
+                print(f"yt-dlp 失败: {e}", file=sys.stderr)
+        if ok:
+            print(f"✅ 视频已下载: {out_file} ({out_file.stat().st_size / 1024 / 1024:.1f} MB)")
     elif args.no_download:
         print("已跳过下载 (--no-download)")
     else:
