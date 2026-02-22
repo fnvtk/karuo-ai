@@ -120,16 +120,19 @@ def get_cookie_from_args_or_file(cookie_arg: str | None) -> str:
 
 
 def get_bv_csrf_token(cookie: str) -> str:
-    """从 cookie 字符串中解析 bv_csrf_token（需 36 字符，与 GitHub 一致）。"""
-    key = "bv_csrf_token="
-    i = cookie.find(key)
-    if i == -1:
-        return ""
-    start = i + len(key)
-    end = cookie.find(";", start)
-    if end == -1:
-        end = len(cookie)
-    return cookie[start:end].strip()
+    """从 cookie 字符串中解析 bv_csrf_token 或 minutes_csrf_token（36 字符，兼容 GitHub bingsanyu/feishu_minutes）。"""
+    for key in ("bv_csrf_token=", "minutes_csrf_token="):
+        i = cookie.find(key)
+        if i == -1:
+            continue
+        start = i + len(key)
+        end = cookie.find(";", start)
+        if end == -1:
+            end = len(cookie)
+        val = cookie[start:end].strip()
+        if len(val) == 36:
+            return val
+    return ""
 
 
 def build_headers(cookie: str, require_bv: bool = True):

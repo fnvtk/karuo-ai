@@ -11,10 +11,11 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 FEISHU_SCRIPT = SCRIPT_DIR / "feishu_wiki_create_doc.py"
-IMG_DIR = Path("/Users/karuo/Documents/个人/2、我写的日记/火：开发分享/assets")
+ARTICLE_DIR = Path("/Users/karuo/Documents/个人/2、我写的日记/火：开发分享")
+IMG_DIR = ARTICLE_DIR / "assets"
 PARENT_TOKEN = "KNf7wA8Rki1NSdkkSIqcdFtTnWb"
 TITLE = "卡若：基因胶囊——AI技能可遗传化的实现与落地"
-JSON_PATH = Path("/Users/karuo/Documents/个人/2、我写的日记/火：开发分享/卡若_基因胶囊_AI技能可遗传化_feishu_blocks.json")
+JSON_PATH = ARTICLE_DIR / "卡若_基因胶囊_AI技能可遗传化_feishu_blocks.json"
 
 # 导入 feishu 脚本的 token 逻辑
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -46,6 +47,17 @@ def upload_image_to_doc(token: str, doc_token: str, img_path: Path) -> str | Non
         return data.get("data", {}).get("file_token")
     print(f"⚠️ 上传失败 {img_path.name}: {data.get('msg')}")
     return None
+
+
+def _make_image_block(file_token: str) -> dict:
+    """生成飞书图片块，尝试 gallery 与 file 两种格式"""
+    return {
+        "block_type": 18,
+        "gallery": {
+            "imageList": [{"fileToken": file_token}],
+            "galleryStyle": {"align": "center"},
+        },
+    }
 
 
 def _title_matches(node_title: str, target: str) -> bool:
@@ -164,15 +176,26 @@ def create_doc_with_images():
         if not doc_token:
             doc_token = node_token
 
-    # 4. 上传图片
-    img1 = IMG_DIR / "基因胶囊_概念与流程.png"
-    img2 = IMG_DIR / "基因胶囊_完整工作流程图.png"
-    file_token1 = upload_image_to_doc(token, doc_token, img1) if img1.exists() else None
-    file_token2 = upload_image_to_doc(token, doc_token, img2) if img2.exists() else None
-    if file_token1:
-        print(f"✅ 图片1 上传成功")
-    if file_token2:
-        print(f"✅ 图片2 上传成功")
+    # 4. 上传图片（优先从 JSON 的 image_paths 读取，否则用默认）
+    img_paths = []
+    if JSON_PATH.exists():
+        try:
+            j = json.load(open(JSON_PATH, "r", encoding="utf-8"))
+            for p in j.get("image_paths", []):
+                full = (ARTICLE_DIR / p) if not Path(p).is_absolute() else Path(p)
+                img_paths.append(full)
+        except Exception:
+            pass
+    if not img_paths:
+        img_paths = [IMG_DIR / "基因胶囊_概念与流程.png", IMG_DIR / "基因胶囊_完整工作流程图.png"]
+    file_tokens = []
+    for p in img_paths:
+        ft = upload_image_to_doc(token, doc_token, p) if p.exists() else None
+        file_tokens.append(ft)
+        if ft:
+            print(f"✅ 图片上传: {p.name}")
+    file_token1 = file_tokens[0] if len(file_tokens) > 0 else None
+    file_token2 = file_tokens[1] if len(file_tokens) > 1 else None
 
     # 5. 构建 blocks：从 JSON 加载，配图占位处注入图片 block
     if JSON_PATH.exists():
@@ -185,9 +208,9 @@ def create_doc_with_images():
             c = (b.get("text") or {}).get("elements") or []
             content = (c[0].get("text_run") or {}).get("content", "") if c else ""
             if "【配图 1" in content and tokens[0]:
-                blocks.append({"block_type": 18, "gallery": {"imageList": [{"fileToken": tokens[0]}], "galleryStyle": {"align": "center"}}})
+                blocks.append(_make_image_block(tokens[0]))
             elif "【配图 2" in content and len(tokens) > 1 and tokens[1]:
-                blocks.append({"block_type": 18, "gallery": {"imageList": [{"fileToken": tokens[1]}], "galleryStyle": {"align": "center"}}})
+                blocks.append(_make_image_block(tokens[1]))
             elif "【配图 1" in content or "【配图 2" in content:
                 blocks.append(b)
             else:
