@@ -11,9 +11,10 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 FEISHU_SCRIPT = SCRIPT_DIR / "feishu_wiki_create_doc.py"
-IMG_DIR = Path("/Users/karuo/Documents/卡若Ai的文件夹/图片")
+IMG_DIR = Path("/Users/karuo/Documents/个人/2、我写的日记/火：开发分享/assets")
 PARENT_TOKEN = "KNf7wA8Rki1NSdkkSIqcdFtTnWb"
-TITLE = "卡若AI 基因胶囊 · 全功能介绍（产品经理 / 程序员 / 普通用户）"
+TITLE = "卡若：基因胶囊——AI技能可遗传化的实现与落地"
+JSON_PATH = Path("/Users/karuo/Documents/个人/2、我写的日记/火：开发分享/卡若_基因胶囊_AI技能可遗传化_feishu_blocks.json")
 
 # 导入 feishu 脚本的 token 逻辑
 sys.path.insert(0, str(SCRIPT_DIR))
@@ -47,8 +48,77 @@ def upload_image_to_doc(token: str, doc_token: str, img_path: Path) -> str | Non
     return None
 
 
+def _title_matches(node_title: str, target: str) -> bool:
+    """判断节点标题是否与目标相似（含关键词即视为匹配）"""
+    if not node_title or not target:
+        return False
+    kw = ["基因胶囊", "AI技能可遗传"]
+    return any(k in node_title for k in kw) or target in node_title
+
+
+def _find_existing_doc(space_id: str, headers: dict) -> tuple[str | None, str | None]:
+    """查找父节点下是否已有同名/类似文档，返回 (doc_token, node_token)"""
+    page_token = None
+    while True:
+        params = {"parent_node_token": PARENT_TOKEN, "page_size": 50}
+        if page_token:
+            params["page_token"] = page_token
+        r = requests.get(
+            f"https://open.feishu.cn/open-apis/wiki/v2/spaces/{space_id}/nodes",
+            headers=headers, params=params, timeout=30)
+        if r.json().get("code") != 0:
+            return None, None
+        data = r.json().get("data", {})
+        nodes = data.get("nodes", []) or data.get("items", []) or []
+        for n in nodes:
+            title = n.get("title", "") or n.get("node", {}).get("title", "")
+            if _title_matches(title, TITLE):
+                obj = n.get("obj_token")
+                node = n.get("node_token")
+                return obj or node, node
+        page_token = data.get("page_token")
+        if not page_token:
+            break
+    return None, None
+
+
+def _clear_doc_blocks(doc_token: str, headers: dict) -> bool:
+    """清空文档内容（删除根节点下直接子块）"""
+    all_items = []
+    page_token = None
+    while True:
+        params = {"page_size": 100}
+        if page_token:
+            params["page_token"] = page_token
+        r = requests.get(
+            f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_token}/blocks",
+            headers=headers, params=params, timeout=30)
+        if r.json().get("code") != 0:
+            return False
+        data = r.json().get("data", {})
+        items = data.get("items", [])
+        all_items.extend(items)
+        page_token = data.get("page_token")
+        if not page_token:
+            break
+    child_ids = [b["block_id"] for b in all_items if b.get("parent_id") == doc_token]
+    if not child_ids:
+        return True
+    # 分批删除（每次最多 50）
+    for i in range(0, len(child_ids), 50):
+        batch = child_ids[i : i + 50]
+        rd = requests.delete(
+            f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_token}/blocks/{doc_token}/children/batch_delete",
+            headers=headers, json={"block_id_list": batch}, timeout=30)
+        if rd.json().get("code") != 0:
+            return False
+        import time
+        time.sleep(0.3)
+    return True
+
+
 def create_doc_with_images():
-    """创建文档、上传图片、写入图文 blocks"""
+    """创建或更新文档、上传图片、写入图文 blocks"""
     token = fwd.get_token(PARENT_TOKEN)
     if not token:
         return False, "Token 无效"
@@ -66,26 +136,35 @@ def create_doc_with_images():
     if not space_id:
         return False, "无法获取 space_id"
 
-    # 2. 创建子文档
-    create_r = requests.post(
-        f"https://open.feishu.cn/open-apis/wiki/v2/spaces/{space_id}/nodes",
-        headers=headers,
-        json={
-            "parent_node_token": PARENT_TOKEN,
-            "obj_type": "docx",
-            "node_type": "origin",
-            "title": TITLE,
-        },
-        timeout=30)
-    create_data = create_r.json()
-    if create_data.get("code") != 0:
-        return False, create_data.get("msg", str(create_data))
-    doc_token = create_data.get("data", {}).get("node", {}).get("obj_token")
-    node_token = create_data.get("data", {}).get("node", {}).get("node_token")
-    if not doc_token:
-        doc_token = node_token
+    # 2. 查找是否已有同名/类似文档
+    doc_token, node_token = _find_existing_doc(space_id, headers)
+    if doc_token and node_token:
+        print(f"📋 发现已有类似文档，将更新内容")
+        if not _clear_doc_blocks(doc_token, headers):
+            print("⚠️ 清空原内容失败，将追加写入")
+        else:
+            print("✅ 已清空原内容")
+    else:
+        # 3. 创建新文档
+        create_r = requests.post(
+            f"https://open.feishu.cn/open-apis/wiki/v2/spaces/{space_id}/nodes",
+            headers=headers,
+            json={
+                "parent_node_token": PARENT_TOKEN,
+                "obj_type": "docx",
+                "node_type": "origin",
+                "title": TITLE,
+            },
+            timeout=30)
+        create_data = create_r.json()
+        if create_data.get("code") != 0:
+            return False, create_data.get("msg", str(create_data))
+        doc_token = create_data.get("data", {}).get("node", {}).get("obj_token")
+        node_token = create_data.get("data", {}).get("node", {}).get("node_token")
+        if not doc_token:
+            doc_token = node_token
 
-    # 3. 上传图片
+    # 4. 上传图片
     img1 = IMG_DIR / "基因胶囊_概念与流程.png"
     img2 = IMG_DIR / "基因胶囊_完整工作流程图.png"
     file_token1 = upload_image_to_doc(token, doc_token, img1) if img1.exists() else None
@@ -95,45 +174,58 @@ def create_doc_with_images():
     if file_token2:
         print(f"✅ 图片2 上传成功")
 
-    # 4. 构建 blocks（含图片 block）
-    blocks = get_article_blocks(file_token1, file_token2)
+    # 5. 构建 blocks：从 JSON 加载，配图占位处注入图片 block
+    if JSON_PATH.exists():
+        with open(JSON_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        raw_blocks = data.get("children", [])
+        blocks = []
+        tokens = [file_token1, file_token2]
+        for b in raw_blocks:
+            c = (b.get("text") or {}).get("elements") or []
+            content = (c[0].get("text_run") or {}).get("content", "") if c else ""
+            if "【配图 1" in content and tokens[0]:
+                blocks.append({"block_type": 18, "gallery": {"imageList": [{"fileToken": tokens[0]}], "galleryStyle": {"align": "center"}}})
+            elif "【配图 2" in content and len(tokens) > 1 and tokens[1]:
+                blocks.append({"block_type": 18, "gallery": {"imageList": [{"fileToken": tokens[1]}], "galleryStyle": {"align": "center"}}})
+            elif "【配图 1" in content or "【配图 2" in content:
+                blocks.append(b)
+            else:
+                blocks.append(b)
+    else:
+        blocks = get_article_blocks(file_token1, file_token2)
 
-    # 5. 分批写入（过滤 None，分别处理 text 与 image block 避免 invalid param）
+    # 6. 分批写入所有 blocks（含图片），保持顺序
     valid_blocks = [b for b in blocks if b is not None]
     for i in range(0, len(valid_blocks), 50):
         batch = valid_blocks[i : i + 50]
-        # 仅写入 text/heading 类 block，跳过可能报错的 image block
-        safe_batch = [b for b in batch if b.get("block_type") != 13]
-        if not safe_batch:
-            continue
         wr = requests.post(
             f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_token}/blocks/{doc_token}/children",
             headers=headers,
-            json={"children": safe_batch, "index": i},
+            json={"children": batch, "index": i},
             timeout=30)
         res = wr.json()
         if res.get("code") != 0:
-            # 若仍失败，可能是 index 等；尝试不含 image 的纯文本
-            if i == 0:
+            # 若含图片的批次失败，则跳过图片仅写文本
+            if any(b.get("block_type") in (13, 18) for b in batch):
+                safe = [b for b in batch if b.get("block_type") not in (13, 18)]
+                if safe:
+                    wr2 = requests.post(
+                        f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_token}/blocks/{doc_token}/children",
+                        headers=headers,
+                        json={"children": safe, "index": i},
+                        timeout=30)
+                    if wr2.json().get("code") == 0:
+                        print(f"⚠️ 图片块跳过，已写文本")
+            elif i == 0:
                 return False, res.get("msg", "写入失败")
+        else:
+            gallery_count = sum(1 for b in batch if b.get("block_type") == 18)
+            if gallery_count:
+                print(f"✅ 写入 {gallery_count} 个图片块")
         if len(valid_blocks) > 50:
             import time
             time.sleep(0.3)
-    # 5b. 尝试追加图片块（在文档末尾，逐张添加）
-    for ft in [b for b in [file_token1, file_token2] if b]:
-        try:
-            imgb = {"block_type": 13, "image": {"file_token": ft}}
-            wr = requests.post(
-                f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_token}/blocks/{doc_token}/children",
-                headers=headers,
-                json={"children": [imgb], "index": -1},
-                timeout=30)
-            if wr.json().get("code") == 0:
-                print("✅ 图片块插入成功")
-            else:
-                print("⚠️ 图片块跳过（飞书 API 限制）")
-        except Exception as e:
-            print(f"⚠️ 图片块异常: {e}")
 
     url = f"https://cunkebao.feishu.cn/wiki/{node_token}"
     return True, url
@@ -190,7 +282,7 @@ def get_article_blocks(file_token1: str | None, file_token2: str | None) -> list
 
 def main():
     print("=" * 50)
-    print(f"📤 创建基因胶囊全功能介绍（图文）")
+    print(f"📤 基因胶囊全功能介绍（创建或更新 + 图片上传）")
     print(f"   父节点: {PARENT_TOKEN}")
     print("=" * 50)
     ok, result = create_doc_with_images()
