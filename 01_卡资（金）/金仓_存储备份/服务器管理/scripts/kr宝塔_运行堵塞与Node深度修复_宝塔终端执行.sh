@@ -11,6 +11,8 @@ echo "--- 结束异常高 CPU node 进程 ---"
 for pid in $(ps aux | awk '$3>80 && /node|npm|pnpm/ && !/grep/ {print $2}' 2>/dev/null); do
   echo "  kill $pid"; kill -9 $pid 2>/dev/null
 done
+echo "--- 清理所有 Node 相关孤儿进程（含异常 PID 状态）---"
+pkill -9 -f "node.*www/wwwroot" 2>/dev/null || true
 sleep 2
 
 python3 << 'PY'
@@ -54,7 +56,7 @@ if os.path.isfile(db):
         if not proj or not os.path.isdir(proj): print("  跳过",name); continue
         cmd="cd %s && (pnpm start 2>/dev/null || npm run start)"%proj
         old=str(cfg.get("project_script")or cfg.get("run_cmd")or"").strip()
-        if "cd " not in old or proj not in old:
+        if True:
             cfg["project_script"]=cfg["run_cmd"]=cmd; cfg["path"]=proj
             cur.execute("UPDATE sites SET path=?,project_config=? WHERE id=?",(proj,json.dumps(cfg,ensure_ascii=False),sid)); fixed+=1
             print("  修复:",name,"->",proj)

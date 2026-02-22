@@ -30,19 +30,15 @@ if ! ss -tlnp 2>/dev/null | grep -q ':9988 '; then
 fi
 ss -tlnp 2>/dev/null | grep 9988 || echo "  9988 未监听，API 可能失败"
 
-# 【0】运行堵塞诊断
+# 【0】运行堵塞诊断 + 清理异常 Node 进程
 echo ""
 echo "【0】运行堵塞诊断"
-echo "--- 负载 ---"
 uptime
-echo "--- 内存 ---"
-free -m | head -2
-echo "--- CPU TOP10 ---"
-ps aux --sort=-%cpu 2>/dev/null | head -11
-echo "--- 结束异常 node/npm/pnpm 进程(占用>80%%CPU) ---"
+echo "--- 结束异常 node/npm/pnpm 进程 + 清理 www/wwwroot 下 Node ---"
 for pid in $(ps aux | awk '$3>80 && /node|npm|pnpm/ && !/grep/ {print $2}' 2>/dev/null); do
   echo "  kill $pid"; kill -9 $pid 2>/dev/null
 done
+pkill -9 -f "node.*www/wwwroot" 2>/dev/null || true
 sleep 2
 
 python3 - << 'PYMAIN'

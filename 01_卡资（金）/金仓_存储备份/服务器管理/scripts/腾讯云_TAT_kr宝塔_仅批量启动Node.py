@@ -65,7 +65,7 @@ for it in to_start:
     try:
         r=post('/project/nodejs/start_project',{'project_name':n})
         ok=r.get('status') or '成功' in str(r.get('msg',''))
-        print(n,':','OK' if ok else 'FAIL', r.get('msg','')[:80] if not ok else '')
+        print(n,':','OK' if ok else 'FAIL')
     except Exception as e: print(n,': ERR',str(e)[:30])
     time.sleep(1.5)
 items2=post('/project/nodejs/get_project_list').get('data')or post('/project/nodejs/get_project_list').get('list')or[]
