@@ -20,14 +20,14 @@ python3 /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/飞书管理/s
 
 ### 按剪辑方案图片切片（高峰时刻+想象的内容）
 
-按「视频剪辑方案」图片整理：7 段高峰时刻 + 加速 10% + 去语助词 + 关键词高亮。
+按「视频剪辑方案」图片整理：7 段高峰时刻 + 加速 10% + 去语助词 + 关键词高亮。**文字/标题统一简体中文**。
 
 ```bash
-# 1. 打开飞书链接，点击下载视频
-# 2. 下载完成后运行（或直接用 --video 指定已有视频）
+# 一键全自动（命令行下载视频，不打开浏览器）
+# 需先配置：智能纪要/脚本/cookie_minutes.txt（飞书妙记 list 请求的 Cookie）
 python3 /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/飞书管理/脚本/feishu_image_slice.py --url "https://cunkebao.feishu.cn/minutes/obcnzs51k1j754643vx138sx"
 
-# 若已下载，直接指定视频路径
+# 若已下载视频，直接指定路径
 python3 脚本/feishu_image_slice.py --video "~/Downloads/xxx.mp4"
 ```
 
@@ -44,13 +44,13 @@ python3 feishu_one_click.py "https://cunkebao.feishu.cn/minutes/obcnjnsx2mz7vj5q
 
 | 步骤 | 操作 | 自动化程度 |
 |:---|:---|:---|
-| 1. 获取妙记信息 | API自动获取 | ✅ 全自动 |
-| 2. 下载视频 | 飞书客户端打开 | 🔸 需点击下载 |
-| 3. AI生成切片方案 | Gemini API | ✅ 全自动 |
-| 4. 批量切片 | FFmpeg | ✅ 全自动 |
+| 1. 下载视频 | Cookie + status API 命令行下载 | ✅ 全自动（不打开浏览器） |
+| 2. 获取妙记信息 | 按高峰时刻方案 | ✅ 全自动 |
+| 3. 批量切片 | FFmpeg | ✅ 全自动 |
+| 4. 增强（封面+字幕+加速10%） | soul_enhance | ✅ 全自动 |
 | 5. 发送到群 | Webhook | ✅ 全自动 |
 
-> **注意**：步骤2需要在飞书中点击下载按钮。飞书客户端已自动登录，**无需扫码**。
+> **注意**：需配置 `智能纪要/脚本/cookie_minutes.txt`（飞书妙记 list 请求的 Cookie），即可全自动下载。
 
 ---
 

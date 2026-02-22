@@ -5,24 +5,59 @@
 ============================
 
 按「视频剪辑方案」图片中的 高峰时刻 + 想象的内容 整理切片，
-去语助词、去空格、关键词高亮、加速10%。
+去语助词、去空格、关键词高亮、加速10%。文字/标题统一简体中文。
 
 用法：
-  1. 先手动在飞书妙记页点击下载视频
-  2. python3 feishu_image_slice.py --video "下载的视频.mp4"
-
-或指定飞书链接（会打开链接，待你下载后监控 ~/Downloads）：
+  一键全自动（命令行下载视频，不打开浏览器）：
   python3 feishu_image_slice.py --url "https://cunkebao.feishu.cn/minutes/xxx"
+
+  或指定本地视频：
+  python3 feishu_image_slice.py --video "下载的视频.mp4"
+
+需配置：智能纪要/脚本/cookie_minutes.txt（飞书妙记 list 请求的 Cookie）
 """
 
 import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
+
+# 繁转简（动态加载）
+def _to_simplified(text: str) -> str:
+    try:
+        from opencc import OpenCC
+        return OpenCC("t2s").convert(str(text))
+    except ImportError:
+        trad_simp = {"這":"这","個":"个","們":"们","來":"来","說":"说","會":"会","裡":"里","麼":"么","還":"还"}
+        t = str(text)
+        for k, v in trad_simp.items():
+            t = t.replace(k, v)
+        return t
+
+
+def ensure_deps():
+    """动态检测并安装依赖（FFmpeg、mlx_whisper、opencc 等）"""
+    missing = []
+    if shutil.which("ffmpeg") is None:
+        missing.append("ffmpeg (brew install ffmpeg)")
+    try:
+        import mlx_whisper  # noqa
+    except ImportError:
+        missing.append("mlx-whisper (pip install mlx-whisper)")
+    try:
+        from opencc import OpenCC  # noqa
+    except ImportError:
+        try:
+            subprocess.run([sys.executable, "-m", "pip", "install", "opencc-python-reimplemented", "-q"], capture_output=True, timeout=60)
+        except Exception:
+            missing.append("opencc (pip install opencc-python-reimplemented，可选)")
+    if missing:
+        print("⚠ 可选依赖缺失（不影响基本流程）:", ", ".join(missing))
 
 # 图片方案：高峰时刻（7段，约10分钟内）
 # 来源：视频剪辑方案 | 智能剪辑 - 提取高峰时刻
@@ -105,27 +140,37 @@ def main():
     parser.add_argument("--output", "-o", help="输出目录")
     args = parser.parse_args()
 
+    ensure_deps()
+
     video_path = None
     if args.video:
         video_path = Path(args.video).resolve()
     elif args.url:
-        print("📌 正在打开飞书链接，请在页面中点击【下载】按钮")
-        subprocess.run(["open", args.url], check=True)
-        start = time.time()
-        print("⏳ 监控 ~/Downloads，检测到新视频后自动继续...")
-        for _ in range(120):
-            time.sleep(3)
-            v = find_recent_video(start)
-            if v and v.stat().st_size > 1_000_000:
-                video_path = v
-                print(f"✅ 检测到: {v.name}")
-                break
+        print("📥 命令行全自动下载视频（不打开浏览器）...")
+        download_script = Path(__file__).resolve().parent.parent.parent / "智能纪要" / "脚本" / "feishu_minutes_download_video.py"
+        if not download_script.exists():
+            print("❌ 未找到 feishu_minutes_download_video.py")
+            return
+        out_dir = Path.home() / "Downloads"
+        r = subprocess.run(
+            [sys.executable, str(download_script), args.url, "-o", str(out_dir)],
+            capture_output=True, text=True, timeout=300, cwd=str(download_script.parent)
+        )
+        if r.returncode == 0 and r.stdout:
+            for line in r.stdout.strip().splitlines():
+                p = line.strip()
+                if p.endswith(".mp4") and Path(p).exists():
+                    video_path = Path(p)
+                    print(f"✅ 已下载: {video_path.name}")
+                    break
         if not video_path:
-            print("❌ 10分钟内未检测到新视频，请下载后使用 --video 指定路径")
+            print("❌ 自动下载失败。请配置 智能纪要/脚本/cookie_minutes.txt 后重试，或手动下载后使用 --video")
+            if r.stderr:
+                print(r.stderr[:500])
             return
 
     if not video_path or not video_path.exists():
-        print("❌ 请提供 --video 路径，或使用 --url 并完成下载")
+        print("❌ 请提供 --video 路径，或使用 --url（需配置 cookie_minutes.txt）")
         return
 
     duration = get_video_duration(video_path)
@@ -139,6 +184,12 @@ def main():
         h["start_time"] = h.get("start_time") or h["start"]
         h["end_time"] = h.get("end_time") or h["end"]
     highlights = [h for h in highlights if parse_time(h["end_time"]) <= duration + 5]
+
+    # 标题统一简体中文
+    for h in highlights:
+        for k in ("title", "hook_3sec", "cta_ending"):
+            if k in h and h[k]:
+                h[k] = _to_simplified(str(h[k]))
 
     print(f"   切片: {len(highlights)} 段（高峰时刻方案）")
 

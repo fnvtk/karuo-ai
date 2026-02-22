@@ -669,21 +669,20 @@ def main():
     generate_index(highlights, output_dir)
 
 def generate_index(highlights, output_dir):
-    """生成目录索引"""
+    """生成目录索引（标题/Hook/CTA 统一简体中文）"""
     index_path = output_dir.parent / "目录索引_enhanced.md"
     
     with open(index_path, 'w', encoding='utf-8') as f:
-        f.write("# Soul派对81场 - 增强版切片目录\n\n")
-        f.write(f"**日期**: 2026-01-23\n")
+        f.write("# Soul派对 - 增强版切片目录\n\n")
         f.write(f"**优化**: 封面+字幕+加速10%+去语气词\n\n")
         f.write("## 切片列表\n\n")
         f.write("| 序号 | 标题 | Hook | CTA |\n")
         f.write("|------|------|------|-----|\n")
         
         for i, clip in enumerate(highlights, 1):
-            title = clip.get("title", f"clip_{i}")
-            hook = clip.get("hook_3sec", "")
-            cta = clip.get("cta_ending", "")
+            title = _to_simplified(clip.get("title", f"clip_{i}"))
+            hook = _to_simplified(clip.get("hook_3sec", ""))
+            cta = _to_simplified(clip.get("cta_ending", ""))
             f.write(f"| {i} | {title} | {hook} | {cta} |\n")
     
     print(f"\n📋 目录索引: {index_path}")

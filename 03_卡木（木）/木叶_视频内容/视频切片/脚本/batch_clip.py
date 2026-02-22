@@ -42,8 +42,18 @@ def format_timestamp(seconds: float) -> str:
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
+def _to_simplified(text: str) -> str:
+    """转为简体中文（用于文件名/标题）"""
+    try:
+        from opencc import OpenCC
+        return OpenCC("t2s").convert(str(text))
+    except ImportError:
+        return str(text)
+
+
 def sanitize_filename(name: str, max_length: int = 50) -> str:
-    """清理文件名，移除非法字符"""
+    """清理文件名，移除非法字符，标题统一简体"""
+    name = _to_simplified(str(name))
     # 保留字母、数字、中文、空格、下划线、连字符
     safe_chars = []
     for c in name:

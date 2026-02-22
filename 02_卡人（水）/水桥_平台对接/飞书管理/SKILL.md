@@ -279,6 +279,24 @@ python3 scripts/wanzhi_feishu_project_sync.py
 
 ---
 
+## Wiki 子文档创建（日记分享 / 新研究）
+
+在指定飞书 Wiki 节点下创建子文档，用于日记分享、新研究等内容沉淀。
+
+**父节点**：`https://cunkebao.feishu.cn/wiki/KNf7wA8Rki1NSdkkSIqcdFtTnWb`
+
+```bash
+# 使用默认内容：运营逻辑分析及目录结构
+python3 scripts/feishu_wiki_create_doc.py
+
+# 自定义标题和 JSON 内容
+python3 scripts/feishu_wiki_create_doc.py --parent KNf7wA8Rki1NSdkkSIqcdFtTnWb --title "文档标题" --json blocks.json
+```
+
+JSON 格式：与 `团队入职流程与新人登记表_feishu_blocks.json` 相同，含 `children` 数组（飞书 docx blocks）。
+
+---
+
 ## 文件结构
 
 ```
@@ -297,6 +315,7 @@ python3 scripts/wanzhi_feishu_project_sync.py
     ├── feishu_video_clip.py      # 视频智能切片
     ├── feishu_video_clip_README.md
     ├── wanzhi_feishu_project_sync.py    # 玩值电竞→飞书项目同步
+    ├── feishu_wiki_create_doc.py       # Wiki 子文档创建（日记/研究）
     └── .feishu_tokens.json       # Token 存储
 ```
 
