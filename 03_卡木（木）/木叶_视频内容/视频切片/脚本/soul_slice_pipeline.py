@@ -95,6 +95,7 @@ def main():
     parser.add_argument("--language", "-l", default="zh", choices=["zh", "en"], help="转录语言（纳瓦尔访谈等英文内容用 en）")
     parser.add_argument("--skip-subs", action="store_true", help="跳过字幕烧录（原片已有字幕时用）")
     parser.add_argument("--force-burn-subs", action="store_true", help="强制烧录字幕（忽略检测）")
+    parser.add_argument("--force-transcribe", action="store_true", help="强制重新转录（删除旧 transcript 并重跑）")
     args = parser.parse_args()
 
     video_path = Path(args.video).resolve()
@@ -122,6 +123,18 @@ def main():
     print(f"切片数量: {args.clips}")
     print("=" * 60)
 
+    # 0. 强制重转录时删除旧产物（含 audio 以重提完整音频）
+    if getattr(args, "force_transcribe", False):
+        for p in [audio_path, transcript_path, highlights_path]:
+            if p.exists():
+                p.unlink()
+                print(f"  已删除旧文件: {p.name}")
+        for d in [clips_dir, enhanced_dir]:
+            if d.exists():
+                import shutil
+                shutil.rmtree(d, ignore_errors=True)
+                print(f"  已清空: {d.name}/")
+
     # 1. 提取音频 + 转录
     if not args.skip_transcribe:
         if not audio_path.exists():
@@ -132,6 +145,7 @@ def main():
             )
         if not transcript_path.exists() and audio_path.exists():
             print("  MLX Whisper 转录（需 conda mlx-whisper）...")
+            # 3 小时视频约需 20–40 分钟，超时 2 小时
             cmd = [
                 "mlx_whisper",
                 str(audio_path),
@@ -142,7 +156,7 @@ def main():
                 "--output-name", "transcript",
             ]
             try:
-                subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=900)
+                subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=7200)
                 print("    ✓")
             except Exception as e:
                 print(f"    若未安装 mlx_whisper，请先:")
@@ -168,7 +182,7 @@ def main():
                 "--clips", str(args.clips),
             ],
             "高光识别（Ollama→规则）",
-            timeout=60,
+            timeout=180,
         )
     if not highlights_path.exists():
         print(f"❌ 需要 highlights.json: {highlights_path}")
@@ -219,7 +233,8 @@ def main():
         enhance_cmd.append("--skip-subs")
     if getattr(args, "force_burn_subs", False):
         enhance_cmd.append("--force-burn-subs")
-    ok = run(enhance_cmd, "增强处理（封面+字幕+加速）", timeout=900, check=False)
+    enhance_timeout = max(900, 600 + len(clips_list) * 90)  # 约 90 秒/片
+    ok = run(enhance_cmd, "增强处理（封面+字幕+加速）", timeout=enhance_timeout, check=False)
     import shutil
     enhanced_count = len(list(enhanced_dir.glob("*.mp4")))
     if enhanced_count == 0 and clips_list:
