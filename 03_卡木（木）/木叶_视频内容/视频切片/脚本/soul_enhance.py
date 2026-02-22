@@ -9,6 +9,7 @@ Soul切片增强脚本 v2.0
 5. 清理语气词字幕
 """
 
+import argparse
 import subprocess
 import os
 import re
@@ -18,15 +19,17 @@ import shutil
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-# ============ 配置 ============
+# ============ 配置（可被命令行覆盖）============
 
+SCRIPT_DIR = Path(__file__).resolve().parent
+SKILL_DIR = SCRIPT_DIR.parent
 CLIPS_DIR = Path("/Users/karuo/Movies/soul视频/soul81_final/clips")
 OUTPUT_DIR = Path("/Users/karuo/Movies/soul视频/soul81_final/clips_enhanced")
 HIGHLIGHTS_PATH = Path("/Users/karuo/Movies/soul视频/soul81_final/highlights.json")
 TRANSCRIPT_PATH = Path("/Users/karuo/Movies/soul视频/soul81_final/transcript.srt")
 
-# 字体路径
-FONTS_DIR = Path("/Users/karuo/Documents/个人/卡若AI/03_卡木（木）/视频切片/fonts")
+# 字体路径（兼容多种目录结构）
+FONTS_DIR = SKILL_DIR / "fonts" if (SKILL_DIR / "fonts").exists() else Path("/Users/karuo/Documents/个人/卡若AI/03_卡木（木）/视频切片/fonts")
 FONT_HEAVY = str(FONTS_DIR / "SourceHanSansSC-Heavy.otf")
 FONT_BOLD = str(FONTS_DIR / "SourceHanSansSC-Bold.otf")
 FALLBACK_FONT = "/System/Library/Fonts/STHeiti Medium.ttc"
@@ -134,10 +137,10 @@ def parse_srt_for_clip(srt_path, start_sec, end_sec):
         sub_end = time_to_sec(match[2])
         text = match[3].strip()
         
-        # 检查是否在时间范围内
-        if sub_start >= start_sec and sub_end <= end_sec + 5:
-            # 调整时间为相对时间
-            rel_start = sub_start - start_sec
+        # 检查是否与片段时间范围重叠
+        if sub_end > start_sec and sub_start < end_sec + 2:
+            # 调整为相对于片段开始的相对时间
+            rel_start = max(0, sub_start - start_sec)
             rel_end = sub_end - start_sec
             
             # 清理语气词
@@ -402,7 +405,13 @@ def create_silence_filter(silences, duration, margin=0.1):
     
     return '+'.join(selects)
 
-def enhance_clip(clip_path, output_path, highlight_info, temp_dir):
+def _parse_clip_index(filename: str) -> int:
+    """从文件名解析切片序号，支持 soul_01_xxx 或 01_xxx 格式"""
+    m = re.search(r'\d+', filename)
+    return int(m.group()) if m else 0
+
+
+def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_path):
     """增强单个切片"""
     
     print(f"\n处理: {os.path.basename(clip_path)}")
@@ -427,7 +436,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir):
     start_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
     end_sec = start_sec + duration
     
-    subtitles = parse_srt_for_clip(TRANSCRIPT_PATH, start_sec, end_sec)
+    subtitles = parse_srt_for_clip(transcript_path, start_sec, end_sec)
     print(f"  ✓ 字幕解析 ({len(subtitles)}条)")
     
     # 3. 生成字幕图片
@@ -531,53 +540,72 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir):
     return False
 
 def main():
-    """主函数"""
+    """主函数（支持命令行参数）"""
+    parser = argparse.ArgumentParser(description="Soul切片增强 - 封面+字幕+加速+去语气词")
+    parser.add_argument("--clips", "-c", help="切片目录")
+    parser.add_argument("--highlights", "-l", help="highlights.json 路径")
+    parser.add_argument("--transcript", "-t", help="transcript.srt 路径")
+    parser.add_argument("--output", "-o", help="输出目录")
+    args = parser.parse_args()
+    
+    clips_dir = Path(args.clips) if args.clips else CLIPS_DIR
+    output_dir = Path(args.output) if args.output else OUTPUT_DIR
+    highlights_path = Path(args.highlights) if args.highlights else HIGHLIGHTS_PATH
+    transcript_path = Path(args.transcript) if args.transcript else TRANSCRIPT_PATH
+    
+    if not clips_dir.exists():
+        print(f"❌ 切片目录不存在: {clips_dir}")
+        return
+    if not highlights_path.exists():
+        print(f"❌ highlights 不存在: {highlights_path}")
+        return
+    if not transcript_path.exists():
+        print(f"❌ transcript 不存在: {transcript_path}")
+        return
+    
     print("="*60)
-    print("🎬 Soul切片增强处理")
+    print("🎬 Soul切片增强处理（Pillow，无需 drawtext）")
     print("="*60)
     print(f"功能: 封面+字幕+加速10%+去语气词")
-    print(f"输入: {CLIPS_DIR}")
-    print(f"输出: {OUTPUT_DIR}")
+    print(f"输入: {clips_dir}")
+    print(f"输出: {output_dir}")
     print("="*60)
     
-    # 创建输出目录
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
     
-    # 读取highlights
-    with open(HIGHLIGHTS_PATH, 'r', encoding='utf-8') as f:
+    with open(highlights_path, 'r', encoding='utf-8') as f:
         highlights = json.load(f)
+    if isinstance(highlights, dict) and "clips" in highlights:
+        highlights = highlights["clips"]
+    highlights = highlights if isinstance(highlights, list) else []
     
-    # 获取切片文件
-    clips = sorted(CLIPS_DIR.glob('*.mp4'))
+    clips = sorted(clips_dir.glob('*.mp4'))
     print(f"\n找到 {len(clips)} 个切片")
     
     success_count = 0
-    
     for i, clip_path in enumerate(clips):
-        # 匹配highlight信息
-        clip_num = int(clip_path.name.split('_')[0])
-        highlight_info = highlights[clip_num - 1] if clip_num <= len(highlights) else {}
+        clip_num = _parse_clip_index(clip_path.name) or (i + 1)
+        highlight_info = highlights[clip_num - 1] if 0 < clip_num <= len(highlights) else {}
         
-        output_path = OUTPUT_DIR / clip_path.name.replace('.mp4', '_enhanced.mp4')
+        output_path = output_dir / clip_path.name.replace('.mp4', '_enhanced.mp4')
         
         temp_dir = tempfile.mkdtemp(prefix='enhance_')
         try:
-            if enhance_clip(str(clip_path), str(output_path), highlight_info, temp_dir):
+            if enhance_clip(str(clip_path), str(output_path), highlight_info, temp_dir, str(transcript_path)):
                 success_count += 1
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
     
     print("\n" + "="*60)
     print(f"✅ 增强完成: {success_count}/{len(clips)}")
-    print(f"📁 输出目录: {OUTPUT_DIR}")
+    print(f"📁 输出目录: {output_dir}")
     print("="*60)
     
-    # 生成目录索引
-    generate_index(highlights)
+    generate_index(highlights, output_dir)
 
-def generate_index(highlights):
+def generate_index(highlights, output_dir):
     """生成目录索引"""
-    index_path = OUTPUT_DIR.parent / "目录索引_enhanced.md"
+    index_path = output_dir.parent / "目录索引_enhanced.md"
     
     with open(index_path, 'w', encoding='utf-8') as f:
         f.write("# Soul派对81场 - 增强版切片目录\n\n")

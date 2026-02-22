@@ -112,7 +112,7 @@ def main():
                 "--output", str(highlights_path),
                 "--clips", str(args.clips),
             ],
-            "高光识别（Gemini）",
+            "高光识别（Ollama→规则）",
             timeout=60,
         )
     if not highlights_path.exists():
@@ -146,27 +146,25 @@ def main():
         timeout=300,
     )
 
-    # 4. 增强（封面 + Hook + CTA）；若 FFmpeg 无 drawtext 则直接复制切片
+    # 4. 增强（封面+字幕+加速）：soul_enhance（Pillow，无需 drawtext）
     enhanced_dir.mkdir(parents=True, exist_ok=True)
     ok = run(
         [
             sys.executable,
-            str(SCRIPT_DIR / "enhance_clips.py"),
-            "--clips_dir", str(clips_dir),
+            str(SCRIPT_DIR / "soul_enhance.py"),
+            "--clips", str(clips_dir),
             "--highlights", str(highlights_path),
-            "--output_dir", str(enhanced_dir),
-            "--hook_duration", "2.5",
-            "--cta_duration", "4",
-            "--default_cta", "关注我，每天学一招私域干货",
+            "--transcript", str(transcript_path),
+            "--output", str(enhanced_dir),
         ],
-        "增强处理（Hook+CTA）",
-        timeout=600,
+        "增强处理（封面+字幕+加速）",
+        timeout=900,
         check=False,
     )
     import shutil
     enhanced_count = len(list(enhanced_dir.glob("*.mp4")))
     if enhanced_count == 0 and clips_list:
-        print("  （FFmpeg 无 drawtext 滤镜，复制原始切片到 clips_enhanced）")
+        print("  （soul_enhance 失败，复制原始切片到 clips_enhanced）")
         for f in sorted(clips_dir.glob("*.mp4")):
             shutil.copy(f, enhanced_dir / f.name)
 

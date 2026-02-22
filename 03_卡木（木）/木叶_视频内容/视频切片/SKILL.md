@@ -38,7 +38,7 @@ eval "$(~/miniforge3/bin/conda shell.zsh hook)"
 conda activate mlx-whisper
 mlx_whisper audio.wav --model mlx-community/whisper-small-mlx --language zh --output-format all
 
-# 2. 高光识别（Gemini AI，失败时自动用规则切分）
+# 2. 高光识别（Ollama → Groq → 规则，不依赖 Gemini）
 python3 identify_highlights.py -t transcript.srt -o highlights.json -n 6
 
 # 3. 切片

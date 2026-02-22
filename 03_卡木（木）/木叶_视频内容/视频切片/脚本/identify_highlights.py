@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-高光识别 - 用 Gemini 分析视频文字稿，输出高光片段 JSON
-用于 Soul 派对等长视频切片前的 AI 识别步骤
+高光识别 - AI 分析视频文字稿，输出高光片段 JSON
+级联：Ollama(卡若AI本地) → 规则备用
+只用已有能力，不依赖 Gemini/Groq
 """
 import argparse
 import json
@@ -11,8 +12,7 @@ import re
 import sys
 from pathlib import Path
 
-# Gemini API
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY") or "AIzaSyCPARryq8o6MKptLoT4STAvCsRB7uZuOK8"
+OLLAMA_URL = "http://localhost:11434"
 DEFAULT_CTA = "关注我，每天学一招私域干货"
 CLIP_COUNT = 8
 MIN_DURATION = 45
@@ -85,63 +85,62 @@ def srt_to_timestamped_text(srt_path: str) -> str:
     return "\n".join(lines)
 
 
-def call_gemini(transcript: str, clip_count: int = CLIP_COUNT) -> str:
-    """调用 Gemini 分析并返回 JSON（REST API，无额外依赖）"""
-    import urllib.request
-    import urllib.error
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={GEMINI_KEY}"
-    prompt = f"""你是一个专业的短视频内容策划师，擅长从长视频中找出最有传播力的片段。
+def _build_prompt(transcript: str, clip_count: int) -> str:
+    """构建高光识别 prompt（Ollama/Groq 通用）"""
+    # 限制长度，Ollama 上下文有限
+    txt = transcript[:12000] if len(transcript) > 12000 else transcript
+    return f"""你是一个专业的短视频内容策划师。分析以下视频文字稿，找出 {clip_count} 个最适合做短视频的高光片段。
 
-分析以下视频文字稿，找出 {clip_count} 个最适合做短视频的「高光片段」。
-为每个片段设计：
-1. 前3秒Hook：15字以内，让用户停下来
-2. 结尾CTA：20字以内，引导关注/进群
-
-判断标准：金句观点(30%)、故事案例(25%)、情绪高点(20%)、实操干货(15%)、悬念钩子(10%)
-时长要求：每个片段 {MIN_DURATION}-{MAX_DURATION} 秒
-时间戳必须精确到秒，从文字稿中提取
-相邻片段至少间隔30秒
-
-输出严格 JSON 数组，不要其他文字。每个对象必须包含：
+每个片段需包含：
 - title: 简短标题
-- start_time: "HH:MM:SS"
+- start_time: "HH:MM:SS"（从文字稿提取）
 - end_time: "HH:MM:SS"
-- hook_3sec: 前3秒Hook
-- cta_ending: 结尾CTA（默认可填 "{DEFAULT_CTA}"）
+- hook_3sec: 前3秒Hook，15字内
+- cta_ending: 结尾CTA（可用 "{DEFAULT_CTA}"）
 - transcript_excerpt: 片段内容前50字
 - reason: 推荐理由
 
+时长 {MIN_DURATION}-{MAX_DURATION} 秒，相邻间隔30秒。只输出 JSON 数组，不要其他文字或```包裹。
+
 视频文字稿：
 ---
-{transcript[:25000]}
----
+{txt}
+---"""
 
-只输出JSON数组，不要```json包裹。"""
 
-    body = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 8192},
-    }
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=120) as r:
-            data = json.loads(r.read().decode())
-    except urllib.error.HTTPError as e:
-        err_body = e.read().decode() if e.fp else ""
-        raise RuntimeError(f"Gemini API 错误: {e.code} {err_body[:300]}")
-    candidates = data.get("candidates", [])
-    if not candidates:
-        raise RuntimeError("Gemini 未返回内容")
-    text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "").strip()
+def _parse_ai_json(text: str) -> list:
+    """从 AI 输出中提取 JSON 数组"""
+    text = text.strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
-        text = re.sub(r"\s*```$", "", text)
-    return text
+        text = re.sub(r"\s*```\s*$", "", text)
+    # 尝试找到 [...]
+    m = re.search(r"\[[\s\S]*\]", text)
+    if m:
+        return json.loads(m.group())
+    return json.loads(text)
+
+
+def call_ollama(transcript: str, clip_count: int = CLIP_COUNT) -> str:
+    """调用卡若AI本地模型（Ollama）"""
+    import requests
+    prompt = _build_prompt(transcript, clip_count)
+    try:
+        r = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": "qwen2.5:1.5b",
+                "prompt": prompt,
+                "stream": False,
+                "options": {"temperature": 0.3, "num_predict": 4096},
+            },
+            timeout=90,
+        )
+        if r.status_code != 200:
+            raise RuntimeError(f"Ollama {r.status_code}")
+        return r.json().get("response", "").strip()
+    except Exception as e:
+        raise RuntimeError(f"Ollama 调用失败: {e}") from e
 
 
 def main():
@@ -158,14 +157,21 @@ def main():
     if len(text) < 100:
         print("❌ 文字稿过短，请检查 SRT 格式", file=sys.stderr)
         sys.exit(1)
-    # 尝试 Gemini，失败则用规则备用
+    # 级联：Ollama(卡若AI本地) → 规则备用
     data = None
-    try:
-        print("正在调用 Gemini 分析高光片段...")
-        raw = call_gemini(text, args.clips)
-        data = json.loads(raw)
-    except Exception as e:
-        print(f"Gemini 调用失败 ({e})，使用规则备用切分", file=sys.stderr)
+    for name, fn in [
+        ("Ollama (卡若AI本地)", call_ollama),
+    ]:
+        try:
+            print(f"正在调用 {name} 分析高光片段...")
+            raw = fn(text, args.clips)
+            data = _parse_ai_json(raw)
+            if data and isinstance(data, list) and len(data) > 0:
+                break
+        except Exception as e:
+            print(f"{name} 调用失败 ({e})", file=sys.stderr)
+    if not data or not isinstance(data, list):
+        print("使用规则备用切分", file=sys.stderr)
         data = fallback_highlights(str(transcript_path), args.clips)
     if not data:
         data = fallback_highlights(str(transcript_path), args.clips)

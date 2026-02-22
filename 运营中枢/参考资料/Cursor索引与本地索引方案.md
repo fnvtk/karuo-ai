@@ -80,7 +80,44 @@
 
 ---
 
-## 五、参考
+## 五、耗时与对比
+
+### 5.1 索引耗时（估算）
+
+| 方案 | 卡若AI 代码库（约 500～2000 可索引块） | 说明 |
+|:-----|:--------------------------------------|:-----|
+| **Cursor 云端** | 约 1～5 分钟 | 云端并行，依赖网络 |
+| **卡若AI 本地** | 约 15～45 分钟 | 逐块本地 embed，每块约 0.5～1 秒 |
+
+### 5.2 与 Cursor 云端索引的区别
+
+| 维度 | Cursor 云端索引 | 卡若AI 本地索引 |
+|:-----|:----------------|:----------------|
+| 数据位置 | 代码本地，embedding+元数据云端 | 全在本地 |
+| 首次索引 | 较快（1～5 分钟） | 较慢（15～45 分钟） |
+| 检索延迟 | 低（云端向量库） | 低（本地 JSON 加载） |
+| 增量更新 | 自动 | 需手动重跑 `index` |
+| Cursor 集成 | 原生 @ Codebase | 通过 Skill 或 MCP 调用 |
+| 隐私/离线 | ❌ 依赖云端 | ✅ 完全本地 |
+
+---
+
+## 六、GitHub 同类方案（可选替代）
+
+| 项目 | Stars | 特点 | 与卡若AI 本地索引对比 |
+|:-----|:------|:-----|:----------------------|
+| [**cursor-local-indexing**](https://github.com/LuotoCompany/cursor-local-indexing) | 34 | ChromaDB + MCP，Docker 部署，提供 `@search_code` | 需 Docker；卡若AI 零容器、纯 Python |
+| [**autodev-codebase**](https://github.com/anrgct/autodev-codebase) | 111 | TypeScript，Qdrant + Ollama，MCP，调用图、outline | 功能更全；需 Qdrant Docker；卡若AI 无额外服务 |
+| [**linggen**](https://github.com/linggen/linggen-memory) | 104 | Rust，LanceDB，Design Anchors，系统依赖图 | 偏架构记忆；需安装 CLI；卡若AI 更轻量 |
+
+**推荐选择**：
+- 要**零额外依赖**、和卡若AI 深度整合 → 用卡若AI 本地索引
+- 要**调用图、AI rerank、多模型** → 考虑 `autodev-codebase`
+- 要**Docker 化、MCP 即用** → 考虑 `cursor-local-indexing`
+
+---
+
+## 七、参考
 
 - Cursor Forum: [It's possible to embedding codes entirely at local?](https://forum.cursor.com/t/its-possible-to-embedding-codes-entirely-at-local/15911)
 - 本地模型 SKILL：`04_卡火（火）/火种_知识模型/本地模型/SKILL.md`
