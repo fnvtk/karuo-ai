@@ -3,6 +3,29 @@
 > 当一种方式失败时，依次尝试其他方式。终极备选：**宝塔面板 → 终端**（无需 SSH）。
 > **存客宝 SSH 修复**：在存客宝宝塔终端执行 `scripts/存客宝_SSH修复_宝塔终端执行.sh` 内容。
 
+## 零、SSH IP 被封禁防护（2026-02-23 已配置）
+
+**问题**：sshpass/密钥连接被 `Connection closed by remote host`，原因是外部暴力破解（19,690 次错误尝试）占满 sshd 连接池。
+
+**已部署防护（kr宝塔 43.139.27.93）**：
+
+| 措施 | 配置 | 说明 |
+|------|------|------|
+| iptables 白名单 | `211.156.92.72` → ACCEPT | 当前公网 IP 永不被封 |
+| iptables 速率限制 | 5 分钟内同 IP 超 10 次 → DROP | 自动封禁暴力破解 |
+| sshd MaxStartups | `30:50:100` | 连接池增大 |
+| sshd MaxAuthTries | `10` | 单次连接允许更多尝试 |
+| 宝塔 SSH 防护 | `ssh_check.pl = true` | 宝塔面板级防护 |
+
+**公网 IP 变化时**需更新白名单（通过 TAT 或宝塔终端）：
+
+```bash
+NEW_IP=$(curl -s ifconfig.me)
+iptables -I INPUT 1 -s $NEW_IP -p tcp --dport 22022 -j ACCEPT
+iptables -I INPUT 2 -s $NEW_IP -p tcp --dport 22 -j ACCEPT
+iptables-save > /etc/sysconfig/iptables
+```
+
 ---
 
 ## 一、凭证汇总（经实测）
