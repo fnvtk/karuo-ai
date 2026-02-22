@@ -42,7 +42,7 @@ bash scripts/kr宝塔_SSH登录.sh "whoami"
 | 存客宝 | https://42.194.245.239:9988 | TNKjqDv5N1QLOU20gcmGVgr82Z4mXzRi |
 | 本机 Docker | http://127.0.0.1:8888/btpanel | 面板内查看 |
 
-**API 白名单**：若本机调用 API 报「IP校验失败」，须到对应面板 **设置 → API 接口** 将本机公网 IP 加入白名单。
+**API 白名单**：若本机调用 API 报「IP校验失败」，须到对应面板 **设置 → API 接口** 将本机公网 IP 加入白名单。当前常见 IP：211.156.84.135、211.156.92.72、140.245.37.56。
 
 ---
 
@@ -100,7 +100,19 @@ sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no ckb@43.139.27.9
 
 **SSH 风控**：若出现 `Connection closed by remote host` 或 `Permission denied`，优先用 **宝塔面板 → 终端** 执行，减少 SSH 连接次数。
 
-### 3.2 502 修复（kr宝塔）
+### 3.2 宝塔 API 批量启动（以界面真实状态为准）
+
+**脚本**：`scripts/kr宝塔_宝塔API_Node批量启动.py`  
+
+**说明**：通过宝塔 API 获取 Node 项目列表（界面显示即真实运行状态），对 `run=False` 项目执行 stop → start。
+
+```bash
+python3 "01_卡资（金）/金仓_存储备份/服务器管理/scripts/kr宝塔_宝塔API_Node批量启动.py"
+```
+
+**前置**：本机公网 IP 已加入 kr宝塔 **设置 → API 接口** 白名单。否则报「IP校验失败」。
+
+### 3.3 502 修复（kr宝塔）
 
 **脚本**：`scripts/kr宝塔_宝塔API_修复502.py`  
 

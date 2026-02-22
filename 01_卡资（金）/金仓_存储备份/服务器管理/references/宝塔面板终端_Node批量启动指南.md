@@ -126,3 +126,9 @@ python3 /tmp/kr_node_batch_fix.py
 
 - **MODULE_NOT_FOUND**：玩值大屏、wzdj、tongzhi 等若报此错，需在 **Node 项目 → 编辑** 中把启动命令改为 `cd /项目根目录 && node server.js` 或 `npm run start`，勿用目录路径当入口。详见 `references/Node项目未启动_MODULE_NOT_FOUND修复指南.md`。
 - 若某项目因端口占用失败，脚本会自动尝试清理端口后重试；若仍失败，需在面板中手动检查该项目配置。
+
+**免 SSH 一键批量启动**（本机执行）：
+```bash
+./01_卡资（金）/金仓_存储备份/服务器管理/scripts/.venv_tx/bin/python \
+  "01_卡资（金）/金仓_存储备份/服务器管理/scripts/腾讯云_TAT_修复502_Node项目.py" 玩值大屏 tongzhi is_phone ai_hair AITOUFA wzdj zhiji ymao zhaoping
+```
