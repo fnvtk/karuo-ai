@@ -10,9 +10,9 @@
 | **转录** | MLX Whisper | 本地、快速，无 API 依赖 |
 | **高光识别** | Ollama → Groq → 规则 | 级联，不依赖 Gemini |
 | **切片** | FFmpeg batch_clip | 标准工具 |
-| **增强** | FFmpeg drawtext / 复制 | drawtext 不可用时直接复制切片 |
+| **增强** | soul_enhance（Pillow 封面+字幕）| 无需 drawtext |
 
-**级联顺序**：Ollama（卡若AI 本地 qwen2.5:1.5b）→ Groq（免费，需 GROQ_API_KEY）→ 规则备用
+**级联顺序**：Ollama（卡若AI 本地）→ 规则备用（不用 Groq/Gemini）
 
 ---
 

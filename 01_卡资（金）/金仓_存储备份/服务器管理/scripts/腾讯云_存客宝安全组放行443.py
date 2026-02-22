@@ -120,5 +120,44 @@ def main():
     print("=" * 56)
     return 0
 
+def check_rules():
+    """查看当前安全组入站规则"""
+    secret_id, secret_key = _read_creds()
+    if not secret_id or not secret_key:
+        print("❌ 未配置凭证"); return 1
+    from tencentcloud.common import credential
+    from tencentcloud.cvm.v20170312 import cvm_client, models as cvm_models
+    from tencentcloud.vpc.v20170312 import vpc_client, models as vpc_models
+    cred = credential.Credential(secret_id, secret_key)
+    sg_ids, region = [], None
+    for r in REGIONS:
+        try:
+            c = cvm_client.CvmClient(cred, r)
+            req = cvm_models.DescribeInstancesRequest()
+            req.Limit = 100
+            resp = c.DescribeInstances(req)
+            for ins in (getattr(resp, "InstanceSet", None) or []):
+                if CKB_IP in list(getattr(ins, "PublicIpAddresses", None) or []):
+                    sg_ids = list(getattr(ins, "SecurityGroupIds", None) or [])
+                    region = r; break
+        except Exception:
+            continue
+        if sg_ids: break
+    if not sg_ids: print("❌ 未找到实例"); return 1
+    vc = vpc_client.VpcClient(cred, region)
+    for sg_id in sg_ids:
+        try:
+            req = vpc_models.DescribeSecurityGroupPoliciesRequest()
+            req.SecurityGroupId = sg_id
+            resp = vc.DescribeSecurityGroupPolicies(req)
+            s = resp.SecurityGroupPolicySet
+            ing = (s.Ingress or []) if hasattr(s, "Ingress") else []
+            print("  %s 入站: %s" % (sg_id, [(getattr(x,"Port",""), getattr(x,"Protocol","")) for x in ing[:8]]))
+        except Exception as e:
+            print("  %s: %s" % (sg_id, e))
+    return 0
+
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--check":
+        sys.exit(check_rules())
     sys.exit(main())

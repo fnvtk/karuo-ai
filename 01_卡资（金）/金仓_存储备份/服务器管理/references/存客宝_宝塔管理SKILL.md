@@ -36,6 +36,7 @@
 - **Node 项目**：若有 Node 项目，可参考 `references/宝塔Node项目管理_SKILL.md` 编写存客宝版批量修复脚本（PANEL、API_KEY 改为存客宝）
 - **站点/域名**：一律用宝塔 API 处理，见主 SKILL 一键操作
 - **卡若AI 网关站点**：`python3 scripts/存客宝_宝塔API_卡若AI网关站点.py`
+- **www.lytiao.com Docker 化**：`python3 scripts/腾讯云_TAT_存客宝_lytiao_Docker部署.py`（TAT 免 SSH）；或宝塔终端粘贴 `scripts/存客宝_lytiao_Docker部署_宝塔终端执行.sh`。部署后访问 http://42.194.245.239:8080
 
 ---
 

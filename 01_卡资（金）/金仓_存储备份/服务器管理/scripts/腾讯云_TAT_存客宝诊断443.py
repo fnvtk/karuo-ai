@@ -13,10 +13,23 @@ import time
 CKB_INSTANCE_ID = "ins-ciyv2mxa"
 REGION = "ap-guangzhou"
 
-CMD = """echo "=== iptables INPUT 80/443 ===" && iptables -L INPUT -n -v 2>/dev/null | head -30 || true
-echo "=== firewalld 80/443 ===" && firewall-cmd --list-all 2>/dev/null || true
-echo "=== 安全组/防火墙摘要 ===" && echo "服务器内 80/443 均应由 Nginx 监听，若外网 80 通 443 不通，多为腾讯云安全组/轻量防火墙未放行 443"
-echo "=== DONE ==="
+CMD = """
+echo "=== 1. iptables INPUT 链 ==="
+iptables -L INPUT -n -v 2>/dev/null | head -40 || true
+echo ""
+echo "=== 2. 80/443 监听 ==="
+ss -tlnp | grep -E ':80 |:443 ' || true
+echo ""
+echo "=== 3. 宝塔 firewall.json ==="
+cat /www/server/panel/data/firewall.json 2>/dev/null || echo "(无)"
+echo ""
+echo "=== 4. Nginx 443 配置 ==="
+grep -l 'listen.*443' /www/server/panel/vhost/nginx/*.conf 2>/dev/null | head -3
+echo ""
+echo "=== 5. 本机 curl 127.0.0.1:443 ==="
+curl -sI -o /dev/null -w '%{http_code}' --connect-timeout 3 https://127.0.0.1 -k 2>/dev/null || echo "fail"
+echo ""
+echo "DONE"
 """
 
 def _find_root():
@@ -89,10 +102,21 @@ def main():
         for t in (resp2.InvocationTaskSet or []):
             status = getattr(t, "TaskStatus", "N/A")
             print("  任务状态:", status)
-            for attr in ("Output", "OutputUrl", "TaskResult", "ErrorInfo"):
-                v = getattr(t, attr, None)
-                if v:
-                    print("  %s:" % attr, str(v)[:2500])
+            tr = getattr(t, "TaskResult", None)
+            if tr:
+                try:
+                    import json
+                    import base64 as b64
+                    j = json.loads(tr) if isinstance(tr, str) else tr
+                    out = j.get("Output", "")
+                    if out:
+                        try:
+                            out = b64.b64decode(out).decode("utf-8", errors="replace")
+                        except Exception:
+                            pass
+                        print("\n--- 服务器输出 ---\n", out[:3500])
+                except Exception:
+                    print("  TaskResult:", str(tr)[:800])
     except Exception as e:
         print("  查询异常:", e)
     return 0

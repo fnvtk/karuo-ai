@@ -139,6 +139,21 @@ sshpass -p 'zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no ckb@43.139.27.9
 
 SSH 风控时，在 **kr宝塔 宝塔面板 → 终端** 上传脚本后执行。详见 `references/宝塔Node项目管理_SKILL.md`。
 
+### 4a. www.lytiao.com Docker 化（存客宝 · 可多服务器复用）
+
+```bash
+# 方式 1：腾讯云 TAT 免 SSH（推荐）
+./01_卡资（金）/金仓_存储备份/服务器管理/scripts/.venv_tx/bin/python \
+  "01_卡资（金）/金仓_存储备份/服务器管理/scripts/腾讯云_TAT_存客宝_lytiao_Docker部署.py"
+
+# 方式 2：SSH 部署（SSH 可用时）
+bash "01_卡资（金）/金仓_存储备份/服务器管理/scripts/存客宝_lytiao_Docker部署.sh"
+
+# 方式 3：宝塔面板 → 终端，粘贴 scripts/存客宝_lytiao_Docker部署_宝塔终端执行.sh 内容
+```
+
+部署后访问 `http://42.194.245.239:8080`，或配置 Nginx 反向代理 80/443 → 127.0.0.1:8080。多服务器复用：复制 `lytiao_docker/` 到目标服务器执行 `docker compose up -d`。详见 `lytiao_docker/README.md`。
+
 ### 5. kr宝塔 网络卡/服务器卡 · 检查与处理
 
 - **文档**：`references/kr宝塔_网络与服务器卡顿_检查与处理.md`
