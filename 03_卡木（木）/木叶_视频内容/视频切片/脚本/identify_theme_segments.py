@@ -132,11 +132,11 @@ def call_ollama(transcript: str) -> str:
 
 
 def fallback_by_keywords(transcript_path: str) -> list:
-    """规则备用：按关键词粗分主题段"""
+    """规则备用：按关键词粗分主题段，每段限制 45-120 秒"""
     segments = parse_srt_segments(transcript_path)
     if not segments:
         return []
-    # 关键词 -> 主题
+    total_duration = segments[-1]["end_sec"] if segments else 0
     theme_keywords = {
         "引出问题": ["问题", "遇到", "痛点", "为什么", "困惑", "难题"],
         "解决方案": ["方法", "解决", "怎么做", "技巧", "核心", "干货"],
@@ -146,37 +146,42 @@ def fallback_by_keywords(transcript_path: str) -> list:
         "福利展示": ["福利", "限时", "赠送", "优惠", "免费"],
         "权威背书": ["专业", "背书", "资质", "成果", "证明"],
     }
+    MIN_SEG = 45
+    MAX_SEG = 120
     result = []
-    used = set()
+    used_until = 0  # 已使用到的时间点，避免重叠
     for theme, kws in theme_keywords.items():
-        cands = []
+        cands = [s for s in segments if s["start_sec"] >= used_until and any(kw in s["text"] for kw in kws)]
+        if not cands:
+            continue
+        first = cands[0]
+        start_sec = first["start_sec"]
+        # 合并相邻字幕，但限制在 MAX_SEG 秒内
+        end_sec = first["end_sec"]
         for s in segments:
-            if s["start_sec"] in used:
+            if s["start_sec"] < start_sec:
                 continue
-            txt = s["text"]
-            if any(kw in txt for kw in kws):
-                cands.append(s)
-        if cands:
-            # 取第一段匹配，扩展为完整段落（合并相邻）
-            first = cands[0]
-            start_sec = first["start_sec"]
-            end_sec = first["end_sec"]
-            for s in segments:
-                if s["start_sec"] >= start_sec and s["start_sec"] <= end_sec + 30:
-                    end_sec = max(end_sec, s["end_sec"])
-            for t in range(int(start_sec), int(end_sec) + 1, 10):
-                used.add(t)
-            h, m, s_ = start_sec // 3600, (start_sec % 3600) // 60, int(start_sec % 60)
-            eh, em, es = end_sec // 3600, (end_sec % 3600) // 60, int(end_sec % 60)
-            result.append({
-                "theme": theme,
-                "title": theme,
-                "start_time": f"{int(h):02d}:{int(m):02d}:{int(s_):02d}",
-                "end_time": f"{int(eh):02d}:{int(em):02d}:{int(es):02d}",
-                "hook_3sec": f"精彩{theme}",
-                "cta_ending": DEFAULT_CTA,
-                "transcript_excerpt": first["text"][:60],
-            })
+            if s["start_sec"] > start_sec + MAX_SEG:
+                break
+            if s["end_sec"] <= end_sec + 15:  # 连续/接近
+                end_sec = max(end_sec, s["end_sec"])
+            elif s["start_sec"] <= end_sec + 5:  # 间隙小于5秒
+                end_sec = min(s["end_sec"], start_sec + MAX_SEG)
+        end_sec = min(end_sec, start_sec + MAX_SEG)
+        if end_sec - start_sec < MIN_SEG:
+            end_sec = min(start_sec + MIN_SEG, total_duration)
+        used_until = end_sec + 10  # 下一段至少间隔10秒
+        h, m, s_ = int(start_sec // 3600), int((start_sec % 3600) // 60), int(start_sec % 60)
+        eh, em, es = int(end_sec // 3600), int((end_sec % 3600) // 60), int(end_sec % 60)
+        result.append({
+            "theme": theme,
+            "title": theme,
+            "start_time": f"{h:02d}:{m:02d}:{s_:02d}",
+            "end_time": f"{eh:02d}:{em:02d}:{es:02d}",
+            "hook_3sec": f"精彩{theme}",
+            "cta_ending": DEFAULT_CTA,
+            "transcript_excerpt": first["text"][:60],
+        })
     return result
 
 
