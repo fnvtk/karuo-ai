@@ -43,6 +43,51 @@ ROWS = {
 # 场次→按日期列填写时的日期（表头为当月日期 1~31）
 SESSION_DATE_COLUMN = {'105': '20', '106': '21', '107': '23'}
 
+# 小程序当日运营数据：日期号 → {访问次数, 访客, 交易金额}，填表时自动写入对应日期列
+# 数据来源：微信公众平台 → 小程序 → 统计 → 实时访问/概况
+# 历史有数据的都填入，批量写入用 write_miniprogram_batch.py
+MINIPROGRAM_EXTRA = {
+    '20': {'访问次数': 45, '访客': 45, '交易金额': 0},  # 2月20日
+    '21': {'访问次数': 52, '访客': 52, '交易金额': 0},  # 2月21日
+    '23': {'访问次数': 55, '访客': 55, '交易金额': 0},  # 2月23日
+}
+
+
+def _find_row_for_keyword(vals, keywords):
+    """在 vals 中找 A 列包含任一 keyword 的行号（1-based）"""
+    for ri, row in enumerate(vals):
+        a1 = (row[0] if row and len(row) > 0 else '')
+        a1 = str(a1 or '').strip()
+        for kw in keywords:
+            if kw in a1:
+                return ri + 1
+    return None
+
+
+def _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter):
+    """若当日有小程序数据，写入 交易金额、访客、小程序访问 到对应行"""
+    extra = MINIPROGRAM_EXTRA.get(date_col)
+    if not extra:
+        return
+    # 行→extra 中的键
+    writes = [
+        (_find_row_for_keyword(vals, ['交易金额']), extra.get('交易金额', 0)),
+        (_find_row_for_keyword(vals, ['访客']), extra.get('访客', extra.get('访问次数'))),
+        (_find_row_for_keyword(vals, ['小程序访问']), extra.get('访问次数')),
+    ]
+    written = 0
+    for row_num, val in writes:
+        if row_num is None or val is None:
+            continue
+        rng = f"{sheet_id}!{col_letter}{row_num}"
+        code, body = update_sheet_range(token, spreadsheet_token, rng, [[_to_cell_value(val)]])
+        if code == 401 or body.get('code') in (99991677, 99991663):
+            return
+        if code == 200 and body.get('code') in (0, None):
+            written += 1
+    if written > 0:
+        print(f'✅ 已写入小程序运营数据（2月{date_col}日列）：访问次数 {extra.get("访问次数","")}、访客 {extra.get("访客","")}、交易金额 {extra.get("交易金额",0)}')
+
 
 def load_token():
     if not os.path.exists(TOKEN_FILE):
@@ -223,7 +268,7 @@ def main():
     values = [_to_cell_value(raw[0])] + [_to_cell_value(raw[i]) for i in range(1, EFFECT_COLS)]
     spreadsheet_token = WIKI_NODE_OR_SPREADSHEET_TOKEN
     sheet_id = SHEET_ID
-    range_read = f"{sheet_id}!A1:AG30"
+    range_read = f"{sheet_id}!A1:AG35"
     vals, read_code, read_body = read_sheet_range(token, spreadsheet_token, range_read)
     # 401 时刷新 token 并重试读取，确保能定位到日期列
     if (read_code == 401 or read_body.get('code') in (99991677, 99991663)) and not vals:
@@ -302,6 +347,7 @@ def main():
             ok, msg = _verify_write(spreadsheet_token, sheet_id, col_letter, values, token)
             if ok:
                 print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter}3:{col_letter}{2+len(values)}，共{len(values)}格），校验通过')
+                _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter)
                 _maybe_send_group(session, raw)
                 return
             print(f'⚠️ 写入成功但校验未通过：{msg}')
@@ -324,6 +370,7 @@ def main():
                 ok, msg = _verify_write(spreadsheet_token, sheet_id, col_letter, values, token)
                 if ok:
                     print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter} 逐格），校验通过')
+                    _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter)
                     _maybe_send_group(session, raw)
                     return
                 print(f'⚠️ 逐格写入成功但校验未通过：{msg}')
