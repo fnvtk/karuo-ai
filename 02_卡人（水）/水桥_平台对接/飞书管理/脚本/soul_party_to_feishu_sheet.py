@@ -37,9 +37,11 @@ ROWS = {
     '105': [ '创业社群AI培训6980 电竞私域', 138, 0, 403, 10, 170, 2, 24, 31, 54 ],
     # 106场 2026-02-21：关闭页 135min/395进房/42最高/9关注/3礼物/24灵魂力/33312曝光，小助手 7人均/88互动
     '106': [ '退伍军人低空经济 贴息8800', 135, 33312, 395, 7, 88, 3, 24, 9, 42 ],
+    # 107场 2026-02-23：关闭页 137min/398进房/60最高/36关注/2礼物/16灵魂力/33820曝光，小助手 10人均/85互动/34关注
+    '107': [ '职场情绪价值 核心团队管理', 137, 33820, 398, 10, 85, 2, 16, 36, 60 ],
 }
 # 场次→按日期列填写时的日期（表头为当月日期 1~31）
-SESSION_DATE_COLUMN = {'105': '20', '106': '21'}
+SESSION_DATE_COLUMN = {'105': '20', '106': '21', '107': '23'}
 
 
 def load_token():
@@ -253,9 +255,9 @@ def main():
     LABELS_GROUP = ['主题', '时长（分钟）', 'Soul推流人数', '进房人数', '人均时长（分钟）', '互动数量', '礼物', '灵魂力', '增加关注', '最高在线']
 
     def _maybe_send_group(sess, raw_vals):
-        if sess not in ('105', '106'):
+        if sess not in ('105', '106', '107'):
             return
-        date_label = {'105': '2月20日', '106': '2月21日'}.get(sess, sess + '场')
+        date_label = {'105': '2月20日', '106': '2月21日', '107': '2月23日'}.get(sess, sess + '场')
         lines = [
             '【Soul 派对运营报表】',
             f'链接：{OPERATION_REPORT_LINK}',
@@ -265,7 +267,7 @@ def main():
         for i, label in enumerate(LABELS_GROUP):
             val = raw_vals[i] if i < len(raw_vals) else ''
             lines.append(f'{label}：{val}')
-        src_date = {'105': '20260220', '106': '20260221'}.get(sess, '20260220')
+        src_date = {'105': '20260220', '106': '20260221', '107': '20260223'}.get(sess, '20260220')
         lines.append(f'数据来源：soul 派对 {sess}场 {src_date}.txt')
         msg = '\n'.join(lines)
         ok, _ = send_feishu_group_message(FEISHU_GROUP_WEBHOOK, msg)
