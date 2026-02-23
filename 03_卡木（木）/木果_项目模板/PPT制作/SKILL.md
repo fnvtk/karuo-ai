@@ -55,7 +55,7 @@ updated: "2026-02-23"
 | 步骤 | 动作 | 说明 |
 |:---|:---|:---|
 | 1 | **规格澄清** | 主题、页数、内容（如复盘格式） |
-| 2 | **每页配图** | 按内容提炼关键词 → AI 生成主题配图 → 存图片目录并登记索引 |
+| 2 | **每页配图** | 按内容提炼关键词 → AI 生成主题配图 **或** 用 Next AI Draw 生成架构/流程图 → 存图片目录并登记索引 |
 | 3 | **v0 或 HTML 出稿** | 每页含配图 + 图标，1280×720；参考《PPT配图与图标规范》 |
 | 4 | **截图** | playwright 截取每页为 PNG（`脚本/毛玻璃截图转PPT.py`） |
 | 5 | **组装 PPT** | 用 python-pptx 将 PNG 按序插入幻灯片 |
@@ -155,6 +155,7 @@ background.fill.fore_color.rgb = RGBColor(255, 250, 230)
 | `参考资料/PPT制作完整逻辑框架.md` | **v0 思考形式、配图逻辑、GitHub 参考**（必读） |
 | `参考资料/PPT配图与图标规范.md` | **每页配图+图标**（强制） |
 | `参考资料/PPT美观设计规范.md` | 配色、字体、图片、留白、验收清单 |
+| `../Next AI Draw/SKILL.md` | **架构/流程图**生成（PPT 配图联动） |
 | `脚本/复盘PPT_毛玻璃.html` | 复盘格式毛玻璃 HTML 模板 |
 | `脚本/卡若人设PPT_毛玻璃.html` | 卡若人设介绍毛玻璃模板 |
 | `脚本/毛玻璃截图转PPT.py` | playwright 截图 + python-pptx 组装 |
@@ -163,13 +164,15 @@ background.fill.fore_color.rgb = RGBColor(255, 250, 230)
 
 ---
 
-## 外部参考（GitHub）
+## 外部参考与联动
 
-| 来源 | 链接 | 说明 |
+| 来源 | 链接/路径 | 说明 |
 |:---|:---|:---|
+| **Next AI Draw** | `03_卡木（木）/木果_项目模板/Next AI Draw/SKILL.md` | **架构图、流程图**：自然语言→draw.io 风格图，与 PPT 配图联动 |
+| **卡若个人介绍** | `03_卡木（木）/木果_项目模板/卡若个人介绍/SKILL.md` | 卡若人设 PPT 内容来源 |
 | AiPPT | https://github.com/veasion/AiPPT | 1.7k★ 主题/文件生成，图表动画 |
+| next-ai-draw-io | https://github.com/DayuanJiang/next-ai-draw-io | 20k★ AI 画架构图/流程图 |
 | PptGPT | https://github.com/officeaiwork/pptgpt | 智能配图、润色、思维导图 |
-| prompting-pptx | GitHub haesleinhuepf | ChatGPT + DALL-E 配图 |
 | python-pptx | https://github.com/scanny/python-pptx | 3.1k★ 底层库 |
 
 ---
