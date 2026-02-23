@@ -1,27 +1,29 @@
 ---
 name: PPT制作
-description: 用 python-pptx 或 v0/React 毛玻璃风格生成大气美观 PPT。支持：规格→v0/React 出稿→截图→导出 PPT；苹果毛玻璃风格、组件完善。触发词：做PPT、制作PPT、复盘PPT、毛玻璃PPT。
+description: 用 v0 思考形式 + 毛玻璃风格 + 主题配图生成大气美观 PPT。支持：GitHub 方案、v0 结构、逻辑性配图、苹果毛玻璃。触发词：做PPT、卡若人设、复盘PPT、毛玻璃PPT。
 group: 木
-triggers: PPT、做PPT、制作PPT、演示文稿、汇报PPT、绘本PPT、复盘PPT、毛玻璃PPT
+triggers: PPT、做PPT、制作PPT、演示文稿、汇报PPT、绘本PPT、复盘PPT、毛玻璃PPT、卡若人设
 owner: 木果
-version: "3.0"
+version: "4.0"
 updated: "2026-02-23"
 ---
 
 # PPT制作
 
 > **归属**：木果（项目模板）  
-> **能力来源**：python-pptx、agentskills pptx、**v0/React 苹果毛玻璃风格**（先出好看页面 → 截图 → 导出 PPT）。
+> **能力来源**：python-pptx、v0/React 毛玻璃、**GitHub AI PPT 方案**（AiPPT、PptGPT、prompting-pptx 等）；**配图逻辑**：每页内容 → 提炼关键词 → 生成主题相关逻辑性配图。
 
 ---
 
 ## 能做什么（Capabilities）
 
-- **方式一（推荐）**：v0/React 毛玻璃风格 → 生成 HTML 页面 → 截图 → 组装 PPT（大气美观、组件完善）
-- **方式二**：直接用 python-pptx 创建（标题页、内容页、绘本风、汇报风）
-- 添加图片（带边框、带说明）、表格、图表
-- 按美观规范：苹果毛玻璃、配色、留白
-- 输出到：`/Users/karuo/Documents/卡若Ai的文件夹/报告/` 或用户指定目录
+- **方式一（推荐）**：v0 式结构思考 → HTML/React 毛玻璃出稿 → 配图（AI 生成/素材）→ 截图 → 导出 PPT
+- **方式二**：python-pptx 直接生成（标题页、内容页、绘本风、汇报风）
+- **配图**：每页按内容生成主题相关、逻辑呼应的配图
+- **风格**：苹果毛玻璃、商用白底、绘本黄底
+- **输出**：`/Users/karuo/Documents/卡若Ai的文件夹/报告/` 或用户指定目录
+
+**必读**：`参考资料/PPT制作完整逻辑框架.md`（v0 思考形式、配图逻辑、GitHub 参考）
 
 ---
 
@@ -133,23 +135,24 @@ background.fill.fore_color.rgb = RGBColor(255, 250, 230)
 
 | 文件 | 说明 |
 |:---|:---|
+| `参考资料/PPT制作完整逻辑框架.md` | **v0 思考形式、配图逻辑、GitHub 参考**（必读） |
 | `参考资料/PPT美观设计规范.md` | 配色、字体、图片、留白、验收清单 |
-| `脚本/复盘PPT_毛玻璃.html` | 复盘格式毛玻璃 HTML 模板（苹果风格） |
+| `脚本/复盘PPT_毛玻璃.html` | 复盘格式毛玻璃 HTML 模板 |
+| `脚本/卡若人设PPT_毛玻璃.html` | 卡若人设介绍毛玻璃模板 |
 | `脚本/毛玻璃截图转PPT.py` | playwright 截图 + python-pptx 组装 |
-| `脚本/天恩乖乖绘本.py` | 绘本风 PPT 示例（黄底、边框） |
 | 毛玻璃规范 | 开发文档 `4、前端/苹果毛玻璃风格与自适应规范.md` |
 | 输出目录 | `/Users/karuo/Documents/卡若Ai的文件夹/报告/` |
 
 ---
 
-## 外部参考（GitHub 与学习资源）
+## 外部参考（GitHub）
 
 | 来源 | 链接 | 说明 |
 |:---|:---|:---|
-| python-pptx | https://github.com/scanny/python-pptx | 3.1k★ 官方库，创建/读取/更新 .pptx |
-| python-pptx 文档 | https://python-pptx.readthedocs.io/ | Quickstart、API、用例 |
-| agentskills pptx | https://agentskills.me/skill/pptx | 594★，Coding 示例 |
-| PPTAgent | https://github.com/icip-cas/PPTAgent | 1.3k★，超越文生 PPT |
+| AiPPT | https://github.com/veasion/AiPPT | 1.7k★ 主题/文件生成，图表动画 |
+| PptGPT | https://github.com/officeaiwork/pptgpt | 智能配图、润色、思维导图 |
+| prompting-pptx | GitHub haesleinhuepf | ChatGPT + DALL-E 配图 |
+| python-pptx | https://github.com/scanny/python-pptx | 3.1k★ 底层库 |
 
 ---
 

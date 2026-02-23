@@ -19,34 +19,32 @@ from pptx import Presentation
 from pptx.util import Inches
 
 BASE = Path(__file__).resolve().parent
-HTML = BASE / "复盘PPT_毛玻璃.html"
-OUT_SLIDES = BASE.parent.parent.parent.parent.parent / "卡若Ai的文件夹" / "报告" / "复盘_毛玻璃_slides"
-OUT_PPT = Path("/Users/karuo/Documents/卡若Ai的文件夹/报告/复盘_2026-02-23_毛玻璃.pptx")
+OUT_ROOT = Path("/Users/karuo/Documents/卡若Ai的文件夹/报告")
 
 
-def screenshot_slides():
+def screenshot_slides(html_path, out_slides_dir, max_slides=10):
     """用 playwright 截取每页"""
     if not HAS_PLAYWRIGHT:
-        print("⚠️ playwright 未安装，跳过截图。运行: pip install playwright && playwright install chromium")
+        print("⚠️ playwright 未安装")
         return []
-    OUT_SLIDES.mkdir(parents=True, exist_ok=True)
+    out_slides_dir.mkdir(parents=True, exist_ok=True)
     imgs = []
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 720})
-        page.goto(f"file://{HTML}")
-        for i in range(1, 6):
+        page.goto(f"file://{html_path}")
+        for i in range(1, max_slides + 1):
             sel = f"#slide-{i}"
             el = page.locator(sel)
             if el.count() > 0:
-                path = OUT_SLIDES / f"slide_{i:02d}.png"
+                path = out_slides_dir / f"slide_{i:02d}.png"
                 el.screenshot(path=path)
                 imgs.append(str(path))
         browser.close()
     return imgs
 
 
-def build_ppt(imgs):
+def build_ppt(imgs, out_ppt):
     """将图片组装成 PPT"""
     prs = Presentation()
     prs.slide_width = Inches(13.333)
@@ -56,23 +54,35 @@ def build_ppt(imgs):
         if Path(p).exists():
             s = prs.slides.add_slide(layout)
             s.shapes.add_picture(p, Inches(0), Inches(0), width=prs.slide_width)
-    OUT_PPT.parent.mkdir(parents=True, exist_ok=True)
-    prs.save(OUT_PPT)
-    return OUT_PPT
+    out_ppt.parent.mkdir(parents=True, exist_ok=True)
+    prs.save(out_ppt)
+    return out_ppt
 
 
 def main():
-    if HAS_PLAYWRIGHT:
-        imgs = screenshot_slides()
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--html", default="复盘", choices=["复盘", "卡若人设"])
+    args = ap.parse_args()
+    if args.html == "卡若人设":
+        html = BASE / "卡若人设PPT_毛玻璃.html"
+        out_slides = OUT_ROOT / "卡若人设_毛玻璃_slides"
+        out_ppt = OUT_ROOT / "卡若人设介绍_毛玻璃.pptx"
+        max_slides = 5
     else:
-        imgs = list(OUT_SLIDES.glob("slide_*.png"))
-        imgs = sorted([str(p) for p in imgs])
+        html = BASE / "复盘PPT_毛玻璃.html"
+        out_slides = OUT_ROOT / "复盘_毛玻璃_slides"
+        out_ppt = OUT_ROOT / "复盘_2026-02-23_毛玻璃.pptx"
+        max_slides = 5
+    if HAS_PLAYWRIGHT:
+        imgs = screenshot_slides(html, out_slides, max_slides)
+    else:
+        imgs = sorted([str(p) for p in out_slides.glob("slide_*.png")])
     if not imgs:
-        print("❌ 无截图可用。请先手动打开 HTML 截图，或安装 playwright。")
-        print("   HTML 路径:", HTML)
+        print("❌ 无截图可用。HTML 路径:", html)
         sys.exit(1)
-    build_ppt(imgs)
-    print("✅ PPT 已生成:", OUT_PPT)
+    build_ppt(imgs, out_ppt)
+    print("✅ PPT 已生成:", out_ppt)
 
 
 if __name__ == "__main__":
