@@ -20,6 +20,7 @@ from pptx.util import Inches
 
 BASE = Path(__file__).resolve().parent
 OUT_ROOT = Path("/Users/karuo/Documents/卡若Ai的文件夹/报告")
+TIANEN_DIR = Path("/Users/karuo/Library/Mobile Documents/com~apple~CloudDocs/Documents/婼瑄/天恩/ppt 202060223")
 
 
 def screenshot_slides(html_path, out_slides_dir, max_slides=10):
@@ -62,7 +63,7 @@ def build_ppt(imgs, out_ppt):
 def main():
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--html", default="复盘", choices=["复盘", "卡若人设", "纳瓦尔访谈"])
+    ap.add_argument("--html", default="复盘", choices=["复盘", "卡若人设", "纳瓦尔访谈", "天恩乖乖"])
     args = ap.parse_args()
     if args.html == "卡若人设":
         html = BASE / "卡若人设PPT_毛玻璃.html"
@@ -74,6 +75,11 @@ def main():
         out_slides = OUT_ROOT / "纳瓦尔访谈_毛玻璃_slides"
         out_ppt = OUT_ROOT / "纳瓦尔访谈_读书笔记_毛玻璃.pptx"
         max_slides = 12
+    elif args.html == "天恩乖乖":
+        html = BASE / "天恩乖乖PPT_毛玻璃.html"
+        out_slides = TIANEN_DIR / "乖乖_毛玻璃_slides"
+        out_ppt = TIANEN_DIR / "我和乖乖的故事_高级版.pptx"
+        max_slides = 8
     else:
         html = BASE / "复盘PPT_毛玻璃.html"
         out_slides = OUT_ROOT / "复盘_毛玻璃_slides"
@@ -90,7 +96,8 @@ def main():
     print("✅ PPT 已生成:", out_ppt)
     # 导出后自动打开输出文件夹，方便直接访问
     import subprocess
-    subprocess.run(["open", str(OUT_ROOT)], check=False)
+    open_dir = str(TIANEN_DIR) if args.html == "天恩乖乖" else str(OUT_ROOT)
+    subprocess.run(["open", open_dir], check=False)
 
 
 if __name__ == "__main__":
