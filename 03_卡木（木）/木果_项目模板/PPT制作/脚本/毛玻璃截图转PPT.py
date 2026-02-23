@@ -79,7 +79,7 @@ def main():
         html = BASE / "天恩乖乖PPT_毛玻璃.html"
         out_slides = TIANEN_DIR / "乖乖_毛玻璃_slides"
         out_ppt = TIANEN_DIR / "我和乖乖的故事_高级版.pptx"
-        max_slides = 8
+        max_slides = 10
     else:
         html = BASE / "复盘PPT_毛玻璃.html"
         out_slides = OUT_ROOT / "复盘_毛玻璃_slides"
