@@ -73,7 +73,7 @@ def main():
         html = BASE / "纳瓦尔访谈PPT_毛玻璃.html"
         out_slides = OUT_ROOT / "纳瓦尔访谈_毛玻璃_slides"
         out_ppt = OUT_ROOT / "纳瓦尔访谈_读书笔记_毛玻璃.pptx"
-        max_slides = 9
+        max_slides = 12
     else:
         html = BASE / "复盘PPT_毛玻璃.html"
         out_slides = OUT_ROOT / "复盘_毛玻璃_slides"
@@ -88,6 +88,9 @@ def main():
         sys.exit(1)
     build_ppt(imgs, out_ppt)
     print("✅ PPT 已生成:", out_ppt)
+    # 导出后自动打开输出文件夹，方便直接访问
+    import subprocess
+    subprocess.run(["open", str(OUT_ROOT)], check=False)
 
 
 if __name__ == "__main__":
