@@ -62,13 +62,18 @@ def build_ppt(imgs, out_ppt):
 def main():
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--html", default="复盘", choices=["复盘", "卡若人设"])
+    ap.add_argument("--html", default="复盘", choices=["复盘", "卡若人设", "纳瓦尔访谈"])
     args = ap.parse_args()
     if args.html == "卡若人设":
         html = BASE / "卡若人设PPT_毛玻璃.html"
         out_slides = OUT_ROOT / "卡若人设_毛玻璃_slides"
         out_ppt = OUT_ROOT / "卡若人设介绍_毛玻璃.pptx"
         max_slides = 5
+    elif args.html == "纳瓦尔访谈":
+        html = BASE / "纳瓦尔访谈PPT_毛玻璃.html"
+        out_slides = OUT_ROOT / "纳瓦尔访谈_毛玻璃_slides"
+        out_ppt = OUT_ROOT / "纳瓦尔访谈_读书笔记_毛玻璃.pptx"
+        max_slides = 9
     else:
         html = BASE / "复盘PPT_毛玻璃.html"
         out_slides = OUT_ROOT / "复盘_毛玻璃_slides"
