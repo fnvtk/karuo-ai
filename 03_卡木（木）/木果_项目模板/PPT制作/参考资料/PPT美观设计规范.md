@@ -1,7 +1,8 @@
 # PPT 美观设计规范 · 卡若AI
 
 > **定位**：PPT 生成 = python-pptx 能力 + **本美观规范**；生成初版后套用设计 token，提升可读性与专业感。  
-> **参考**：v0 前端工作流（规格→生成→套规范→验收）、GitHub python-pptx、agentskills pptx、小学绘本 PPT 设计最佳实践。
+> **参考**：**Apple Keynote 四原则**（亲密性、对齐、对比、重复）、v0 前端、GitHub python-pptx。  
+> **升级**：见 `PPT美观升级_Apple原则.md`（少即是多、大量留白、6×6 规则）。
 
 ---
 

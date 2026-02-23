@@ -86,28 +86,35 @@ def clip_video(input_path: str, start_time: str, end_time: str, output_path: str
         output_path: 输出路径
         fast_mode: 快速模式（使用copy编码，可能不精确）
     """
+    # 使用 -t duration 避免 -to 在 ffmpeg 中的歧义（-to 可能被解释为输出时长）
+    start_sec = parse_timestamp(start_time)
+    end_sec = parse_timestamp(end_time)
+    duration_sec = end_sec - start_sec
+
     if fast_mode:
-        # 快速模式：使用copy编码，速度快但可能不精确
+        # 快速模式：使用 copy 编码，-t 明确指定输出时长
         cmd = [
             "ffmpeg",
             "-ss", start_time,
             "-i", input_path,
-            "-to", end_time,
+            "-t", str(duration_sec),
             "-c", "copy",
             "-avoid_negative_ts", "1",
             "-y",
             output_path
         ]
     else:
-        # 精确模式：重新编码，速度慢但精确
+        # 精确模式：重新编码，-t 明确指定输出时长，体积可控
         cmd = [
             "ffmpeg",
-            "-i", input_path,
             "-ss", start_time,
-            "-to", end_time,
+            "-i", input_path,
+            "-t", str(duration_sec),
             "-c:v", "libx264",
             "-preset", "fast",
             "-crf", "23",
+            "-b:v", "3M",
+            "-maxrate", "4M",
             "-c:a", "aac",
             "-b:a", "128k",
             "-y",
