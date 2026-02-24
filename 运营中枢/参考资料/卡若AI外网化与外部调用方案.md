@@ -82,6 +82,42 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 
 ---
 
+## 四点五、接口配置化（科室/部门可复制）
+
+> 目标：让以后任何科室/部门/合作方都能“拿到一套配置 + 一个 key”，直接调用卡若AI 网关，不需要改代码。
+
+### 你需要提前准备什么（一次性）
+
+1. **一个 salt**（只放环境变量，不写入仓库）：`KARUO_GATEWAY_SALT`
+2. （可选）如果要真实 LLM 输出：`OPENAI_API_KEY`（以及 `OPENAI_API_BASE`、`OPENAI_MODEL`）
+3. 外网场景：域名/反代已就绪（宝塔/Nginx）或 ngrok 临时暴露
+
+### 配置文件在哪里
+
+- 示例：`运营中枢/scripts/karuo_ai_gateway/config/gateway.example.yaml`
+- 实际：`运营中枢/scripts/karuo_ai_gateway/config/gateway.yaml`（建议不提交到仓库）
+- 也可用环境变量指定：`KARUO_GATEWAY_CONFIG=/path/to/gateway.yaml`
+
+### 新增一个科室/部门（标准步骤）
+
+1. 设置 salt（运行环境）：
+   - `export KARUO_GATEWAY_SALT="一个足够长的随机字符串"`
+2. 生成部门 key（明文只输出一次）与 hash：
+   - `python 运营中枢/scripts/karuo_ai_gateway/tools/generate_dept_key.py --tenant-id finance --tenant-name "财务科"`
+3. 将输出的 `api_key_sha256` 写入 `config/gateway.yaml` 的对应 tenant
+4. 配置该 tenant 的 `allowed_skills`（技能白名单：支持技能ID如 `E05a`，或 SKILL 路径）
+5. 重启网关服务
+
+### 调用方式（必须带部门 key）
+
+- `POST /v1/chat`：
+  - Header：`X-Karuo-Api-Key: <dept_key>`
+  - Body：`{"prompt":"你的问题"}`
+- `GET /v1/skills`：部门自查当前允许技能（同样需要 key）
+- `GET /v1/health`：健康检查（无需 key）
+
+---
+
 ## 五、最终：执行命令与链接（给 Cursor / 其他 AI 用）
 
 **固定域名**：`https://kr-ai.quwanzhi.com`（部署与配置见「内网穿透与域名配置_卡若AI标准方案.md」）。

@@ -63,19 +63,34 @@ def build_ppt(imgs, out_ppt):
 def main():
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--html", default="复盘", choices=["复盘", "卡若人设", "纳瓦尔访谈", "天恩乖乖", "今日日志总结"])
+    ap.add_argument("--html", default="复盘", choices=["复盘", "卡若人设", "纳瓦尔访谈", "天恩乖乖", "今日日志总结", "家里NAS对话描述", "公司财务分析", "公司财务月报_2026-01"])
     args = ap.parse_args()
     if args.html == "卡若人设":
         html = BASE / "卡若人设PPT_毛玻璃.html"
         out_slides = OUT_ROOT / "卡若人设_毛玻璃_slides"
         out_ppt = OUT_ROOT / "卡若人设介绍_毛玻璃.pptx"
         max_slides = 5
+    elif args.html == "家里NAS对话描述":
+        html = BASE / "家里NAS对话描述PPT_毛玻璃.html"
+        out_slides = OUT_ROOT / "家里NAS对话描述_毛玻璃_slides"
+        out_ppt = OUT_ROOT / "家里NAS_对话描述_毛玻璃.pptx"
+        max_slides = 8
     elif args.html == "纳瓦尔访谈":
         html = BASE / "纳瓦尔访谈PPT_毛玻璃.html"
         # v2：扩展页数（含方法/问答/流程图/行动清单），避免覆盖旧版
         out_slides = OUT_ROOT / "纳瓦尔访谈_毛玻璃_slides_v2"
         out_ppt = OUT_ROOT / "纳瓦尔访谈_读书笔记_毛玻璃_v2.pptx"
         max_slides = 15
+    elif args.html == "公司财务分析":
+        html = BASE / "公司财务分析PPT_毛玻璃.html"
+        out_slides = OUT_ROOT / "公司财务分析_毛玻璃_slides"
+        out_ppt = OUT_ROOT / "公司财务_多维分析_CFO大白话_毛玻璃.pptx"
+        max_slides = 12
+    elif args.html == "公司财务月报_2026-01":
+        html = BASE / "公司财务月报_2026年1月PPT_毛玻璃.html"
+        out_slides = OUT_ROOT / "公司财务月报_2026-01_毛玻璃_slides"
+        out_ppt = OUT_ROOT / "公司财务月报_2026年1月_CFO大白话_毛玻璃.pptx"
+        max_slides = 10
     elif args.html == "天恩乖乖":
         html = BASE / "天恩乖乖PPT_毛玻璃.html"
         out_slides = TIANEN_DIR / "乖乖_毛玻璃_slides"

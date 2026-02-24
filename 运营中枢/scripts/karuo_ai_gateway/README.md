@@ -15,6 +15,62 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 - `OPENAI_API_KEY`：OpenAI 或兼容 API 的密钥，配置后使用真实 LLM 生成回复。
 - `OPENAI_API_BASE`：兼容接口地址，默认 `https://api.openai.com/v1`。
 - `OPENAI_MODEL`：模型名，默认 `gpt-4o-mini`。
+- `KARUO_GATEWAY_CONFIG`：网关配置路径（默认 `config/gateway.yaml`）。
+- `KARUO_GATEWAY_SALT`：部门 Key 的 salt（用于 sha256 校验；不写入仓库）。
+
+## 部门/科室鉴权与白名单（推荐启用）
+
+网关支持“每部门一个 Key + 技能白名单”，用于：
+
+- 科室/部门直接调用接口，不互相影响
+- 外网暴露时避免“全能力裸奔”
+- 能按部门做限流/审计日志
+
+### 1) 准备配置文件
+
+从示例复制一份（`gateway.yaml` 建议不要提交到仓库）：
+
+- `config/gateway.example.yaml` → `config/gateway.yaml`
+
+### 2) 准备 salt（只在环境变量）
+
+在运行环境里设置：
+
+```bash
+export KARUO_GATEWAY_SALT="一个足够长的随机字符串"
+```
+
+### 3) 生成部门 Key 与 hash
+
+```bash
+python tools/generate_dept_key.py --tenant-id finance --tenant-name "财务科"
+```
+
+把输出里的 `api_key_sha256` 写入 `config/gateway.yaml` 对应 tenant；明文 `dept_key` 只出现一次，保存到部门系统的安全配置里。
+
+### 4) 调用方式
+
+#### 4.1 /v1/chat
+
+```bash
+curl -s -X POST "http://127.0.0.1:8000/v1/chat" \
+  -H "Content-Type: application/json" \
+  -H "X-Karuo-Api-Key: <dept_key>" \
+  -d '{"prompt":"你的问题"}'
+```
+
+#### 4.2 /v1/skills（部门自查）
+
+```bash
+curl -s "http://127.0.0.1:8000/v1/skills" \
+  -H "X-Karuo-Api-Key: <dept_key>"
+```
+
+#### 4.3 /v1/health
+
+```bash
+curl -s "http://127.0.0.1:8000/v1/health"
+```
 
 ## 外网暴露
 
@@ -28,6 +84,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 ```bash
 curl -s -X POST "https://YOUR_DOMAIN/v1/chat" \
   -H "Content-Type: application/json" \
+  -H "X-Karuo-Api-Key: <dept_key>" \
   -d '{"prompt":"你的问题"}' | jq -r '.reply'
 ```
 
