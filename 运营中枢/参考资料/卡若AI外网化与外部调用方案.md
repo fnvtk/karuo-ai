@@ -224,6 +224,32 @@ curl -sS https://kr-ai.quwanzhi.com/v1/chat/completions \
 3. 不要在 Base URL 末尾加 `/`
 4. 改完后重启 Cursor 一次
 
+## 7.3 其它同类工具配置（OpenAI 兼容客户端）
+
+适用于：Claude Desktop(OpenAI兼容插件)、Cherry Studio、LobeChat、自建 Agent、任意支持 OpenAI API 的工具。
+
+统一填写：
+
+1. `Base URL`：`https://kr-ai.quwanzhi.com/v1`
+2. `API Key`：`<dept_key>`
+3. `Model`：`karuo-ai`（或工具允许的自定义名）
+4. 关闭流式可先联调，联通后再开流式
+
+联调顺序：
+
+1. 先测 `GET /v1/models` 是否返回模型列表
+2. 再测 `POST /v1/chat/completions` 是否返回 `choices`
+3. 最后在工具内发一条真实问题验证
+
+最简请求模板：
+
+```bash
+curl -sS https://kr-ai.quwanzhi.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <dept_key>" \
+  -d '{"model":"karuo-ai","messages":[{"role":"user","content":"测试连通"}]}'
+```
+
 ---
 
 ## 8. 健康检查与联调命令
