@@ -20,6 +20,7 @@ import os
 import sys
 import json
 import argparse
+import re
 from pathlib import Path
 from datetime import datetime
 import requests
@@ -108,6 +109,69 @@ def create_node(parent_token: str, title: str, headers: dict) -> tuple[str, str]
     return doc_token, node_token
 
 
+def _normalize_title(t: str) -> str:
+    if not t:
+        return ""
+    s = t.strip().lower()
+    # 去掉常见“括号后缀”（如：最终版/含配图/飞书友好版）
+    s = re.sub(r"[（(][^）)]*[）)]\s*$", "", s)
+    # 去掉空白与常见分隔符，便于相似匹配
+    s = re.sub(r"[\s\-—_·:：]+", "", s)
+    return s
+
+
+def _is_similar_title(a: str, b: str) -> bool:
+    na, nb = _normalize_title(a), _normalize_title(b)
+    if not na or not nb:
+        return False
+    if na == nb:
+        return True
+    # 相互包含（避免过短字符串误判）
+    if len(na) >= 6 and na in nb:
+        return True
+    if len(nb) >= 6 and nb in na:
+        return True
+    return False
+
+
+def find_existing_node_by_title(parent_token: str, title: str, headers: dict) -> tuple[str | None, str | None, str | None]:
+    """在父节点下查找同名/相似标题文档，返回(doc_token,node_token,node_title)"""
+    r = requests.get(
+        f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={parent_token}",
+        headers=headers, timeout=30)
+    j = r.json()
+    if j.get("code") != 0:
+        return None, None, None
+    node = j["data"]["node"]
+    space_id = node.get("space_id") or (node.get("space") or {}).get("space_id") or node.get("origin_space_id")
+    if not space_id:
+        return None, None, None
+
+    page_token = None
+    while True:
+        params = {"parent_node_token": parent_token, "page_size": 50}
+        if page_token:
+            params["page_token"] = page_token
+        nr = requests.get(
+            f"https://open.feishu.cn/open-apis/wiki/v2/spaces/{space_id}/nodes",
+            headers=headers, params=params, timeout=30)
+        nj = nr.json()
+        if nj.get("code") != 0:
+            return None, None, None
+        data = nj.get("data", {}) or {}
+        nodes = data.get("nodes", []) or data.get("items", []) or []
+        for n in nodes:
+            node_title = n.get("title", "") or n.get("node", {}).get("title", "")
+            if _is_similar_title(node_title, title):
+                obj = n.get("obj_token")
+                node_token = n.get("node_token")
+                return (obj or node_token), node_token, node_title
+        page_token = data.get("page_token")
+        if not page_token:
+            break
+    return None, None, None
+
+
 def resolve_doc_token(node_token: str, headers: dict) -> str:
     r = requests.get(
         f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={node_token}",
@@ -119,7 +183,7 @@ def resolve_doc_token(node_token: str, headers: dict) -> str:
     return node.get("obj_token") or node_token
 
 
-def clear_doc_blocks(doc_token: str, headers: dict) -> None:
+def clear_doc_blocks(doc_token: str, headers: dict) -> bool:
     """清空文档根节点下直接子块（分页拉取 + 分批删除）"""
     all_items = []
     page_token = None
@@ -132,7 +196,8 @@ def clear_doc_blocks(doc_token: str, headers: dict) -> None:
             headers=headers, params=params, timeout=30)
         j = r.json()
         if j.get("code") != 0:
-            raise RuntimeError(f"获取 blocks 失败: {j.get('msg')}")
+            print(f"⚠️ 获取 blocks 失败: {j.get('msg')}")
+            return False
         data = j.get("data", {}) or {}
         all_items.extend(data.get("items", []) or [])
         page_token = data.get("page_token")
@@ -141,7 +206,7 @@ def clear_doc_blocks(doc_token: str, headers: dict) -> None:
 
     child_ids = [b["block_id"] for b in all_items if b.get("parent_id") == doc_token and b.get("block_id")]
     if not child_ids:
-        return
+        return True
     for i in range(0, len(child_ids), 50):
         batch = child_ids[i : i + 50]
         rd = requests.delete(
@@ -149,7 +214,9 @@ def clear_doc_blocks(doc_token: str, headers: dict) -> None:
             headers=headers, json={"block_id_list": batch}, timeout=30)
         jd = rd.json()
         if jd.get("code") != 0:
-            raise RuntimeError(f"清空失败: {jd.get('msg')}")
+            print(f"⚠️ 清空失败: {jd.get('msg')}")
+            return False
+    return True
 
 
 def replace_image_placeholders(blocks: list, file_tokens: list[str | None], image_paths: list[str]) -> list:
@@ -327,11 +394,23 @@ def main():
         node_token = args.target
         doc_token = resolve_doc_token(node_token, headers)
         print(f"📋 更新已有文档: doc_token={doc_token} node_token={node_token}")
-        clear_doc_blocks(doc_token, headers)
-        print("✅ 已清空原内容")
+        if clear_doc_blocks(doc_token, headers):
+            print("✅ 已清空原内容")
+        else:
+            print("⚠️ 清空失败，将以追加方式更新（仍不会新建重复文档）")
     else:
-        doc_token, node_token = create_node(args.parent, args.title, headers)
-        print(f"✅ 新建文档: doc_token={doc_token} node_token={node_token}")
+        # 默认：先查同名/相似标题，命中则更新，不再新建
+        found_doc, found_node, found_title = find_existing_node_by_title(args.parent, args.title, headers)
+        if found_doc and found_node:
+            doc_token, node_token = found_doc, found_node
+            print(f"📋 命中相似标题，改为更新: {found_title}")
+            if clear_doc_blocks(doc_token, headers):
+                print("✅ 已清空原内容")
+            else:
+                print("⚠️ 清空失败，将以追加方式更新（仍不会新建重复文档）")
+        else:
+            doc_token, node_token = create_node(args.parent, args.title, headers)
+            print(f"✅ 新建文档: doc_token={doc_token} node_token={node_token}")
 
     # 上传图片
     file_tokens = []
@@ -354,7 +433,7 @@ def main():
     # 发群
     if args.webhook:
         msg = "\n".join([
-            "【卡诺亚基因胶囊】新文章已发布 ✅",
+            "【卡若基因胶囊】文章已发布/更新 ✅",
             f"标题：{args.title}",
             f"链接：{url}",
             "",

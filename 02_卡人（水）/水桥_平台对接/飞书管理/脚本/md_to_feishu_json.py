@@ -46,7 +46,10 @@ def md_to_blocks(md: str, image_paths: list[str] | None = None) -> list:
     for line in md.split("\n"):
         if line.strip().startswith("```"):
             if in_code:
-                blocks.append(_text("```\n" + "\n".join(code_lines) + "\n```"))
+                # 飞书 blocks 常对代码围栏/特殊格式更严格，这里转为普通文本行，提升美观与稳定性
+                for cl in code_lines:
+                    if cl.strip():
+                        blocks.append(_text(f"代码：{cl.strip()}"))
                 code_lines = []
             in_code = not in_code
             continue
@@ -64,6 +67,10 @@ def md_to_blocks(md: str, image_paths: list[str] | None = None) -> list:
             img_idx += 1
             continue
 
+        # 忽略 Markdown 水平分隔线（避免在飞书出现大量“---”影响观感）
+        if line.strip() in {"---", "***", "___"}:
+            continue
+
         # 标题
         if line.startswith("# "):
             blocks.append(_h1(line[2:].strip()))
@@ -71,10 +78,11 @@ def md_to_blocks(md: str, image_paths: list[str] | None = None) -> list:
             blocks.append(_h2(line[3:].strip()))
         elif line.startswith("### "):
             blocks.append(_h3(line[4:].strip()))
+        elif line.lstrip().startswith(">"):
+            # 引用块转普通说明行，降低写入失败概率
+            blocks.append(_text(line.lstrip()[1:].strip()))
         elif line.strip():
-            blocks.append(_text(line))
-        else:
-            blocks.append(_text(""))
+            blocks.append(_text(line.strip()))
 
     return blocks
 

@@ -1,186 +1,311 @@
-# 卡若AI 外网化与外部调用方案
+# 卡若AI 接口全链路使用说明书（部署 + 配置 + 调用 + 运维）
 
-> 目标：让卡若AI 可从外网访问，其他 AI 或任意终端用「一句话/一个命令」即可按卡若AI 的思考逻辑调用并生成回复。
-> 版本：1.0 | 更新：2026-02-17
-
----
-
-## 一、目标与效果
-
-| 目标 | 说明 |
-|:---|:---|
-| 外网可访问 | 不限于本机，任意网络通过域名或 IP:端口 访问卡若AI。 |
-| 按卡若AI 思考逻辑生成 | 每次请求走：先思考 → 查 SKILL_REGISTRY → 读对应 SKILL → 生成回复 → 带复盘格式。 |
-| 其他 AI 可集成 | 其他 AI（Cursor、Claude、GPT、自建 Bot）执行一条命令或请求一个 URL，即「用卡若AI 能力」完成对话。 |
-| 最终交付 | 给你：**可执行命令**、**调用链接/域名**，在 Cursor 或其它 AI 里输入即用。 |
+> 适用对象：卡若AI 内部团队、科室/部门调用方、外部技术合作方  
+> 目标：把卡若AI网关以标准 API 形式稳定对外，支持 Cursor/OpenAI 兼容客户端与脚本调用  
+> 版本：2.0 | 更新：2026-02-24
 
 ---
 
-## 二、实现形式（架构）
+## 1. 总览（先看这个）
 
-```
-外部（其他 AI / 用户）
-        │
-        │  HTTP POST /chat  或  打开网页
-        ▼
-┌─────────────────────────────────────────────────────┐
-│  卡若AI 网关（API 服务）                              │
-│  · 接收 prompt                                       │
-│  · 加载 BOOTSTRAP + SKILL_REGISTRY                    │
-│  · 匹配技能 → 读 SKILL.md                            │
-│  · 调用 LLM（本地或云端 API）按卡若AI 流程生成        │
-│  · 返回：思考 + 执行摘要 + 复盘块                     │
-└─────────────────────────────────────────────────────┘
-        │
-        │  部署在：宝塔服务器（推荐，固定域名）或 本机 + 内网穿透
-        ▼
-  外网域名：https://kr-ai.quwanzhi.com（标准方案见下）
-```
+当前生产链路为：
 
-**两种使用方式：**
+1. 客户端（Cursor/脚本/系统）请求域名 `kr-ai.quwanzhi.com`
+2. 存客宝宝塔 Nginx 接收请求（80/443）
+3. Nginx 反代到本机 `127.0.0.1:18080`（frps 端口）
+4. frps 将 `18080` 转发到 CKB NAS 的 `127.0.0.1:8000`
+5. NAS 上 `karuo-ai-gateway` 返回 OpenAI 兼容结果
 
-1. **API 调用**：其他 AI 或脚本向 `POST /v1/chat` 发 `{"prompt": "用户问题"}`，拿 JSON 里的回复（含复盘）。
-2. **网页对话**：浏览器打开同一服务的 `/` 或 `/chat`，输入问题，页面上展示卡若AI 风格回复。
+对外统一入口：
+
+- `https://kr-ai.quwanzhi.com`
 
 ---
 
-## 三、部署方式二选一
+## 2. 架构与职责
 
-### 方式 A：宝塔服务器 + 固定域名（推荐，替代 ngrok）
+### 2.1 组件职责
 
-- **域名**：**kr-ai.quwanzhi.com**（阿里云解析 + 宝塔 Nginx + SSL，电脑关机也可访问）。
-- **部署**：网关部署在 kr宝塔 43.139.27.93；一键脚本：`bash 01_卡资（金）/金仓_存储备份/服务器管理/scripts/部署卡若AI网关到kr宝塔.sh`。
-- **完整步骤**（阿里云 DNS、Nginx、自启）：见 **`01_卡资（金）/金仓_存储备份/服务器管理/references/内网穿透与域名配置_卡若AI标准方案.md`**。
-- **执行命令 / 链接**：  
-  - 链接：`https://kr-ai.quwanzhi.com`  
-  - 其他 AI 调用：`curl -s -X POST "https://kr-ai.quwanzhi.com/v1/chat" -H "Content-Type: application/json" -d '{"prompt":"你的问题"}' | jq -r '.reply'`
+- `karuo-ai-gateway`（FastAPI）：核心业务网关，负责鉴权、技能匹配、LLM 调用、日志
+- `frpc`（NAS）：把 NAS 本地 8000 暴露到公网中转服务器
+- `frps`（存客宝）：开放公网转发口（18080）
+- `Nginx`（存客宝宝塔）：域名入口、HTTPS、路径兼容、反代转发
+- `Aliyun DNS`：`kr-ai.quwanzhi.com -> 42.194.245.239`
 
-### 方式 B：本机 + 内网穿透（临时）
+### 2.2 OpenAI 兼容接口
 
-- 在本机运行卡若AI 网关，用 ngrok/cloudflared 得到临时 URL；本机关机则不可访问。仅作临时调试用。
+网关提供以下标准接口：
+
+- `GET /v1/health`
+- `GET /v1/models`
+- `POST /v1/chat/completions`
+- `POST /v1/chat`（内部简化接口）
+
+已在 Nginx 层做兼容映射（防止部分客户端不带 `/v1`）：
+
+- `/models -> /v1/models`
+- `/chat/completions -> /v1/chat/completions`
+- `/health -> /v1/health`
 
 ---
 
-## 四、网关脚本与运行方式
+## 3. 目录与关键文件
 
-网关代码放在：**`运营中枢/scripts/karuo_ai_gateway/`**（`main.py` + `requirements.txt` + `README.md`）。  
-运行前：
+网关代码目录：
 
-1. 安装依赖：`pip install fastapi uvicorn httpx`（若用 OpenAI 兼容接口，再装 `openai`）。
-2. 配置环境变量（可选）：`OPENAI_API_KEY` 或本地模型地址，用于实际生成回复。
-3. 启动：
+- `运营中枢/scripts/karuo_ai_gateway/main.py`
+- `运营中枢/scripts/karuo_ai_gateway/requirements.txt`
+- `运营中枢/scripts/karuo_ai_gateway/config/gateway.yaml`
+- `运营中枢/scripts/karuo_ai_gateway/config/gateway.example.yaml`
+- `运营中枢/scripts/karuo_ai_gateway/tools/generate_dept_key.py`
+
+NAS 部署目录（生产）：
+
+- `/volume1/docker/karuo-ai-deploy/karuo-ai/运营中枢/scripts/karuo_ai_gateway/`
+
+---
+
+## 4. 首次部署步骤（全链路）
+
+## 4.1 NAS 部署网关（业务服务）
+
+1. 准备代码目录（推荐从 NAS 本机 Gitea 拉取）
+2. 进入网关目录，准备 `.env`：
 
 ```bash
-cd /Users/karuo/Documents/个人/卡若AI/运营中枢/scripts/karuo_ai_gateway
-uvicorn main:app --host 0.0.0.0 --port 8000
+KARUO_GATEWAY_SALT=请填随机长串
+OPENAI_API_KEY=请填模型服务Key
+OPENAI_API_BASE=请填兼容地址（如 https://api.openai.com/v1）
+OPENAI_MODEL=请填模型名
 ```
 
-启动后：
+3. 启动容器（建议 compose）：
 
-- 本机访问：<http://127.0.0.1:8000/docs> 可调试接口。
-- 外网访问：在方式 A 或 B 下用你得到的**域名或 IP:端口**替换下面示例中的 `YOUR_DOMAIN`。
+- 对外监听：`127.0.0.1:8000`
+- 容器内启动：`uvicorn main:app --host 0.0.0.0 --port 8000`
 
----
-
-## 四点五、接口配置化（科室/部门可复制）
-
-> 目标：让以后任何科室/部门/合作方都能“拿到一套配置 + 一个 key”，直接调用卡若AI 网关，不需要改代码。
-
-### 你需要提前准备什么（一次性）
-
-1. **一个 salt**（只放环境变量，不写入仓库）：`KARUO_GATEWAY_SALT`
-2. （可选）如果要真实 LLM 输出：`OPENAI_API_KEY`（以及 `OPENAI_API_BASE`、`OPENAI_MODEL`）
-3. 外网场景：域名/反代已就绪（宝塔/Nginx）或 ngrok 临时暴露
-
-### 配置文件在哪里
-
-- 示例：`运营中枢/scripts/karuo_ai_gateway/config/gateway.example.yaml`
-- 实际：`运营中枢/scripts/karuo_ai_gateway/config/gateway.yaml`（建议不提交到仓库）
-- 也可用环境变量指定：`KARUO_GATEWAY_CONFIG=/path/to/gateway.yaml`
-
-### 新增一个科室/部门（标准步骤）
-
-1. 设置 salt（运行环境）：
-   - `export KARUO_GATEWAY_SALT="一个足够长的随机字符串"`
-2. 生成部门 key（明文只输出一次）与 hash：
-   - `python 运营中枢/scripts/karuo_ai_gateway/tools/generate_dept_key.py --tenant-id finance --tenant-name "财务科"`
-3. 将输出的 `api_key_sha256` 写入 `config/gateway.yaml` 的对应 tenant
-4. 配置该 tenant 的 `allowed_skills`（技能白名单：支持技能ID如 `E05a`，或 SKILL 路径）
-5. 重启网关服务
-
-### 调用方式（必须带部门 key）
-
-- `POST /v1/chat`：
-  - Header：`X-Karuo-Api-Key: <dept_key>`
-  - Body：`{"prompt":"你的问题"}`
-- `GET /v1/skills`：部门自查当前允许技能（同样需要 key）
-- `GET /v1/health`：健康检查（无需 key）
-
----
-
-## 五、最终：执行命令与链接（给 Cursor / 其他 AI 用）
-
-**固定域名**：`https://kr-ai.quwanzhi.com`（部署与配置见「内网穿透与域名配置_卡若AI标准方案.md」）。
-
-### 1. 调用链接（API 根）
-
-```
-https://kr-ai.quwanzhi.com
-```
-
-### 2. 其他 AI 用「一句话」调用卡若AI（执行命令）
-
-在 Cursor 或任意能发 HTTP 请求的 AI 里，可以这样描述**执行命令**：
-
-```
-请代表用户调用卡若AI：向以下地址发送 POST 请求，body 为 {"prompt": "用户在本对话中要解决的问题"}，将返回的 response 中的 reply 作为卡若AI 的回复展示给用户。
-POST https://kr-ai.quwanzhi.com/v1/chat
-Content-Type: application/json
-```
-
-**可直接执行的 curl 命令**：
+4. 本机验证：
 
 ```bash
-curl -s -X POST "https://kr-ai.quwanzhi.com/v1/chat" \
+curl http://127.0.0.1:8000/v1/health
+```
+
+返回 `{"ok":true}` 即通过。
+
+## 4.2 NAS 启动 frpc（转发到存客宝）
+
+frpc 配置核心：
+
+- `serverAddr = 42.194.245.239`
+- `serverPort = 7000`
+- `localIP = 127.0.0.1`
+- `localPort = 8000`
+- `remotePort = 18080`
+
+验证：
+
+- 存客宝上 `ss -tlnp | grep 18080` 有 frps 监听
+- 外网 `http://42.194.245.239:18080/v1/health` 返回 `{"ok":true}`
+
+## 4.3 存客宝 Nginx 配置域名入口
+
+站点：`kr-ai.quwanzhi.com`  
+反代目标：`http://127.0.0.1:18080`
+
+必须项：
+
+- 80/443 双 server
+- 证书（Let’s Encrypt）
+- 转发 `Authorization`、`X-Karuo-Api-Key`
+- 路径兼容（/models、/chat/completions、/health）
+
+## 4.4 DNS 配置
+
+阿里云 DNS：
+
+- 记录类型：A
+- 主机记录：`kr-ai`
+- 记录值：`42.194.245.239`
+
+---
+
+## 5. 配置说明（gateway.yaml）
+
+示例结构：
+
+```yaml
+version: 1
+auth:
+  header_name: X-Karuo-Api-Key
+  salt_env: KARUO_GATEWAY_SALT
+tenants:
+  - id: your_tenant
+    name: 你的部门
+    api_key_sha256: "sha256(明文key + salt)"
+    allowed_skills: []
+    limits:
+      rpm: 600
+      max_prompt_chars: 50000
+skills:
+  registry_path: SKILL_REGISTRY.md
+  match_strategy: trigger_contains
+  on_no_match: allow_general
+llm:
+  provider: openai_compatible
+  api_key_env: OPENAI_API_KEY
+  api_base_env: OPENAI_API_BASE
+  model_env: OPENAI_MODEL
+  timeout_seconds: 60
+  max_tokens: 2000
+logging:
+  enabled: true
+  path: 运营中枢/工作台/karuo_ai_gateway_access.jsonl
+  log_request_body: false
+```
+
+注意事项：
+
+- `gateway.yaml` 必须是合法 YAML，尤其是 `tenants` 缩进
+- 明文 key 不写入仓库，只写 hash
+- `KARUO_GATEWAY_SALT` 必须存在，否则所有 key 校验失败
+
+---
+
+## 6. 新增科室/部门（标准 SOP）
+
+1. 设置环境变量：
+
+```bash
+export KARUO_GATEWAY_SALT="你的随机盐"
+```
+
+2. 生成 key 与 hash：
+
+```bash
+python 运营中枢/scripts/karuo_ai_gateway/tools/generate_dept_key.py \
+  --tenant-id finance \
+  --tenant-name "财务科"
+```
+
+3. 将 `api_key_sha256` 写入 `gateway.yaml` 的 `tenants` 列表
+4. 重启网关
+5. 用明文 key 调用 `/v1/chat/completions` 验证
+
+---
+
+## 7. 调用说明（给客户端/系统）
+
+## 7.1 通用调用（OpenAI 兼容）
+
+推荐 Base URL：
+
+- `https://kr-ai.quwanzhi.com/v1`
+
+鉴权：
+
+- `Authorization: Bearer <dept_key>`
+
+示例：
+
+```bash
+curl -sS https://kr-ai.quwanzhi.com/v1/chat/completions \
   -H "Content-Type: application/json" \
-  -d '{"prompt":"你的问题"}' | jq -r '.reply'
+  -H "Authorization: Bearer <dept_key>" \
+  -d '{
+    "model":"karuo-ai",
+    "messages":[{"role":"user","content":"帮我做一份本周复盘"}]
+  }'
 ```
 
-### 3. 在 Cursor 里「用卡若AI 完成本对话」的固定说明（复制即用）
+## 7.2 Cursor 配置（重点）
 
-把下面一段存成 Cursor 的规则或对话开头说明，即可在任意对话里「切到卡若AI」：
-
-```
-当用户说「用卡若AI」「交给卡若AI」「调用卡若AI」或明确要求用卡若AI 回答时：
-1. 将用户当前问题作为 prompt。
-2. 请求：POST https://kr-ai.quwanzhi.com/v1/chat，Body: {"prompt": "<用户问题>"}。
-3. 将响应 JSON 中的 reply 字段内容（含卡若复盘）完整展示给用户，作为卡若AI 的回复。
-```
+1. `OpenAI API Key`：填部门 key
+2. `Override OpenAI Base URL`：`https://kr-ai.quwanzhi.com/v1`
+3. 不要在 Base URL 末尾加 `/`
+4. 改完后重启 Cursor 一次
 
 ---
 
-## 六、小结
+## 8. 健康检查与联调命令
 
-| 项目 | 内容 |
-|:---|:---|
-| 实现形式 | 卡若AI 网关（FastAPI）：读 BOOTSTRAP + REGISTRY + SKILL，按流程调 LLM，返回带复盘的回复。 |
-| 外网访问 | **固定域名**：https://kr-ai.quwanzhi.com（宝塔 43.139.27.93，替代 ngrok，电脑关机也可用）。 |
-| 其他 AI 集成 | 执行 POST /v1/chat；或在 Cursor 里用上面「固定说明」。 |
-| 执行命令 | `curl -s -X POST "https://kr-ai.quwanzhi.com/v1/chat" -H "Content-Type: application/json" -d '{"prompt":"你的问题"}' \| jq -r '.reply'` |
-| 配置与部署 | 见 `01_卡资（金）/金仓_存储备份/服务器管理/references/内网穿透与域名配置_卡若AI标准方案.md` |
-
----
-
-## 七、在 Cursor 里「用卡若AI 完成本对话」的一条执行命令
-
-**方式 1：直接 curl（终端执行）**
 ```bash
-curl -s -X POST "https://kr-ai.quwanzhi.com/v1/chat" -H "Content-Type: application/json" -d '{"prompt":"这里填你要问卡若AI的问题"}' | jq -r '.reply'
+# 1) 域名健康
+curl -sS https://kr-ai.quwanzhi.com/v1/health
+
+# 2) 模型列表
+curl -sS https://kr-ai.quwanzhi.com/v1/models
+
+# 3) 鉴权验证
+curl -sS https://kr-ai.quwanzhi.com/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <dept_key>" \
+  -d '{"model":"karuo-ai","messages":[{"role":"user","content":"ping"}]}'
 ```
 
-**方式 2：交给 Cursor 的说明（复制到对话或规则）**
-```
-当用户要求「用卡若AI」「交给卡若AI」或「用卡若AI 回答」时，请向 POST https://kr-ai.quwanzhi.com/v1/chat 发送 {"prompt": "用户当前问题"}，将返回的 reply 作为卡若AI 的回复完整展示给用户。
-```
+---
 
-**阿里云解析**：已通过脚本 `01_卡资（金）/金仓_存储备份/服务器管理/scripts/阿里云DNS_添加kr-ai解析.py` 添加 A 记录 kr-ai -> 43.139.27.93。完成服务器部署后即可长期使用；后续需要新内网穿透/新域名时，按「内网穿透与域名配置_卡若AI标准方案」生成子域名并配置，不再询问用户。
+## 9. 故障排查（最常见）
+
+## 9.1 Cursor `Provider Error`
+
+优先排查：
+
+1. Base URL 是否写成 `https://kr-ai.quwanzhi.com/v1`
+2. 是否错误写成带尾斜杠（可能出现 `//chat/completions`）
+3. key 是否正确（401 会被客户端包装成 Provider Error）
+4. 站点是否已配置 HTTPS（443）
+
+## 9.2 502 Bad Gateway
+
+检查链路：
+
+1. 存客宝 `127.0.0.1:18080` 是否可达
+2. frpc/frps 是否在线
+3. NAS `127.0.0.1:8000/v1/health` 是否正常
+4. Nginx 配置是否 reload 成功
+
+## 9.3 401 invalid api key
+
+排查点：
+
+1. `KARUO_GATEWAY_SALT` 与生成 hash 时是否一致
+2. `gateway.yaml` tenant 缩进是否正确
+3. 请求头是否正确传递 `Authorization` 或 `X-Karuo-Api-Key`
+
+---
+
+## 10. 运维与自动化建议
+
+建议保持以下自动任务：
+
+1. NAS 每 2 分钟拉取本机 Gitea 主分支变更并重启网关
+2. NAS 每 2 分钟自检 frpc 进程并自动拉起
+3. Nginx 与网关日志按天轮转
+4. 每周检查证书续签状态
+
+---
+
+## 11. 安全建议（上线必做）
+
+1. 生产环境关闭“固定 key 注入”类联调兜底
+2. 仅保留租户级鉴权（每部门独立 key）
+3. 对 `/` 根路径与扫描流量加拦截/限速
+4. `gateway.yaml`、日志文件不入库
+5. 定期轮换部门 key
+
+---
+
+## 12. 交付清单（给合作方）
+
+给调用方只需要四项：
+
+1. Base URL：`https://kr-ai.quwanzhi.com/v1`
+2. API Key：`<dept_key>`
+3. 示例请求（chat/completions）
+4. 错误码说明（401/429/500）
+
+---
+
+## 13. 版本记录
+
+- `v2.0`（2026-02-24）：补齐 CKB NAS + frp + 存客宝 Nginx + HTTPS + Cursor 兼容的全链路部署与排障说明。
