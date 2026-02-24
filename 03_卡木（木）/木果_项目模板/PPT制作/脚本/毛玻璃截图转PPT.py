@@ -63,7 +63,7 @@ def build_ppt(imgs, out_ppt):
 def main():
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--html", default="复盘", choices=["复盘", "卡若人设", "纳瓦尔访谈", "天恩乖乖"])
+    ap.add_argument("--html", default="复盘", choices=["复盘", "卡若人设", "纳瓦尔访谈", "天恩乖乖", "今日日志总结"])
     args = ap.parse_args()
     if args.html == "卡若人设":
         html = BASE / "卡若人设PPT_毛玻璃.html"
@@ -80,6 +80,11 @@ def main():
         out_slides = TIANEN_DIR / "乖乖_毛玻璃_slides"
         out_ppt = TIANEN_DIR / "我和乖乖的故事_高级版.pptx"
         max_slides = 10
+    elif args.html == "今日日志总结":
+        html = BASE / "今日日志阅读总结PPT_毛玻璃.html"
+        out_slides = OUT_ROOT / "今日日志总结_毛玻璃_slides"
+        out_ppt = OUT_ROOT / "今日日志阅读总结_毛玻璃.pptx"
+        max_slides = 6
     else:
         html = BASE / "复盘PPT_毛玻璃.html"
         out_slides = OUT_ROOT / "复盘_毛玻璃_slides"
