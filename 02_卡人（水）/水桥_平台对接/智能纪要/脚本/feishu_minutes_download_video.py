@@ -38,8 +38,26 @@ REFERERS = [
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 
+def _cookie_from_browser() -> str:
+    """从本机浏览器读取飞书 Cookie（与 feishu_minutes_export_github 一致）"""
+    for domain in ("cunkebao.feishu.cn", "feishu.cn", ".feishu.cn"):
+        try:
+            import browser_cookie3
+            for loader in (browser_cookie3.safari, browser_cookie3.chrome, browser_cookie3.edge, browser_cookie3.firefox):
+                try:
+                    cj = loader(domain_name=domain)
+                    s = "; ".join([f"{c.name}={c.value}" for c in cj])
+                    if len(s) > 100:
+                        return s
+                except Exception:
+                    continue
+        except ImportError:
+            break
+    return ""
+
+
 def get_cookie() -> str:
-    """与 fetch_single_minute_by_cookie 一致：环境变量 → cookie_minutes.txt"""
+    """环境变量 → cookie_minutes.txt → 本机浏览器"""
     cookie = os.environ.get("FEISHU_MINUTES_COOKIE", "").strip()
     if cookie and len(cookie) > 100 and "PASTE_YOUR" not in cookie:
         return cookie
@@ -49,7 +67,7 @@ def get_cookie() -> str:
             line = line.strip()
             if line and not line.startswith("#") and "PASTE_YOUR" not in line:
                 return line
-    return ""
+    return _cookie_from_browser()
 
 
 def get_csrf(cookie: str) -> str:

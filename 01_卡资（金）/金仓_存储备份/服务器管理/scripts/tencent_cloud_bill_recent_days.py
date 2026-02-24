@@ -78,19 +78,31 @@ def main(days=2, start_date=None, end_date=None):
     if start_date is None or end_date is None:
         end_date = datetime.now().date()
         start_date = end_date - timedelta(days=days - 1)
-    month = start_date.strftime("%Y-%m")
-    begin_time = f"{start_date} 00:00:00"
-    end_time = f"{end_date} 23:59:59"
+    # API 要求 BeginTime/EndTime 必须在同月，跨月会报错；此处用目标月查整月（优先当前月）
+    month = end_date.strftime("%Y-%m")
 
     cred = credential.Credential(secret_id, secret_key)
     hp = HttpProfile(endpoint="billing.tencentcloudapi.com")
     cp = ClientProfile(httpProfile=hp)
     client = billing_client.BillingClient(cred, "", cp)
 
+    def _parse_cost(d):
+        cost = 0
+        comp_set = getattr(d, "ComponentSet", None) or []
+        for c in comp_set:
+            try:
+                cost += float(getattr(c, "RealCost", 0) or getattr(c, "Cost", 0) or 0)
+            except (TypeError, ValueError):
+                pass
+        if cost == 0:
+            try:
+                cost = float(getattr(d, "RealTotalCost", 0) or getattr(d, "TotalCost", 0) or 0)
+            except (TypeError, ValueError):
+                pass
+        return cost
+
     req = models.DescribeBillDetailRequest()
     req.Month = month
-    req.BeginTime = begin_time
-    req.EndTime = end_time
     req.Offset = 0
     req.Limit = 300
 
@@ -101,31 +113,40 @@ def main(days=2, start_date=None, end_date=None):
         if not resp.DetailSet:
             break
         for d in resp.DetailSet:
-            try:
-                cost = float(getattr(d, "RealTotalCost", 0) or getattr(d, "TotalCost", 0) or 0)
-            except (TypeError, ValueError):
-                cost = 0
+            cost = _parse_cost(d)
+            if cost == 0:
+                continue
             total_cost += cost
+            fee_begin = getattr(d, "FeeBeginTime", "") or getattr(d, "BillDay", "")
             details.append({
                 "product": getattr(d, "BusinessCodeName", "") or getattr(d, "ProductCodeName", "") or "-",
                 "cost": cost,
-                "time": getattr(d, "PayerUin", ""),
+                "day": str(fee_begin)[:10] if fee_begin else "?",
             })
         if len(resp.DetailSet) < req.Limit:
             break
         req.Offset += req.Limit
 
-    print(f"\n腾讯云消费（{start_date} ~ {end_date}）")
+    print(f"\n腾讯云消费（{month} 月）")
     print("=" * 50)
     print(f"合计：¥ {total_cost:.2f}")
     if details:
         by_product = {}
+        by_day = {}
         for x in details:
             k = x["product"]
             by_product[k] = by_product.get(k, 0) + x["cost"]
+            d = x.get("day", "?")
+            by_day[d] = by_day.get(d, 0) + x["cost"]
         print("\n按产品汇总：")
         for k, v in sorted(by_product.items(), key=lambda t: -t[1]):
             print(f"  {k}: ¥ {v:.2f}")
+        if by_day:
+            print("\n按日汇总（前10天）：")
+            for d, v in sorted(by_day.items(), key=lambda t: t[0])[:10]:
+                print(f"  {d}: ¥ {v:.2f}")
+            if len(by_day) > 10:
+                print(f"  ... 共 {len(by_day)} 天")
     else:
         print("（无明细或 API 未返回；请登录控制台查看：https://console.cloud.tencent.com/expense/overview）")
     return 0

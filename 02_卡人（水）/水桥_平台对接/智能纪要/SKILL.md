@@ -1,11 +1,11 @@
 ---
 name: 智能纪要
-description: 派对/会议录音一键转结构化纪要；飞书妙记链接/内容识别与下载（单条/批量），执行完毕用复盘格式回复
-triggers: 会议纪要、产研纪要、派对纪要、妙记、飞书妙记、飞书链接、cunkebao.feishu.cn/minutes、meetings.feishu.cn/minutes、妙记下载、第几场、指定场次、批量下载妙记、下载妙记
+description: 派对/会议录音一键转结构化纪要；飞书妙记文字+视频全命令行下载；飞书 MCP 能力整合；单条/批量妙记导出
+triggers: 会议纪要、产研纪要、派对纪要、妙记、飞书妙记、飞书链接、cunkebao.feishu.cn/minutes、meetings.feishu.cn/minutes、妙记下载、第几场、指定场次、批量下载妙记、下载妙记、妙记文字、妙记视频、飞书视频、视频下载
 owner: 水桥
 group: 水
-version: "1.1"
-updated: "2026-02-19"
+version: "1.2"
+updated: "2026-02-20"
 ---
 
 # 派对纪要生成器
@@ -259,6 +259,93 @@ bash "$SCRIPT_DIR/download_104_to_soul.sh"
 2. 右上角「…」→「导出文字记录」
 3. 将下载的 txt 放到目标目录（如 soul）
 
+---
+
+## 📹 妙记视频下载（全命令行）
+
+与文字导出共用 Cookie（cookie_minutes.txt）。通过 status API 获取视频下载链接，流式下载为 mp4。
+
+```bash
+SCRIPT_DIR="/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/智能纪要/脚本"
+
+# 下载指定妙记的视频到指定目录
+python3 "$SCRIPT_DIR/feishu_minutes_download_video.py" "https://cunkebao.feishu.cn/minutes/obcnyg5nj2l8q281v32de6qz" -o ~/Downloads/
+python3 "$SCRIPT_DIR/feishu_minutes_download_video.py" obcnyg5nj2l8q281v32de6qz --output "/Users/karuo/Documents/聊天记录/soul"
+```
+
+**核心 API**：`GET meetings.feishu.cn/minutes/api/status?object_token=xxx` 或 `cunkebao.feishu.cn/minutes/api/status`，返回 `data.video_info.video_download_url`。
+
+---
+
+## 🔗 飞书 MCP 能力整合
+
+| 方案 | 来源 | 功能 | 妙记文字/视频 |
+|:---|:---|:---|:---|
+| **@larksuiteoapi/lark-mcp** | 飞书官方 | 文档、多维表格、日历、群聊、消息等 OpenAPI | ❌ 无妙记专用 |
+| **DarkNoah/feishu-mcp** | GitHub | 多维表格 CRUD | ❌ 无妙记 |
+| **本 Skill** | 智能纪要脚本 | Cookie + 导出/status API | ✅ 文字+视频 |
+
+**Cursor 配置飞书官方 MCP**（文档/表格等）：
+
+```json
+{
+  "mcpServers": {
+    "lark-mcp": {
+      "command": "npx",
+      "args": ["-y", "@larksuiteoapi/lark-mcp", "mcp", "-a", "<app_id>", "-s", "<app_secret>"]
+    }
+  }
+}
+```
+
+妙记文字/视频下载：MCP 暂无专用能力，**必须用本 Skill 的 Cookie + 脚本方案**。
+
+---
+
+## 📋 妙记文字 + 视频完整解决方案（一键表）
+
+| 需求 | 脚本 | 一键命令 |
+|:---|:---|:---|
+| **104 场文字** | 导出104到soul.sh | `bash "$SCRIPT_DIR/导出104到soul.sh"` |
+| **104 场视频** | feishu_minutes_download_video.py | `python3 "$SCRIPT_DIR/feishu_minutes_download_video.py" obcnyg5nj2l8q281v32de6qz -o "$OUT"` |
+| **90～102 场文字** | download_soul_minutes_101_to_103.py | `python3 "$SCRIPT_DIR/download_soul_minutes_101_to_103.py" --from 90 --to 102` |
+| **企业 TOKEN 文字** | fetch_feishu_minutes.py --tenant-only | `python3 "$SCRIPT_DIR/fetch_feishu_minutes.py" -t obcnyg5nj2l8q281v32de6qz --tenant-only -o "$OUT"` |
+| **视频 + AI 切片发群** | 飞书管理/feishu_video_clip.py | 见 `02_卡人（水）/水桥_平台对接/飞书管理/SKILL.md` |
+
+**前置**：`cookie_minutes.txt` 第一行粘贴 list 请求的 Cookie（含 bv_csrf_token），或配置 FEISHU_MINUTES_COOKIE 环境变量。
+
+---
+
+## 🛠️ 核心代码与 API（供迭代复用）
+
+### 文字导出接口
+
+```python
+# POST meetings.feishu.cn/minutes/api/export 或 cunkebao.feishu.cn/minutes/api/export
+params = {"object_token": "obcnyg5nj2l8q281v32de6qz", "format": 2, "add_speaker": "true", "add_timestamp": "false"}
+headers = {"Cookie": cookie, "Referer": "https://cunkebao.feishu.cn/minutes/", "bv-csrf-token": bv_csrf_token}
+r = requests.post(url, params=params, headers=headers)
+# 200 时 r.text 即为文字记录正文
+```
+
+### 视频下载接口
+
+```python
+# GET .../minutes/api/status?object_token=xxx&language=zh_cn
+r = requests.get(status_url, headers=headers)
+data = r.json()
+video_url = data["data"]["video_info"]["video_download_url"]
+# 再 requests.get(video_url, stream=True) 流式下载
+```
+
+### Cookie 获取顺序
+
+1. cookie_minutes.txt 第一行  
+2. 环境变量 FEISHU_MINUTES_COOKIE  
+3. 本机浏览器（browser_cookie3：Safari/Chrome/Firefox/Edge；或 Doubao Cookie 解密）
+
+---
+
 ### 执行完毕回复规范
 
 每次完成**飞书妙记相关**的下载/导出/批量任务后，**必须用「卡若复盘」格式**收尾：  
@@ -366,9 +453,14 @@ python3 scripts/send_to_feishu.py --json "meeting.json"
 
 | 脚本 | 功能 | 依赖 |
 |:---|:---|:---|
-| **`daily_chanyan_to_feishu.py`** | ⭐ 产研会议日报：≥5分钟则总结+图发飞书（全命令行） | requests, playwright |
-| **`full_pipeline.py`** | ⭐ 完整流程（推荐） | requests, playwright |
-| **`fetch_feishu_minutes.py`** | ⭐ 飞书妙记 → 会议纪要 / 导出并发飞书 | requests |
+| **`feishu_minutes_export_github.py`** | ⭐ 妙记文字导出（GitHub 同款，Cookie/浏览器） | requests |
+| **`feishu_minutes_download_video.py`** | ⭐ 妙记视频下载（status API → mp4） | requests |
+| **`导出104到soul.sh`** | ⭐ 104 场文字一键导出到 soul | feishu_minutes_export_github |
+| **`download_soul_minutes_101_to_103.py`** | 批量场次文字（--from/--to） | requests |
+| **`fetch_feishu_minutes.py`** | 应用/用户 token 拉取 + 纪要生成 | requests |
+| **`daily_chanyan_to_feishu.py`** | 产研会议日报：≥5分钟则总结+图发飞书 | requests, playwright |
+| **`full_pipeline.py`** | 完整流程（聊天记录→纪要→截图→发飞书） | requests, playwright |
+| `fetch_single_minute_by_cookie.py` | 单条妙记（Cookie/浏览器） | requests |
 | `parse_chatlog.py` | 解析聊天记录 → JSON | 无 |
 | `generate_meeting.py` | JSON → HTML | 无 |
 | `md_to_summary_html.py` | 总结 md → HTML（产研纪要截图用） | 无 |
@@ -404,13 +496,16 @@ playwright install chromium
 ```
 智能纪要/
 ├── 脚本/                           # 飞书妙记下载与产研日报（本 Skill 主用）
-│   ├── feishu_minutes_export_github.py   # ⭐ 单条导出（GitHub 同款，需 bv_csrf_token）
+│   ├── feishu_minutes_export_github.py   # ⭐ 妙记文字单条导出（GitHub 同款）
+│   ├── feishu_minutes_download_video.py  # ⭐ 妙记视频下载（status API）
+│   ├── 导出104到soul.sh            # ⭐ 104 场文字一键导出
+│   ├── 妙记104_企业TOKEN命令行.sh   # 企业 token 导出 104（数据范围需全部）
 │   ├── fetch_single_minute_by_cookie.py  # 单条导出（Cookie/浏览器）
-│   ├── download_soul_minutes_101_to_103.py # 批量 101～103 场
+│   ├── download_soul_minutes_101_to_103.py # 批量场次文字（--from/--to）
 │   ├── download_101_to_103.sh      # 一键 101～103
-│   ├── download_104_to_soul.sh     # 一键 104 场（已有完整 txt 则直接成功）
+│   ├── download_104_to_soul.sh     # 一键 104 场
 │   ├── cookie_minutes.txt          # Cookie 配置（可选；无则自动读浏览器）
-│   ├── soul_minutes_90_102_list.txt  # 场次列表缓存（导出失败时自动生成，重跑即只做导出）
+│   ├── soul_minutes_90_102_list.txt  # 场次列表缓存
 │   ├── fetch_feishu_minutes.py     # 应用/用户 token 拉取
 │   ├── fetch_minutes_list_by_cookie.py   # 列表拉取 → urls_soul_party.txt
 │   └── batch_download_minutes_txt.py      # 按 URL 列表批量下载
@@ -430,6 +525,7 @@ playwright install chromium
 │   └── review.html                 # 复盘总结模板
 ├── 参考资料/
 │   └── 飞书妙记下载-权限与排查说明.md
+│   # 用户侧方案说明：聊天记录/soul/飞书妙记104场_全命令行下载方案.md
 ├── output/                         # 输出目录
 └── SKILL.md                        # 本文档
 ```
@@ -450,6 +546,7 @@ playwright install chromium
 
 | 日期 | 更新 |
 |:---|:---|
+| **2026-02-20** | 📌 **全能力整合**：Feishu MCP（官方 @larksuiteoapi/lark-mcp、DarkNoah/feishu-mcp）；妙记**视频下载**（feishu_minutes_download_video.py）；妙记**文字+视频**完整解决方案表；核心 API 与代码片段；导出104到soul.sh、妙记104_企业TOKEN命令行.sh；触发词增补：妙记文字、妙记视频、飞书视频、视频下载 |
 | **2026-02-19** | 📌 飞书妙记下载：**强制全自动、禁止要求用户手动操作**；Cookie 优先 cookie_minutes.txt → 环境变量 → 本机浏览器（Safari/Chrome/Firefox/Edge/Doubao）；批量支持 --from/--to（如 90～102）；列表缓存 soul_minutes_{from}_{to}_list.txt，重跑只做导出；双域导出（meetings + cunkebao）；执行完毕用复盘格式回复 |
 | **2026-01-29** | 📌 产研会议日报：daily_chanyan_to_feishu.py，飞书 API/本地 txt → 仅≥5分钟 → 总结+图发飞书，全命令行 |
 | **2026-01-28** | 🤖 融合本地模型：支持离线智能摘要、信息提取 |
