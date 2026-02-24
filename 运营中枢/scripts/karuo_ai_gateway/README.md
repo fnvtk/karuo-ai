@@ -72,6 +72,16 @@ curl -s "http://127.0.0.1:8000/v1/skills" \
 curl -s "http://127.0.0.1:8000/v1/health"
 ```
 
+## Cursor 配置（OpenAI 兼容）
+
+如果你希望在 Cursor 的「API Keys」里把卡若AI网关当成一个 OpenAI 兼容后端：
+
+1. 打开 Cursor → Settings → API Keys
+2. `OpenAI API Key`：填你的 **dept_key**（例如“卡若公司”的 key）
+3. 打开 `Override OpenAI Base URL`：填 `http://127.0.0.1:8000`
+   - 不要填 `/v1/chat`
+   - Cursor 会调用：`POST /v1/chat/completions`
+
 ## 外网暴露
 
 - **本机 + ngrok**：`ngrok http 8000`，用给出的 https 地址作为 YOUR_DOMAIN。

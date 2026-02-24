@@ -90,6 +90,22 @@ def _tenant_by_key(cfg: Dict[str, Any], api_key_plain: str) -> Optional[Dict[str
     return None
 
 
+def _get_api_key_from_request(request: Request, cfg: Dict[str, Any]) -> str:
+    """
+    兼容两种鉴权头：
+    - X-Karuo-Api-Key: <key>（原生网关方式）
+    - Authorization: Bearer <key>（OpenAI 兼容客户端常用）
+    """
+    header_name = _auth_header_name(cfg)
+    api_key = request.headers.get(header_name, "").strip()
+    if api_key:
+        return api_key
+    auth = request.headers.get("authorization", "").strip()
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return ""
+
+
 def _rpm_allow(tenant_id: str, rpm: int) -> bool:
     """
     极简内存限流（单进程）；够用就行。
@@ -225,6 +241,39 @@ def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, s
     return _template_reply(prompt, matched_skill, skill_path)
 
 
+class OpenAIChatCompletionsRequest(BaseModel):
+    """
+    OpenAI 兼容：只实现 Cursor 常用字段。
+    """
+
+    model: str = "karuo-ai"
+    messages: List[Dict[str, Any]]
+    max_tokens: Optional[int] = None
+    temperature: Optional[float] = None
+    stream: Optional[bool] = None
+
+
+def _messages_to_prompt(messages: List[Dict[str, Any]]) -> str:
+    """
+    优先取最后一条 user 消息；否则拼接全部文本。
+    """
+    last_user = ""
+    chunks: List[str] = []
+    for m in messages or []:
+        role = str(m.get("role", "")).strip()
+        content = m.get("content", "")
+        if isinstance(content, list):
+            content = "\n".join(
+                str(x.get("text", "")) for x in content if isinstance(x, dict) and x.get("type") == "text"
+            )
+        content = str(content)
+        if role and content:
+            chunks.append(f"{role}: {content}")
+        if role == "user" and content:
+            last_user = content
+    return (last_user or ("\n".join(chunks))).strip()
+
+
 def _template_reply(prompt: str, matched_skill: str, skill_path: str, error: str = "") -> str:
     """未配置 LLM 或调用失败时返回模板回复（仍含复盘格式）。"""
     err = f"\n（当前未配置 OPENAI_API_KEY 或调用失败：{error}）" if error else ""
@@ -274,8 +323,7 @@ async def chat(req: ChatRequest, request: Request):
     # 1) 鉴权（如果有配置文件就强制开启）
     tenant: Optional[Dict[str, Any]] = None
     if cfg:
-        header_name = _auth_header_name(cfg)
-        api_key = request.headers.get(header_name, "")
+        api_key = _get_api_key_from_request(request, cfg)
         tenant = _tenant_by_key(cfg, api_key)
         if not tenant:
             raise HTTPException(status_code=401, detail="invalid api key")
@@ -334,6 +382,104 @@ async def chat(req: ChatRequest, request: Request):
     )
 
 
+@app.get("/v1/models")
+def openai_models():
+    """
+    OpenAI 兼容：给 Cursor/其他客户端一个可选模型列表。
+    """
+    now = int(time.time())
+    return {
+        "object": "list",
+        "data": [
+            {"id": "karuo-ai", "object": "model", "created": now, "owned_by": "karuo-ai-gateway"},
+        ],
+    }
+
+
+@app.post("/v1/chat/completions")
+async def openai_chat_completions(req: OpenAIChatCompletionsRequest, request: Request):
+    """
+    OpenAI 兼容入口：Cursor 的 “Override OpenAI Base URL” 会请求这个接口。
+    鉴权：Authorization: Bearer <dept_key>（或 X-Karuo-Api-Key）
+    """
+    cfg = load_config()
+
+    tenant: Optional[Dict[str, Any]] = None
+    if cfg:
+        api_key = _get_api_key_from_request(request, cfg)
+        tenant = _tenant_by_key(cfg, api_key)
+        if not tenant:
+            raise HTTPException(status_code=401, detail="invalid api key")
+
+    tenant_id = str((tenant or {}).get("id", "")).strip()
+    tenant_name = str((tenant or {}).get("name", "")).strip()
+
+    prompt = _messages_to_prompt(req.messages)
+    if not prompt:
+        raise HTTPException(status_code=400, detail="empty messages")
+
+    limits = (tenant or {}).get("limits") or {}
+    max_prompt_chars = int(limits.get("max_prompt_chars", 0) or 0)
+    if max_prompt_chars and len(prompt) > max_prompt_chars:
+        raise HTTPException(status_code=413, detail="prompt too large")
+
+    rpm = int(limits.get("rpm", 0) or 0)
+    if tenant_id and rpm and not _rpm_allow(tenant_id, rpm):
+        raise HTTPException(status_code=429, detail="rate limit exceeded")
+
+    skill_id, matched_skill, skill_path = match_skill(prompt, cfg=cfg)
+    if cfg and not (skill_id and matched_skill and skill_path):
+        raise HTTPException(status_code=404, detail="no skill matched")
+
+    if tenant:
+        allowed = (tenant.get("allowed_skills") or []) if isinstance(tenant, dict) else []
+        allowed = [str(x).strip() for x in allowed if str(x).strip()]
+        if allowed:
+            if (skill_id not in allowed) and (skill_path not in allowed):
+                raise HTTPException(status_code=403, detail="skill not allowed for tenant")
+
+    # OpenAI 客户端的 max_tokens：临时覆盖配置
+    if req.max_tokens is not None:
+        llm_cfg = dict(_llm_settings(cfg))
+        llm_cfg["max_tokens"] = int(req.max_tokens)
+        cfg = dict(cfg or {})
+        cfg["llm"] = llm_cfg
+
+    reply = build_reply_with_llm(prompt, cfg, matched_skill, skill_path)
+
+    logging_cfg = (cfg or {}).get("logging") or {}
+    record: Dict[str, Any] = {
+        "ts": int(time.time()),
+        "tenant_id": tenant_id,
+        "tenant_name": tenant_name,
+        "skill_id": skill_id,
+        "matched_skill": matched_skill,
+        "skill_path": skill_path,
+        "client": request.client.host if request.client else "",
+        "ua": request.headers.get("user-agent", ""),
+        "openai_compatible": True,
+        "requested_model": req.model,
+    }
+    if bool(logging_cfg.get("log_request_body", False)):
+        record["prompt"] = prompt
+    _log_access(cfg, record)
+
+    now = int(time.time())
+    return {
+        "id": f"chatcmpl-{now}",
+        "object": "chat.completion",
+        "created": now,
+        "model": req.model or "karuo-ai",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": reply},
+                "finish_reason": "stop",
+            }
+        ],
+    }
+
+
 @app.get("/v1/health")
 def health():
     return {"ok": True}
@@ -349,7 +495,7 @@ def allowed_skills(request: Request):
     if not cfg:
         return {"tenants_enabled": False, "allowed_skills": []}
     header_name = _auth_header_name(cfg)
-    api_key = request.headers.get(header_name, "")
+    api_key = _get_api_key_from_request(request, cfg)
     tenant = _tenant_by_key(cfg, api_key)
     if not tenant:
         raise HTTPException(status_code=401, detail="invalid api key")
