@@ -72,9 +72,10 @@ def main():
         max_slides = 5
     elif args.html == "纳瓦尔访谈":
         html = BASE / "纳瓦尔访谈PPT_毛玻璃.html"
-        out_slides = OUT_ROOT / "纳瓦尔访谈_毛玻璃_slides"
-        out_ppt = OUT_ROOT / "纳瓦尔访谈_读书笔记_毛玻璃.pptx"
-        max_slides = 12
+        # v2：扩展页数（含方法/问答/流程图/行动清单），避免覆盖旧版
+        out_slides = OUT_ROOT / "纳瓦尔访谈_毛玻璃_slides_v2"
+        out_ppt = OUT_ROOT / "纳瓦尔访谈_读书笔记_毛玻璃_v2.pptx"
+        max_slides = 15
     elif args.html == "天恩乖乖":
         html = BASE / "天恩乖乖PPT_毛玻璃.html"
         out_slides = TIANEN_DIR / "乖乖_毛玻璃_slides"
