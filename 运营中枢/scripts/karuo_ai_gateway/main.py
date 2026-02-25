@@ -264,8 +264,25 @@ def _is_unusable_llm_reply(text: str) -> bool:
         "cannot assist",
         "无法协助",
         "不能协助",
+        "i'm v0",
+        "i am v0",
+        "vercel's ai-powered assistant",
+        "vercel ai-powered assistant",
+        "我是v0",
+        "我是 v0",
+        "vercel的ai助手",
     ]
     if any(sig in s for sig in refusal_signals) and len(s) <= 160:
+        return True
+    # v0 身份串线：无论长度都判为不可用，避免污染卡若AI人设
+    if (
+        "i'm v0" in s
+        or "i am v0" in s
+        or "vercel's ai-powered assistant" in s
+        or "我是v0" in s
+        or "我是 v0" in s
+        or ("vercel" in s and "ai助手" in s)
+    ):
         return True
     return False
 
@@ -286,6 +303,16 @@ def _looks_mismatched_reply(prompt: str, reply: str) -> bool:
     if len(p) <= 24 and ("根据摘要" in r or "任务拆解" in r or "思考与拆解" in r):
         return True
     # 身份问题却自报成其他助手
+    rl = r.lower()
+    if (
+        "我是 v0" in r
+        or "我是v0" in r
+        or "vercel的ai助手" in r
+        or "vercel's ai-powered assistant" in rl
+        or "i'm v0" in rl
+        or ("vercel" in rl and "assistant" in rl and "v0" in rl)
+    ):
+        return True
     if ("你是谁" in p or "who are you" in p.lower()) and ("我是 v0" in r or "vercel 的 ai 助手" in r.lower()):
         return True
     return False
