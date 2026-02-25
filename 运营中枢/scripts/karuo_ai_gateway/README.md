@@ -15,8 +15,35 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 - `OPENAI_API_KEY`：OpenAI 或兼容 API 的密钥，配置后使用真实 LLM 生成回复。
 - `OPENAI_API_BASE`：兼容接口地址，默认 `https://api.openai.com/v1`。
 - `OPENAI_MODEL`：模型名，默认 `gpt-4o-mini`。
+- `OPENAI_API_BASES`：接口队列（逗号分隔），例如 `https://a.example.com/v1,https://b.example.com/v1`。
+- `OPENAI_API_KEYS`：队列密钥（逗号分隔，可选）。若未配置，回退 `OPENAI_API_KEY`。
+- `OPENAI_MODELS`：队列模型（逗号分隔，可选）。若未配置，回退 `OPENAI_MODEL`。
+- `ALERT_EMAIL_TO`：全部接口失败时的告警收件人（默认 `zhiqun@qq.com`）。
+- `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS`：SMTP 告警配置（QQ 邮箱默认 `smtp.qq.com:465`）。
 - `KARUO_GATEWAY_CONFIG`：网关配置路径（默认 `config/gateway.yaml`）。
 - `KARUO_GATEWAY_SALT`：部门 Key 的 salt（用于 sha256 校验；不写入仓库）。
+
+### 接口排队与自动切换（稳定性）
+
+网关会按顺序尝试接口队列：
+
+1. 优先使用 `OPENAI_API_BASES`（可配多个）
+2. 任一接口超时/异常/非 200 时，自动切换下一接口
+3. 全部失败时：发送告警邮件并返回降级回复（不中断对话）
+
+示例：
+
+```bash
+export OPENAI_API_BASES="https://api.openai.com/v1,https://openrouter.ai/api/v1"
+export OPENAI_API_KEYS="sk-xxx,sk-yyy"
+export OPENAI_MODELS="gpt-4o-mini,openai/gpt-4o-mini"
+
+export ALERT_EMAIL_TO="zhiqun@qq.com"
+export SMTP_HOST="smtp.qq.com"
+export SMTP_PORT="465"
+export SMTP_USER="zhiqun@qq.com"
+export SMTP_PASS="你的QQ邮箱授权码"
+```
 
 ## 部门/科室鉴权与白名单（推荐启用）
 

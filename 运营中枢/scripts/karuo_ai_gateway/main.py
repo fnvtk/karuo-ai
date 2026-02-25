@@ -9,6 +9,8 @@ import time
 import json
 import hashlib
 import hmac
+import smtplib
+from email.message import EmailMessage
 from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
@@ -96,13 +98,13 @@ def _get_api_key_from_request(request: Request, cfg: Dict[str, Any]) -> str:
     - X-Karuo-Api-Key: <key>（原生网关方式）
     - Authorization: Bearer <key>（OpenAI 兼容客户端常用）
     """
+    auth = request.headers.get("authorization", "").strip()
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
     header_name = _auth_header_name(cfg)
     api_key = request.headers.get(header_name, "").strip()
     if api_key:
         return api_key
-    auth = request.headers.get("authorization", "").strip()
-    if auth.lower().startswith("bearer "):
-        return auth[7:].strip()
     return ""
 
 
@@ -209,6 +211,102 @@ def _llm_settings(cfg: Dict[str, Any]) -> Dict[str, Any]:
     return (cfg or {}).get("llm") or {}
 
 
+def _split_csv_env(value: str) -> List[str]:
+    if not value:
+        return []
+    s = value.replace("\n", ",").replace(";", ",")
+    return [x.strip() for x in s.split(",") if x.strip()]
+
+
+def _build_provider_queue(llm_cfg: Dict[str, Any]) -> List[Dict[str, str]]:
+    """
+    构建 LLM 接口队列：
+    1) 优先读取 OPENAI_API_BASES / OPENAI_API_KEYS / OPENAI_MODELS（逗号分隔）
+    2) 若未配置队列，则回退到单接口 OPENAI_API_BASE / OPENAI_API_KEY / OPENAI_MODEL
+    """
+    base_env = llm_cfg.get("api_base_env", "OPENAI_API_BASE")
+    key_env = llm_cfg.get("api_key_env", "OPENAI_API_KEY")
+    model_env = llm_cfg.get("model_env", "OPENAI_MODEL")
+    bases_env = llm_cfg.get("api_bases_env", "OPENAI_API_BASES")
+    keys_env = llm_cfg.get("api_keys_env", "OPENAI_API_KEYS")
+    models_env = llm_cfg.get("models_env", "OPENAI_MODELS")
+
+    single_base = os.environ.get(base_env, "https://api.openai.com/v1").strip()
+    single_key = os.environ.get(key_env, "").strip()
+    single_model = os.environ.get(model_env, "gpt-4o-mini").strip() or "gpt-4o-mini"
+
+    bases = _split_csv_env(os.environ.get(bases_env, ""))
+    keys = _split_csv_env(os.environ.get(keys_env, ""))
+    models = _split_csv_env(os.environ.get(models_env, ""))
+
+    providers: List[Dict[str, str]] = []
+    if bases:
+        for i, b in enumerate(bases):
+            key = keys[i] if i < len(keys) and keys[i] else single_key
+            model = models[i] if i < len(models) and models[i] else single_model
+            if not b or not key:
+                continue
+            providers.append({"base_url": b.rstrip("/"), "api_key": key, "model": model})
+    elif single_key:
+        providers.append({"base_url": single_base.rstrip("/"), "api_key": single_key, "model": single_model})
+    return providers
+
+
+def _send_provider_alert(cfg: Dict[str, Any], errors: List[str], prompt: str, matched_skill: str, skill_path: str) -> None:
+    """
+    当所有 LLM 接口都失败时，发邮件告警（支持 QQ SMTP）。
+    环境变量：
+    - ALERT_EMAIL_TO（默认 zhiqun@qq.com）
+    - SMTP_HOST（默认 smtp.qq.com）
+    - SMTP_PORT（默认 465）
+    - SMTP_USER / SMTP_PASS
+    """
+    llm_cfg = _llm_settings(cfg)
+    to_env = llm_cfg.get("alert_email_to_env", "ALERT_EMAIL_TO")
+    smtp_host_env = llm_cfg.get("smtp_host_env", "SMTP_HOST")
+    smtp_port_env = llm_cfg.get("smtp_port_env", "SMTP_PORT")
+    smtp_user_env = llm_cfg.get("smtp_user_env", "SMTP_USER")
+    smtp_pass_env = llm_cfg.get("smtp_pass_env", "SMTP_PASS")
+
+    to_addr = os.environ.get(to_env, "zhiqun@qq.com").strip()
+    smtp_host = os.environ.get(smtp_host_env, "smtp.qq.com").strip() or "smtp.qq.com"
+    smtp_port = int(str(os.environ.get(smtp_port_env, "465") or "465").strip())
+    smtp_user = os.environ.get(smtp_user_env, "").strip()
+    smtp_pass = os.environ.get(smtp_pass_env, "").strip()
+
+    # 避免因邮件配置不完整影响主流程
+    if not (to_addr and smtp_user and smtp_pass):
+        return
+
+    cooldown = int(llm_cfg.get("alert_cooldown_seconds", 300) or 300)
+    now = int(time.time())
+    last_ts = int(getattr(app.state, "_last_provider_alert_ts", 0) or 0)
+    if last_ts and now - last_ts < cooldown:
+        return
+
+    app.state._last_provider_alert_ts = now
+
+    msg = EmailMessage()
+    msg["Subject"] = "【卡若AI网关告警】全部LLM接口不可用"
+    msg["From"] = smtp_user
+    msg["To"] = to_addr
+    safe_prompt = (prompt or "").strip()
+    if len(safe_prompt) > 200:
+        safe_prompt = safe_prompt[:200] + "..."
+    body = (
+        "卡若AI 网关检测到：本次请求所有上游接口都失败。\n\n"
+        f"时间戳: {now}\n"
+        f"匹配技能: {matched_skill} ({skill_path})\n"
+        f"用户问题片段: {safe_prompt}\n\n"
+        "错误列表:\n- " + "\n- ".join(errors[:10])
+    )
+    msg.set_content(body)
+
+    with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as s:
+        s.login(smtp_user, smtp_pass)
+        s.send_message(msg)
+
+
 def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, skill_path: str) -> str:
     """调用 LLM 生成回复（OpenAI 兼容）。未配置则返回模板回复。"""
     bootstrap = load_bootstrap()
@@ -218,26 +316,37 @@ def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, s
         "先简短思考并输出，再给执行要点，最后必须带「[卡若复盘]」块（含目标·结果·达成率、过程 1 2 3、反思、总结、下一步）。"
     )
     llm_cfg = _llm_settings(cfg)
-    api_key = os.environ.get(llm_cfg.get("api_key_env", "OPENAI_API_KEY"))
-    base_url = os.environ.get(llm_cfg.get("api_base_env", "OPENAI_API_BASE"), "https://api.openai.com/v1")
-    if api_key:
+    providers = _build_provider_queue(llm_cfg)
+    if providers:
+        errors: List[str] = []
+        for idx, p in enumerate(providers, start=1):
+            try:
+                import httpx
+
+                r = httpx.post(
+                    f"{p['base_url']}/chat/completions",
+                    headers={"Authorization": f"Bearer {p['api_key']}", "Content-Type": "application/json"},
+                    json={
+                        "model": p["model"],
+                        "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+                        "max_tokens": int(llm_cfg.get("max_tokens", 2000)),
+                    },
+                    timeout=float(llm_cfg.get("timeout_seconds", 60)),
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    return data["choices"][0]["message"]["content"]
+                errors.append(f"provider#{idx} status={r.status_code} body={r.text[:120]}")
+            except Exception as e:
+                errors.append(f"provider#{idx} exception={type(e).__name__}: {str(e)[:160]}")
+
+        # 所有接口失败：邮件告警 + 降级回复
         try:
-            import httpx
-            r = httpx.post(
-                f"{base_url.rstrip('/')}/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": os.environ.get(llm_cfg.get("model_env", "OPENAI_MODEL"), "gpt-4o-mini"),
-                    "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}],
-                    "max_tokens": int(llm_cfg.get("max_tokens", 2000)),
-                },
-                timeout=float(llm_cfg.get("timeout_seconds", 60)),
-            )
-            if r.status_code == 200:
-                data = r.json()
-                return data["choices"][0]["message"]["content"]
-        except Exception as e:
-            return _template_reply(prompt, matched_skill, skill_path, error=str(e))
+            _send_provider_alert(cfg, errors, prompt, matched_skill, skill_path)
+        except Exception:
+            # 告警失败不影响主流程，继续降级
+            pass
+        return _template_reply(prompt, matched_skill, skill_path, error=" | ".join(errors[:3]))
     return _template_reply(prompt, matched_skill, skill_path)
 
 
