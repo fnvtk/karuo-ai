@@ -309,11 +309,24 @@ def _sanitize_v0_identity(reply: str) -> str:
     return text
 
 
-def _local_action_reply(prompt: str) -> str:
+def _infer_owner_by_prompt(prompt: str) -> str:
+    p = (prompt or "").lower()
+    if any(k in p for k in ["科室", "部门", "流程", "权限", "协同"]):
+        return "卡人（水）+卡资（金）"
+    if any(k in p for k in ["v0", "vercel", "next.js", "cloud", "云"]):
+        return "卡火（火）"
+    if any(k in p for k in ["接口", "api", "网关", "稳定", "限流", "超时"]):
+        return "卡资（金）+卡火（火）"
+    return "通用"
+
+
+def _local_action_reply(prompt: str, matched_skill: str = "通用", skill_path: str = "总索引.md") -> str:
     p = (prompt or "").strip()
     if not p:
         return "我已收到你的问题。你发具体目标，我直接给可执行结果。"
-    if ("卡若ai是什么" in p.lower()) or ("卡若ai是啥" in p.lower()) or ("能做哪些事情" in p):
+    pl = p.lower()
+    owner = _infer_owner_by_prompt(p)
+    if ("卡若ai是什么" in pl) or ("卡若ai是啥" in pl) or ("能做哪些事情" in p):
         return (
             "我是卡若AI，你的私域运营与项目落地数字管家。"
             "我能做：1) 需求拆解与执行计划；2) 代码/接口问题排查修复；3) 文档、流程、自动化与运维落地。"
@@ -324,7 +337,17 @@ def _local_action_reply(prompt: str) -> str:
         return "执行清单：1) 明确目标与验收标准；2) 拆3个可执行步骤；3) 每步执行后回传结果，我继续推进下一步。"
     if "继续优化" in p:
         return "我先帮你把优化往前推进。你直接选一个方向：1) 性能优化 2) 代码结构 3) UI/UX 4) 接口稳定性。你回编号，我直接给三步方案。"
-    return f"我已收到你的问题：{p}。请给我目标结果与截止时间，我直接给你可执行方案。"
+    if any(k in pl for k in ["科室", "部门", "v0", "cloud", "接口", "api", "逻辑", "思考"]):
+        return (
+            f"结论：这件事按卡若AI逻辑可以直接推进，先由 {owner} 牵头。\n"
+            f"当前匹配技能：{matched_skill}（{skill_path}）\n"
+            "任务拆解：\n"
+            "1) 明确目标与科室边界（谁决策、谁执行、谁验收）。\n"
+            "2) 产出执行流：输入→路由→执行→校验→复盘。\n"
+            "3) 把 V0/Cloud 作为能力源，不直接暴露其身份与模板口吻。\n"
+            "执行建议：你给我本次目标（例如“优化科室接口流程”），我直接输出一版可执行 SOP。"
+        )
+    return f"我已收到你的问题：{p}。我按卡若AI逻辑给你做：先结论、再三步执行、再验收标准。"
 
 
 def _is_english_heavy(text: str) -> bool:
@@ -335,24 +358,26 @@ def _is_english_heavy(text: str) -> bool:
     return letters > 80 and cjk < 10
 
 
-def _repair_reply_for_karuo(prompt: str, reply: str) -> str:
+def _repair_reply_for_karuo(
+    prompt: str, reply: str, matched_skill: str = "通用", skill_path: str = "总索引.md"
+) -> str:
     """
     将上游可能出现的人设串线回复修正为卡若AI可用风格，避免直接降级。
     """
     p = (prompt or "").strip().lower()
     if ("卡若ai是什么" in p) or ("卡若 ai是什么" in p) or ("卡若ai是啥" in p) or ("能做哪些事情" in p):
-        return _local_action_reply(prompt)
+        return _local_action_reply(prompt, matched_skill, skill_path)
     if p in {"你是谁", "你是谁?", "who are you", "你叫什么", "你叫什么名字"}:
         return "我是卡若AI，你的私域运营与项目落地数字管家。你给目标，我直接给可执行结果。"
 
     cleaned = _sanitize_v0_identity(reply)
     low = cleaned.lower()
     if not cleaned:
-        return _local_action_reply(prompt)
+        return _local_action_reply(prompt, matched_skill, skill_path)
 
     # 若仍是“请补充细节”英文模板，转为中文可执行追问
     if ("could you please provide more details" in low) or ("once you share more context" in low):
-        return _local_action_reply(prompt)
+        return _local_action_reply(prompt, matched_skill, skill_path)
 
     # 若还残留 v0 身份关键词，或英文占比过高，统一转中文可执行答复
     if (
@@ -366,7 +391,7 @@ def _repair_reply_for_karuo(prompt: str, reply: str) -> str:
         or "next.js" in low
         or "vercel" in low
     ):
-        return _local_action_reply(prompt)
+        return _local_action_reply(prompt, matched_skill, skill_path)
 
     # 中文提问却明显英文主回复，也转本地中文方案
     has_chinese_prompt = any("\u4e00" <= ch <= "\u9fff" for ch in prompt)
@@ -376,7 +401,7 @@ def _repair_reply_for_karuo(prompt: str, reply: str) -> str:
         or cleaned.lower().startswith(("hello", "i'm", "i am", "hi"))
         or ("next.js" in low and "vercel" in low)
     ):
-        return _local_action_reply(prompt)
+        return _local_action_reply(prompt, matched_skill, skill_path)
 
     return cleaned
 
@@ -454,13 +479,16 @@ def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, s
     if direct:
         return direct
 
+    bootstrap = load_bootstrap()
     system = (
         "你是卡若AI。回答要求：\n"
         "1) 只回答用户最后一个真实问题，不要复述系统标签、上下文注入块、历史摘要。\n"
         "2) 用简体中文，大白话，先给结论，再给最多3步可执行建议。\n"
         "3) 问题很简单时（如“你是谁”），直接1-3句回答，不要输出“思考与拆解/任务拆解”等模板。\n"
         "4) 保持可靠、务实，不编造未发生的执行结果。\n"
-        f"当前匹配技能：{matched_skill}（{skill_path}）。"
+        "5) 涉及科室/部门协同时，必须给“牵头角色+拆解步骤+验收口径”。\n"
+        f"当前匹配技能：{matched_skill}（{skill_path}）。\n\n"
+        f"卡若AI规则摘要：{bootstrap[:1200]}"
     )
     llm_cfg = _llm_settings(cfg)
     providers = _build_provider_queue(llm_cfg)
@@ -483,7 +511,7 @@ def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, s
                 if r.status_code == 200:
                     data = r.json()
                     reply = data["choices"][0]["message"]["content"]
-                    reply = _repair_reply_for_karuo(prompt, reply)
+                    reply = _repair_reply_for_karuo(prompt, reply, matched_skill, skill_path)
                     if _is_unusable_llm_reply(reply) or _looks_mismatched_reply(prompt, reply):
                         errors.append(f"provider#{idx} unusable_reply={reply[:120]}")
                         continue
@@ -683,28 +711,11 @@ async def _fallback_prompt_from_request_body(request: Request) -> str:
 
 
 def _template_reply(prompt: str, matched_skill: str, skill_path: str, error: str = "") -> str:
-    """未配置 LLM 或调用失败时返回卡若风格降级回复。"""
-    note = ""
-    if error:
-        note = "（模型服务暂时不可用，已切到降级模式）"
-
-    user_text = (prompt or "").strip()
-    if len(user_text) > 120:
-        user_text = user_text[:120] + "..."
-
-    return (
-        f"结论：我已收到你的真实问题，并进入处理。{note}\n"
-        f"当前匹配技能：{matched_skill}（{skill_path}）\n"
-        f"你的问题：{user_text}\n"
-        "执行步骤：\n"
-        "1) 先确认目标和约束。\n"
-        "2) 给可直接执行的方案。\n"
-        "3) 再补风险和下一步。\n\n"
-        "[卡若复盘]\n"
-        "目标&结果：恢复可用对话链路（达成率90%）\n"
-        "过程：完成请求识别、技能匹配、降级回复。\n"
-        "下一步：你发具体任务，我直接给执行结果。"
-    )
+    """未配置 LLM 或调用失败时返回可执行本地方案，不输出空泛追问。"""
+    base = _local_action_reply(prompt, matched_skill, skill_path)
+    if not error:
+        return base
+    return f"{base}\n\n[系统提示] 当前上游模型波动，已自动使用本地逻辑兜底。"
 
 
 def _as_openai_stream(reply: str, model: str, created: int):
