@@ -1,7 +1,7 @@
 ---
 name: 飞书管理
 description: 飞书日志/文档自动写入与知识库管理
-triggers: 飞书日志、写入飞书、飞书知识库、飞书运营报表、派对效果数据、104场写入、运营报表填写、派对截图填表发群、Excel写飞书、批量写飞书表格、表格日报
+triggers: 飞书日志、写入飞书、飞书知识库、飞书运营报表、派对效果数据、104场写入、运营报表填写、派对截图填表发群、Excel写飞书、批量写飞书表格、表格日报、卡洛的飞书日志、卡若飞书日志
 owner: 水桥
 group: 水
 version: "1.2"
@@ -388,6 +388,7 @@ python3 script.py --arg value
 ```
 飞书管理/
 ├── SKILL.md                      # 本文档
+├── 卡洛的飞书日志_SKILL.md        # 子技能：个人日志+运营登记固定入口
 ├── references/
 │   ├── 飞书项目API_玩值电竞对接说明.md
 │   └── ...
@@ -403,6 +404,27 @@ python3 script.py --arg value
     ├── wanzhi_feishu_project_sync.py    # 玩值电竞→飞书项目同步
     ├── feishu_wiki_create_doc.py       # Wiki 子文档创建（日记/研究）
     └── .feishu_tokens.json       # Token 存储
+```
+
+---
+
+## 子技能：卡洛的飞书日志
+
+用于你个人固定写日志入口（日志 + 运营报表登记）：
+
+```bash
+python3 "/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/飞书管理/脚本/karuo_feishu_log.py"
+```
+
+指定参数写法：
+
+```bash
+python3 "/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/飞书管理/脚本/karuo_feishu_log.py" \
+  --date "2月25日" \
+  --progress 55 \
+  --bottleneck "服务器导致接口化部署不稳定" \
+  --next "优先修复部署链路，再推进接口与网站" \
+  --clarity "功能层与解决方案仍需继续梳理"
 ```
 
 ---
