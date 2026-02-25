@@ -252,65 +252,6 @@ def _build_provider_queue(llm_cfg: Dict[str, Any]) -> List[Dict[str, str]]:
     return providers
 
 
-def _call_anthropic_reply(prompt: str, system: str, llm_cfg: Dict[str, Any]) -> Tuple[str, str]:
-    """
-    调用 Anthropic 原生接口（Claude）。
-    返回 (reply, error)。reply 为空表示未成功。
-    """
-    api_key_env = llm_cfg.get("anthropic_api_key_env", "ANTHROPIC_API_KEY")
-    model_env = llm_cfg.get("anthropic_model_env", "ANTHROPIC_MODEL")
-    base_env = llm_cfg.get("anthropic_api_base_env", "ANTHROPIC_API_BASE")
-    version_env = llm_cfg.get("anthropic_version_env", "ANTHROPIC_VERSION")
-
-    api_key = os.environ.get(api_key_env, "").strip()
-    if not api_key:
-        return "", "anthropic api key missing"
-
-    base = os.environ.get(base_env, "https://api.anthropic.com/v1").strip() or "https://api.anthropic.com/v1"
-    model = os.environ.get(model_env, "").strip()
-    if not model:
-        return "", "anthropic model missing"
-    version = os.environ.get(version_env, "2023-06-01").strip() or "2023-06-01"
-
-    try:
-        import httpx
-
-        r = httpx.post(
-            f"{base.rstrip('/')}/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": version,
-                "content-type": "application/json",
-            },
-            json={
-                "model": model,
-                "max_tokens": int(llm_cfg.get("max_tokens", 2000)),
-                "system": system,
-                "messages": [{"role": "user", "content": prompt}],
-            },
-            timeout=float(llm_cfg.get("timeout_seconds", 15)),
-        )
-        if r.status_code != 200:
-            return "", f"anthropic status={r.status_code} body={r.text[:200]}"
-
-        data = r.json()
-        content = data.get("content")
-        if not isinstance(content, list):
-            return "", "anthropic content invalid"
-        chunks: List[str] = []
-        for x in content:
-            if isinstance(x, dict):
-                t = str(x.get("text", "")).strip()
-                if t:
-                    chunks.append(t)
-        reply = "\n".join(chunks).strip()
-        if not reply:
-            return "", "anthropic empty reply"
-        return reply, ""
-    except Exception as e:
-        return "", f"anthropic exception={type(e).__name__}: {str(e)[:180]}"
-
-
 def _is_unusable_llm_reply(text: str) -> bool:
     s = (text or "").strip().lower()
     if not s:
@@ -325,6 +266,11 @@ def _is_unusable_llm_reply(text: str) -> bool:
         "不能协助",
     ]
     if any(sig in s for sig in refusal_signals) and len(s) <= 160:
+        return True
+    # v0 拒答 + 英文自报组合（无论长度）
+    if "i'm sorry" in s and "not able to assist" in s:
+        return True
+    if "i’m sorry" in s and "not able to assist" in s:
         return True
     return False
 
@@ -354,16 +300,32 @@ def _sanitize_v0_identity(reply: str) -> str:
     if not text:
         return ""
 
-    # 删除常见 v0 自报身份段落（英文/中文）
-    patterns = [
-        r"^I[' ]?m v0,.*?technologies\.\s*",
-        r"^I am v0,.*?technologies\.\s*",
-        r"^I[' ]?m v0[^\n]*\n?",
-        r"^I am v0[^\n]*\n?",
-        r"^我是 ?v0.*?助手[。.!]?\s*",
+    strip_patterns = [
+        r"^I[\u2019'\u2018]?m sorry[.!]?\s*(I[\u2019'\u2018]?m not able to assist with that\.?)?\s*",
+        r"^I[\u2019'\u2018]?m v0[^\n]*[.!]?\s*",
+        r"^I am v0[^\n]*[.!]?\s*",
+        r"^你好[！!]?\s*我是\s*v0[^\n]*[。.!]?\s*",
+        r"^我是\s*v0[^\n]*[。.!]?\s*",
+        r"I[\u2019'\u2018]?m designed to help[^\n]*[.!]?\s*",
+        r"I specialize in[^\n]*[.!]?\s*",
+        r"I help with building[^\n]*[.!]?\s*",
+        r"I[\u2019'\u2018]?m here to help you[^\n]*[.!]?\s*",
+        r"If you[\u2019'\u2018]?d like help with[^\n]*[.!]?\s*",
+        r"If you need[^\n]*help[^\n]*[.!]?\s*",
+        r"^However,\s*",
+        r"^That said,\s*",
+        r"^I[\u2019'\u2018]?m sorry[.!]?\s*I[\u2019'\u2018]?m not able to assist with that[.!]?\s*",
+        r"If you[\u2019'\u2018]?d like help with web development[^\n]*[.!]?\s*",
+        r"creating components[^\n]*[.!]?\s*",
+        r"or building applications[^\n]*[.!]?\s*",
+        r"I[\u2019'\u2018]?d be happy to assist[^\n]*[.!]?\s*",
     ]
-    for p in patterns:
-        text = re.sub(p, "", text, flags=re.IGNORECASE | re.DOTALL).strip()
+    for _ in range(5):
+        prev = text
+        for pat in strip_patterns:
+            text = re.sub(pat, "", text, flags=re.IGNORECASE).strip()
+        if text == prev:
+            break
 
     return text
 
@@ -377,22 +339,13 @@ def _local_action_reply(prompt: str) -> str:
             "我是卡若AI，你的私域运营与项目落地数字管家。"
             "我能做：1) 需求拆解与执行计划；2) 代码/接口问题排查修复；3) 文档、流程、自动化与运维落地。"
         )
-    if ("cloud 4.6" in p.lower()) or ("claude 4.6" in p.lower()) or ("claude4.6" in p.lower()):
-        return (
-            "Cloud 4.6 接入三步：1) 在 `.env.api_keys.local` 填 `ANTHROPIC_API_KEY` 和 `ANTHROPIC_MODEL`；"
-            "2) 重启本机网关 `start_local_gateway.sh 18080`；3) 用 `/v1/chat/completions` 连测3次，成功后再切 Cursor。"
-        )
-    if ("升级" in p) or ("迭代" in p):
-        return (
-            "升级迭代直接做三步：1) 明确本轮目标和验收；2) 先改最关键瓶颈并上线；3) 连测回归后再做下一轮。"
-        )
     if ("稳定" in p and "接口" in p) or ("优化" in p and "接口" in p):
         return "结论：先把接口稳定住。三步执行：1) 设置超时+重试；2) 接口队列故障切换；3) 健康检查+失败告警。"
     if "执行清单" in p:
         return "执行清单：1) 明确目标与验收标准；2) 拆3个可执行步骤；3) 每步执行后回传结果，我继续推进下一步。"
     if "继续优化" in p:
         return "我先帮你把优化往前推进。你直接选一个方向：1) 性能优化 2) 代码结构 3) UI/UX 4) 接口稳定性。你回编号，我直接给三步方案。"
-    return f"我先给你执行框架：1) 明确目标；2) 拆3步动作；3) 逐步落地验证。你这条是：{p}，我可以直接继续往下做。"
+    return f"我已收到你的问题：{p}。请给我目标结果与截止时间，我直接给你可执行方案。"
 
 
 def _is_english_heavy(text: str) -> bool:
@@ -405,49 +358,39 @@ def _is_english_heavy(text: str) -> bool:
 
 def _repair_reply_for_karuo(prompt: str, reply: str) -> str:
     """
-    将上游可能出现的人设串线回复修正为卡若AI可用风格，避免直接降级。
+    后处理：剥掉 v0 身份段落，保留真正的 AI 内容；身份类问题用固定回复。
     """
     p = (prompt or "").strip().lower()
-    if ("卡若ai是什么" in p) or ("卡若 ai是什么" in p) or ("卡若ai是啥" in p) or ("能做哪些事情" in p):
-        return _local_action_reply(prompt)
     if p in {"你是谁", "你是谁?", "who are you", "你叫什么", "你叫什么名字"}:
         return "我是卡若AI，你的私域运营与项目落地数字管家。你给目标，我直接给可执行结果。"
+    if ("卡若ai是什么" in p) or ("卡若ai是啥" in p) or ("能做哪些事情" in p):
+        return (
+            "我是卡若AI，你的私域运营与项目落地数字管家。\n"
+            "我能做：\n"
+            "1) 需求拆解与执行计划\n"
+            "2) 代码/接口问题排查修复\n"
+            "3) 文档、流程、自动化与运维落地\n"
+            "4) 私域引流与商业分析\n"
+            "5) 全栈开发与部署管理"
+        )
 
+    # 用 _sanitize_v0_identity 做多轮剥离
     cleaned = _sanitize_v0_identity(reply)
-    low = cleaned.lower()
     if not cleaned:
-        return _local_action_reply(prompt)
+        cleaned = reply
 
-    # 若仍是“请补充细节”英文模板，转为中文可执行追问
-    if ("could you please provide more details" in low) or ("once you share more context" in low):
-        return _local_action_reply(prompt)
+    # 二次检查：若仍含 v0/vercel 关键词，再暴力清洗一遍
+    low = cleaned.lower()
+    if "v0" in low or "vercel" in low:
+        lines = cleaned.split("\n")
+        kept = [l for l in lines if "v0" not in l.lower() and "vercel" not in l.lower()]
+        cleaned = "\n".join(kept).strip()
 
-    # 若还残留 v0 身份关键词，或英文占比过高，统一转中文可执行答复
-    if (
-        re.search(r"我是\s*v0", cleaned, flags=re.IGNORECASE)
-        or "vercel 的 ai 助手" in cleaned.lower()
-        or ("v0" in low and "assistant" in low)
-        or ("vercel" in low and "assistant" in low)
-        or _is_english_heavy(cleaned)
-        or cleaned.startswith(("，", ",", "。"))
-        or "专门帮助开发者构建" in cleaned
-        or "next.js" in low
-        or "vercel" in low
-    ):
-        return _local_action_reply(prompt)
-
-    # 中文提问却明显英文主回复，也转本地中文方案
-    has_chinese_prompt = any("\u4e00" <= ch <= "\u9fff" for ch in prompt)
-    has_chinese_reply = any("\u4e00" <= ch <= "\u9fff" for ch in cleaned)
-    if has_chinese_prompt and (
-        not has_chinese_reply
-        or cleaned.lower().startswith(("hello", "i'm", "i am", "hi"))
-        or ("next.js" in low and "vercel" in low)
-    ):
-        return _local_action_reply(prompt)
+    # 若剥完后为空或只剩短拒答，给友好中文兜底
+    if not cleaned or (len(cleaned) < 60 and ("sorry" in cleaned.lower() or "not able" in cleaned.lower())):
+        return "我已收到你的问题。请给我更具体的目标和约束条件，我直接给你可执行方案。"
 
     return cleaned
-
 
 def _send_provider_alert(cfg: Dict[str, Any], errors: List[str], prompt: str, matched_skill: str, skill_path: str) -> None:
     """
@@ -523,28 +466,21 @@ def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, s
         return direct
 
     system = (
-        "你是卡若AI。回答要求：\n"
-        "1) 只回答用户最后一个真实问题，不要复述系统标签、上下文注入块、历史摘要。\n"
-        "2) 用简体中文，大白话，先给结论，再给最多3步可执行建议。\n"
-        "3) 问题很简单时（如“你是谁”），直接1-3句回答，不要输出“思考与拆解/任务拆解”等模板。\n"
-        "4) 保持可靠、务实，不编造未发生的执行结果。\n"
+        "【强制身份】你是「卡若AI」，卡若的私域运营与项目落地数字管家。"
+        "你绝对不是v0、不是Vercel助手、不是任何其他AI品牌。"
+        "无论上游模型如何自称，你在回复中永远只以「卡若AI」身份出现。\n\n"
+        "【回复规则】\n"
+        "1) 全部用简体中文回复，大白话，先结论再步骤。\n"
+        "2) 不要自我介绍为v0/Vercel/任何第三方AI。\n"
+        "3) 问「你是谁」→ 回「我是卡若AI，你的私域运营与项目落地数字管家」，一句话结束。\n"
+        "4) 复杂问题：先给结论，再给可执行步骤（最多5步），最后给风险提示。\n"
+        "5) 不编造未发生的结果，保持务实可靠。\n"
         f"当前匹配技能：{matched_skill}（{skill_path}）。"
     )
     llm_cfg = _llm_settings(cfg)
-    errors: List[str] = []
-
-    # 先尝试 Claude 原生通道（有 key 才走）
-    anth_reply, anth_err = _call_anthropic_reply(prompt, system, llm_cfg)
-    if anth_reply:
-        repaired = _repair_reply_for_karuo(prompt, anth_reply)
-        if not (_is_unusable_llm_reply(repaired) or _looks_mismatched_reply(prompt, repaired)):
-            return repaired
-        errors.append(f"anthropic unusable_reply={repaired[:120]}")
-    elif anth_err:
-        errors.append(anth_err)
-
     providers = _build_provider_queue(llm_cfg)
     if providers:
+        errors: List[str] = []
         for idx, p in enumerate(providers, start=1):
             try:
                 import httpx
@@ -578,7 +514,7 @@ def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, s
             # 告警失败不影响主流程，继续降级
             pass
         return _template_reply(prompt, matched_skill, skill_path, error=" | ".join(errors[:3]))
-    return _template_reply(prompt, matched_skill, skill_path, error=" | ".join(errors[:3]) if errors else "")
+    return _template_reply(prompt, matched_skill, skill_path)
 
 
 class OpenAIChatCompletionsRequest(BaseModel):

@@ -11,7 +11,6 @@
 
 - 单接口：`OPENAI_API_BASE` / `OPENAI_API_KEY` / `OPENAI_MODEL`
 - 队列接口：`OPENAI_API_BASES` / `OPENAI_API_KEYS` / `OPENAI_MODELS`
-- Claude 接口：`ANTHROPIC_API_KEY` / `ANTHROPIC_API_BASE` / `ANTHROPIC_MODEL` / `ANTHROPIC_VERSION`
 - 告警邮箱：`ALERT_EMAIL_TO` / `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS`
 
 ---
@@ -57,12 +56,11 @@ export SMTP_PASS="你的QQ邮箱授权码"
 
 ## 4. 执行逻辑（网关内置）
 
-1. 若配置了 `ANTHROPIC_API_KEY + ANTHROPIC_MODEL`，先尝试 Claude 原生接口。
-2. Claude 不可用时，读取 `OPENAI_API_BASES` 队列。
-3. 按顺序逐个请求上游接口。
-4. 某个接口成功（HTTP 200）即返回结果，不再继续重试后续接口。
-5. 失败（超时/异常/非 200）则自动切到下一接口。
-6. 若全部失败：
+1. 读取 `OPENAI_API_BASES` 队列。
+2. 按顺序逐个请求上游接口。
+3. 某个接口成功（HTTP 200）即返回结果，不再继续重试后续接口。
+4. 失败（超时/异常/非 200）则自动切到下一接口。
+5. 若全部失败：
    - 发送告警邮件（默认带 300 秒冷却，避免刷屏）；
    - 返回可读降级回复，保证前端有响应。
 

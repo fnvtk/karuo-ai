@@ -18,10 +18,6 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 - `OPENAI_API_BASES`：接口队列（逗号分隔），例如 `https://a.example.com/v1,https://b.example.com/v1`。
 - `OPENAI_API_KEYS`：队列密钥（逗号分隔，可选）。若未配置，回退 `OPENAI_API_KEY`。
 - `OPENAI_MODELS`：队列模型（逗号分隔，可选）。若未配置，回退 `OPENAI_MODEL`。
-- `ANTHROPIC_API_KEY`：Claude 原生接口密钥（配置后优先于 OPENAI 队列）。
-- `ANTHROPIC_API_BASE`：默认 `https://api.anthropic.com/v1`。
-- `ANTHROPIC_MODEL`：Claude 模型 ID（按你控制台可用模型填写，如 `claude-opus-4-6`）。
-- `ANTHROPIC_VERSION`：默认 `2023-06-01`。
 - `ALERT_EMAIL_TO`：全部接口失败时的告警收件人（默认 `zhiqun@qq.com`）。
 - `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS`：SMTP 告警配置（QQ 邮箱默认 `smtp.qq.com:465`）。
 - `KARUO_GATEWAY_CONFIG`：网关配置路径（默认 `config/gateway.yaml`）。
@@ -47,8 +43,6 @@ cp .env.api_keys.local .env
 1. 优先使用 `OPENAI_API_BASES`（可配多个）
 2. 任一接口超时/异常/非 200 时，自动切换下一接口
 3. 全部失败时：发送告警邮件并返回降级回复（不中断对话）
-
-如果配置了 `ANTHROPIC_API_KEY + ANTHROPIC_MODEL`，网关会先尝试 Claude 原生接口，再回退到 OPENAI 队列。
 
 示例：
 
