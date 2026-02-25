@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-卡洛的飞书日志：一键登记日记 + 运营报表摘要（任意目录可执行）
+卡若的飞书日志：一键登记日记 + 运营报表摘要（任意目录可执行）
 """
 import argparse
 import os
@@ -37,7 +37,7 @@ def build_tasks(progress, bottleneck, next_step, clarity):
     return [
         {
             "person": "卡若",
-            "events": ["卡洛飞书日志", "运营报表登记", "接口与网站推进"],
+            "events": ["卡若飞书日志", "运营报表登记", "接口与网站推进"],
             "quadrant": "重要紧急",
             "t_targets": [
                 f"卡若AI开发→接口与网站持续推进 🔧 ({progress}%)",
@@ -61,7 +61,7 @@ def build_tasks(progress, bottleneck, next_step, clarity):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="卡洛的飞书日志一键登记")
+    parser = argparse.ArgumentParser(description="卡若的飞书日志一键登记")
     parser.add_argument("--date", default=default_date_str(), help='日期，如 "2月25日"')
     parser.add_argument("--progress", type=int, default=55, help="卡若AI任务完成度（0-100）")
     parser.add_argument("--bottleneck", default="", help="当前卡点")
@@ -85,7 +85,7 @@ def main():
     ok = write_log(token, args.date, tasks, target_wiki_token)
     if ok:
         open_result(target_wiki_token)
-        print(f"✅ 卡洛的飞书日志已写入：{args.date}")
+        print(f"✅ 卡若的飞书日志已写入：{args.date}")
         sys.exit(0)
     print("❌ 写入失败")
     sys.exit(1)

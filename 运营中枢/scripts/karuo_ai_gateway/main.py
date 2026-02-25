@@ -313,6 +313,11 @@ def _local_action_reply(prompt: str) -> str:
     p = (prompt or "").strip()
     if not p:
         return "我已收到你的问题。你发具体目标，我直接给可执行结果。"
+    if ("卡若ai是什么" in p.lower()) or ("卡若ai是啥" in p.lower()) or ("能做哪些事情" in p):
+        return (
+            "我是卡若AI，你的私域运营与项目落地数字管家。"
+            "我能做：1) 需求拆解与执行计划；2) 代码/接口问题排查修复；3) 文档、流程、自动化与运维落地。"
+        )
     if ("稳定" in p and "接口" in p) or ("优化" in p and "接口" in p):
         return "结论：先把接口稳定住。三步执行：1) 设置超时+重试；2) 接口队列故障切换；3) 健康检查+失败告警。"
     if "执行清单" in p:
@@ -335,6 +340,8 @@ def _repair_reply_for_karuo(prompt: str, reply: str) -> str:
     将上游可能出现的人设串线回复修正为卡若AI可用风格，避免直接降级。
     """
     p = (prompt or "").strip().lower()
+    if ("卡若ai是什么" in p) or ("卡若 ai是什么" in p) or ("卡若ai是啥" in p) or ("能做哪些事情" in p):
+        return _local_action_reply(prompt)
     if p in {"你是谁", "你是谁?", "who are you", "你叫什么", "你叫什么名字"}:
         return "我是卡若AI，你的私域运营与项目落地数字管家。你给目标，我直接给可执行结果。"
 
@@ -354,6 +361,10 @@ def _repair_reply_for_karuo(prompt: str, reply: str) -> str:
         or ("v0" in low and "assistant" in low)
         or ("vercel" in low and "assistant" in low)
         or _is_english_heavy(cleaned)
+        or cleaned.startswith(("，", ",", "。"))
+        or "专门帮助开发者构建" in cleaned
+        or "next.js" in low
+        or "vercel" in low
     ):
         return _local_action_reply(prompt)
 
