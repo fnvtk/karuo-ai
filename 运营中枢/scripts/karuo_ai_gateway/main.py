@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
 # 仓库根目录（本脚本在 运营中枢/scripts/karuo_ai_gateway/main.py）
@@ -253,6 +253,19 @@ class OpenAIChatCompletionsRequest(BaseModel):
     stream: Optional[bool] = None
 
 
+class OpenAIResponsesRequest(BaseModel):
+    """
+    OpenAI Responses API 兼容（简化版）：
+    - input: 字符串 / 数组
+    - model: 可选
+    - stream: 可选
+    """
+
+    model: Optional[str] = "karuo-ai"
+    input: Any
+    stream: Optional[bool] = None
+
+
 def _messages_to_prompt(messages: List[Dict[str, Any]]) -> str:
     """
     优先取最后一条 user 消息；否则拼接全部文本。
@@ -299,6 +312,29 @@ def _template_reply(prompt: str, matched_skill: str, skill_path: str, error: str
 ▶ 下一步执行
 在环境变量中设置 OPENAI_API_KEY（及可选 OPENAI_API_BASE、OPENAI_MODEL）后重启服务。
 """
+
+
+def _as_openai_stream(reply: str, model: str, created: int):
+    """
+    OpenAI Chat Completions 流式（SSE）最小兼容实现。
+    """
+    chunk0 = {
+        "id": f"chatcmpl-{created}",
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
+    }
+    chunk1 = {
+        "id": f"chatcmpl-{created}",
+        "object": "chat.completion.chunk",
+        "created": created,
+        "model": model,
+        "choices": [{"index": 0, "delta": {"content": reply}, "finish_reason": "stop"}],
+    }
+    yield f"data: {json.dumps(chunk0, ensure_ascii=False)}\n\n"
+    yield f"data: {json.dumps(chunk1, ensure_ascii=False)}\n\n"
+    yield "data: [DONE]\n\n"
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -465,7 +501,7 @@ async def openai_chat_completions(req: OpenAIChatCompletionsRequest, request: Re
     _log_access(cfg, record)
 
     now = int(time.time())
-    return {
+    payload = {
         "id": f"chatcmpl-{now}",
         "object": "chat.completion",
         "created": now,
@@ -478,6 +514,63 @@ async def openai_chat_completions(req: OpenAIChatCompletionsRequest, request: Re
             }
         ],
     }
+    if bool(req.stream):
+        model_name = str(req.model or "karuo-ai")
+        return StreamingResponse(
+            _as_openai_stream(reply=reply, model=model_name, created=now),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+    return payload
+
+
+def _responses_input_to_prompt(input_value: Any) -> str:
+    """
+    将 Responses API 的 input 转成 prompt。
+    """
+    if isinstance(input_value, str):
+        return input_value.strip()
+    if isinstance(input_value, list):
+        chunks: List[str] = []
+        for item in input_value:
+            if isinstance(item, str):
+                chunks.append(item)
+                continue
+            if isinstance(item, dict):
+                # 兼容 {"type":"input_text","text":"..."} / {"text":"..."}
+                txt = str(item.get("text", "")).strip()
+                if txt:
+                    chunks.append(txt)
+                    continue
+                # 兼容 {"content":[...]} 形式
+                c = item.get("content")
+                if isinstance(c, list):
+                    for part in c:
+                        if isinstance(part, dict):
+                            t = str(part.get("text", "")).strip()
+                            if t:
+                                chunks.append(t)
+        if chunks:
+            return "\n".join(chunks).strip()
+    return ""
+
+
+@app.post("/v1/responses")
+async def openai_responses(req: OpenAIResponsesRequest, request: Request):
+    """
+    OpenAI Responses API 简化兼容：
+    - 复用 chat/completions 逻辑
+    """
+    prompt = _responses_input_to_prompt(req.input)
+    if not prompt:
+        raise HTTPException(status_code=400, detail="empty input")
+
+    chat_req = OpenAIChatCompletionsRequest(
+        model=req.model or "karuo-ai",
+        messages=[{"role": "user", "content": prompt}],
+        stream=req.stream,
+    )
+    return await openai_chat_completions(chat_req, request)
 
 
 @app.get("/v1/health")
