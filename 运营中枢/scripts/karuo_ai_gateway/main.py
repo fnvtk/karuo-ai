@@ -270,6 +270,27 @@ def _is_unusable_llm_reply(text: str) -> bool:
     return False
 
 
+def _direct_reply_for_simple_prompt(prompt: str) -> str:
+    s = (prompt or "").strip().lower().replace("？", "?")
+    if s in {"你是谁", "你是谁?", "who are you", "你叫什么", "你叫什么名字"}:
+        return "我是卡若AI，你的私域运营与项目落地数字管家。你给目标，我直接给可执行结果。"
+    return ""
+
+
+def _looks_mismatched_reply(prompt: str, reply: str) -> bool:
+    p = (prompt or "").strip()
+    r = (reply or "").strip()
+    if not p or not r:
+        return False
+    # 短问题却输出“根据摘要/任务拆解”等模板，判定为答偏
+    if len(p) <= 24 and ("根据摘要" in r or "任务拆解" in r or "思考与拆解" in r):
+        return True
+    # 身份问题却自报成其他助手
+    if ("你是谁" in p or "who are you" in p.lower()) and ("我是 v0" in r or "vercel 的 ai 助手" in r.lower()):
+        return True
+    return False
+
+
 def _send_provider_alert(cfg: Dict[str, Any], errors: List[str], prompt: str, matched_skill: str, skill_path: str) -> None:
     """
     当所有 LLM 接口都失败时，发邮件告警（支持 QQ SMTP）。
@@ -339,11 +360,17 @@ def _send_provider_alert(cfg: Dict[str, Any], errors: List[str], prompt: str, ma
 
 def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, skill_path: str) -> str:
     """调用 LLM 生成回复（OpenAI 兼容）。未配置则返回模板回复。"""
-    bootstrap = load_bootstrap()
+    direct = _direct_reply_for_simple_prompt(prompt)
+    if direct:
+        return direct
+
     system = (
-        f"你是卡若AI。请严格按以下规则回复：\n\n{bootstrap[:4000]}\n\n"
-        f"当前匹配技能：{matched_skill}，路径：{skill_path}。"
-        "先简短思考并输出，再给执行要点，最后必须带「[卡若复盘]」块（含目标·结果·达成率、过程 1 2 3、反思、总结、下一步）。"
+        "你是卡若AI。回答要求：\n"
+        "1) 只回答用户最后一个真实问题，不要复述系统标签、上下文注入块、历史摘要。\n"
+        "2) 用简体中文，大白话，先给结论，再给最多3步可执行建议。\n"
+        "3) 问题很简单时（如“你是谁”），直接1-3句回答，不要输出“思考与拆解/任务拆解”等模板。\n"
+        "4) 保持可靠、务实，不编造未发生的执行结果。\n"
+        f"当前匹配技能：{matched_skill}（{skill_path}）。"
     )
     llm_cfg = _llm_settings(cfg)
     providers = _build_provider_queue(llm_cfg)
@@ -366,7 +393,7 @@ def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, s
                 if r.status_code == 200:
                     data = r.json()
                     reply = data["choices"][0]["message"]["content"]
-                    if _is_unusable_llm_reply(reply):
+                    if _is_unusable_llm_reply(reply) or _looks_mismatched_reply(prompt, reply):
                         errors.append(f"provider#{idx} unusable_reply={reply[:120]}")
                         continue
                     return reply
@@ -427,6 +454,7 @@ _CONTEXT_TEXT_NOISE = (
     "note: these files may or may not be relevant",
     "workspace paths:",
     "is directory a git repo:",
+    "previous conversation summary",
 )
 
 
@@ -480,6 +508,21 @@ def _content_to_text(content: Any) -> str:
     return ""
 
 
+def _extract_user_query_from_text(text: str) -> str:
+    """
+    如果文本里带 <user_query>...</user_query>，优先抽取这个真实问题。
+    """
+    s = (text or "").strip()
+    if not s:
+        return ""
+    m = re.findall(r"<user_query>\s*(.*?)\s*</user_query>", s, flags=re.IGNORECASE | re.DOTALL)
+    if m:
+        picked = (m[-1] or "").strip()
+        if picked:
+            return picked
+    return s
+
+
 def _messages_to_prompt(messages: List[Dict[str, Any]]) -> str:
     """
     优先取最后一条 user 消息；否则拼接全部文本。
@@ -488,7 +531,7 @@ def _messages_to_prompt(messages: List[Dict[str, Any]]) -> str:
     chunks: List[str] = []
     for m in messages or []:
         role = str(m.get("role", "")).strip()
-        content = _content_to_text(m.get("content", ""))
+        content = _extract_user_query_from_text(_content_to_text(m.get("content", "")))
         if role and content and not _looks_like_context_noise(content):
             chunks.append(f"{role}: {content}")
         if role == "user" and content and not _looks_like_context_noise(content):
@@ -531,7 +574,7 @@ async def _fallback_prompt_from_request_body(request: Request) -> str:
                 continue
             if str(m.get("role", "")).strip().lower() != "user":
                 continue
-            txt = _content_to_text(m.get("content", ""))
+            txt = _extract_user_query_from_text(_content_to_text(m.get("content", "")))
             if txt and not _looks_like_context_noise(txt):
                 user_texts.append(txt)
     if user_texts:
