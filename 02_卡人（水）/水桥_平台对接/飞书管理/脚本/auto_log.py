@@ -14,12 +14,18 @@ import subprocess
 import requests
 from datetime import datetime, timedelta
 import time
+import re
 
 # ============ 配置 ============
 CONFIG = {
     'APP_ID': 'cli_a48818290ef8100d',
     'APP_SECRET': 'dhjU0qWd5AzicGWTf4cTqhCWJOrnuCk4',
     'WIKI_TOKEN': 'JZiiwxEjHiRxouk8hSPcqBn6nrd',
+    # 按月份路由到对应日志文档，避免跨月误写
+    'MONTH_WIKI_TOKENS': {
+        1: 'JZiiwxEjHiRxouk8hSPcqBn6nrd',  # 2026年1月 运营团队启动
+        2: 'Jn2EwXP2OiTujNkAbNCcDcM7nRA',  # 2026年2月 （突破执行）
+    },
     'SERVICE_PORT': 5050,
     'TOKEN_FILE': os.path.join(os.path.dirname(__file__), '.feishu_tokens.json')
 }
@@ -217,20 +223,50 @@ def build_blocks(date_str, tasks):
     
     return blocks
 
-def write_log(token, date_str=None, tasks=None):
+
+def parse_month_from_date_str(date_str):
+    """从如 '2月25日' 提取月份整数"""
+    m = re.search(r'(\d+)\s*月', date_str or '')
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except ValueError:
+        return None
+
+
+def resolve_wiki_token_for_date(date_str, explicit_wiki_token=None):
+    """根据日期路由文档token；允许显式覆盖"""
+    if explicit_wiki_token:
+        return explicit_wiki_token
+    month = parse_month_from_date_str(date_str)
+    if month and month in CONFIG.get('MONTH_WIKI_TOKENS', {}):
+        return CONFIG['MONTH_WIKI_TOKENS'][month]
+    return CONFIG['WIKI_TOKEN']
+
+def write_log(token, date_str=None, tasks=None, wiki_token=None):
     """写入日志（倒序插入：新日期在最上面）"""
     headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
     
     if not date_str or not tasks:
         date_str, tasks = get_today_tasks()
+    target_wiki_token = resolve_wiki_token_for_date(date_str, wiki_token)
     
     # 获取文档ID
-    r = requests.get(f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={CONFIG['WIKI_TOKEN']}", 
+    r = requests.get(f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={target_wiki_token}", 
         headers=headers, timeout=30)
     if r.json().get('code') != 0:
         print(f"❌ 获取文档失败")
         return False
-    doc_id = r.json()['data']['node']['obj_token']
+    node = r.json()['data']['node']
+    doc_id = node['obj_token']
+    doc_title = node.get('title', '')
+
+    # 防串月：日期月份与文档标题不一致时拒绝写入
+    month = parse_month_from_date_str(date_str)
+    if month and f"{month}月" not in doc_title:
+        print(f"❌ 月份校验失败：{date_str} 不应写入《{doc_title}》")
+        return False
     
     # 获取blocks检查日期是否存在
     r = requests.get(f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks", 
@@ -261,16 +297,18 @@ def write_log(token, date_str=None, tasks=None):
         headers=headers, json={'children': content_blocks, 'index': insert_index}, timeout=30)
     
     if r.json().get('code') == 0:
-        print(f"✅ {date_str} 日志写入成功")
+        print(f"✅ {date_str} 日志写入成功 -> {doc_title}")
         return True
     else:
         print(f"❌ 写入失败: {r.json().get('msg')}")
         return False
 
-def open_result():
+def open_result(wiki_token=None):
     """打开飞书查看结果"""
-    subprocess.run(['open', WIKI_URL], capture_output=True)
-    print(f"📎 已打开飞书: {WIKI_URL}")
+    token = wiki_token or CONFIG['WIKI_TOKEN']
+    url = f"https://cunkebao.feishu.cn/wiki/{token}"
+    subprocess.run(['open', url], capture_output=True)
+    print(f"📎 已打开飞书: {url}")
 
 # ============ 主流程 ============
 def main():
@@ -289,14 +327,16 @@ def main():
         print("❌ 无法获取Token")
         sys.exit(1)
     
-    # 3. 写入日志
+    # 3. 写入日志（按月份自动路由）
     print("\n📝 Step 3: 写入日志...")
-    if not write_log(token):
+    date_str, tasks = get_today_tasks()
+    target_wiki_token = resolve_wiki_token_for_date(date_str)
+    if not write_log(token, date_str, tasks, target_wiki_token):
         sys.exit(1)
     
     # 4. 打开结果
     print("\n🎉 Step 4: 完成!")
-    open_result()
+    open_result(target_wiki_token)
     
     print("\n" + "=" * 50)
     print("✅ 全部完成!")

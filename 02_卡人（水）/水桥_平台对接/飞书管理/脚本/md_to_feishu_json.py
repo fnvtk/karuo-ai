@@ -35,11 +35,25 @@ def _image_placeholder(idx: int, path: str) -> dict:
     return {"__image__": path, "__index__": idx}
 
 
+def _clean_inline_markdown(text: str) -> str:
+    """清理常见行内 markdown 标记，输出更适合飞书阅读的纯文本。"""
+    t = text
+    # 粗体/斜体标记
+    t = re.sub(r"\*\*(.*?)\*\*", r"\1", t)
+    t = re.sub(r"__(.*?)__", r"\1", t)
+    t = re.sub(r"\*(.*?)\*", r"\1", t)
+    t = re.sub(r"_(.*?)_", r"\1", t)
+    # 行内代码保留内容，去掉反引号
+    t = re.sub(r"`([^`]+)`", r"\1", t)
+    return t.strip()
+
+
 def md_to_blocks(md: str, image_paths: list[str] | None = None) -> list:
     """将 Markdown 转为飞书 blocks"""
     blocks = []
     image_paths = image_paths or []
     img_idx = 0
+    first_h1_consumed = False
 
     in_code = False
     code_lines = []
@@ -73,16 +87,33 @@ def md_to_blocks(md: str, image_paths: list[str] | None = None) -> list:
 
         # 标题
         if line.startswith("# "):
-            blocks.append(_h1(line[2:].strip()))
+            # 避免正文和文档标题重复：默认跳过第一行 H1
+            if first_h1_consumed:
+                blocks.append(_h1(_clean_inline_markdown(line[2:].strip())))
+            else:
+                first_h1_consumed = True
         elif line.startswith("## "):
-            blocks.append(_h2(line[3:].strip()))
+            blocks.append(_h2(_clean_inline_markdown(line[3:].strip())))
         elif line.startswith("### "):
-            blocks.append(_h3(line[4:].strip()))
+            blocks.append(_h3(_clean_inline_markdown(line[4:].strip())))
         elif line.lstrip().startswith(">"):
             # 引用块转普通说明行，降低写入失败概率
-            blocks.append(_text(line.lstrip()[1:].strip()))
+            quote = line.lstrip()
+            while quote.startswith(">"):
+                quote = quote[1:].lstrip()
+            quote = _clean_inline_markdown(quote)
+            if quote:
+                blocks.append(_text(quote))
         elif line.strip():
-            blocks.append(_text(line.strip()))
+            raw = line.strip()
+            # 无序列表统一成 •，减少 markdown 观感噪音
+            if re.match(r"^[-*]\s+", raw):
+                raw = "• " + re.sub(r"^[-*]\s+", "", raw)
+            # 有序列表统一成 1）2）样式
+            raw = re.sub(r"^(\d+)\.\s+", r"\1）", raw)
+            cleaned = _clean_inline_markdown(raw)
+            if cleaned:
+                blocks.append(_text(cleaned))
 
     return blocks
 

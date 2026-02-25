@@ -10,7 +10,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
 
-from auto_log import get_token_silent, write_log, open_result
+from auto_log import get_token_silent, write_log, open_result, resolve_wiki_token_for_date
 
 DATE_STR = "2月25日"
 TASKS = [
@@ -46,5 +46,5 @@ if __name__ == "__main__":
     print("📝 写入飞书日志（2月25日）...")
     ok = write_log(token, DATE_STR, TASKS)
     if ok:
-        open_result()
+        open_result(resolve_wiki_token_for_date(DATE_STR))
     sys.exit(0 if ok else 1)
