@@ -35,6 +35,39 @@ def _image_placeholder(idx: int, path: str) -> dict:
     return {"__image__": path, "__index__": idx}
 
 
+def _sheet_table(values: list[list[str]]) -> dict:
+    rows = len(values)
+    cols = max((len(r) for r in values), default=0)
+    return {
+        "block_type": 30,
+        "sheet": {"row_size": rows, "column_size": cols},
+        "__sheet_values": values,
+    }
+
+
+def _parse_md_row(line: str) -> list[str]:
+    s = line.strip()
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    return [c.strip() for c in s.split("|")]
+
+
+def _is_md_table_sep(line: str) -> bool:
+    s = line.strip()
+    if not s:
+        return False
+    if s.startswith("|"):
+        s = s[1:]
+    if s.endswith("|"):
+        s = s[:-1]
+    parts = [p.strip() for p in s.split("|")]
+    if not parts:
+        return False
+    return all(re.match(r"^:?-{3,}:?$", p or "") for p in parts)
+
+
 def _clean_inline_markdown(text: str) -> str:
     """清理常见行内 markdown 标记，输出更适合飞书阅读的纯文本。"""
     t = text
@@ -57,7 +90,10 @@ def md_to_blocks(md: str, image_paths: list[str] | None = None) -> list:
 
     in_code = False
     code_lines = []
-    for line in md.split("\n"):
+    lines = md.split("\n")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
         if line.strip().startswith("```"):
             if in_code:
                 # 飞书 blocks 常对代码围栏/特殊格式更严格，这里转为普通文本行，提升美观与稳定性
@@ -66,9 +102,11 @@ def md_to_blocks(md: str, image_paths: list[str] | None = None) -> list:
                         blocks.append(_text(f"代码：{cl.strip()}"))
                 code_lines = []
             in_code = not in_code
+            i += 1
             continue
         if in_code:
             code_lines.append(line)
+            i += 1
             continue
 
         # 图片语法 ![](path)
@@ -79,10 +117,45 @@ def md_to_blocks(md: str, image_paths: list[str] | None = None) -> list:
                 path = image_paths[img_idx]
             blocks.append(_image_placeholder(img_idx, path))
             img_idx += 1
+            i += 1
+            continue
+
+        # Markdown 表格：表头 + 分隔行 + 数据行
+        if "|" in line and i + 1 < len(lines) and _is_md_table_sep(lines[i + 1]):
+            table_lines = [line]
+            j = i + 2
+            while j < len(lines):
+                raw = lines[j].strip()
+                if not raw or "|" not in raw:
+                    break
+                if raw.startswith("#") or raw.startswith(">") or raw.startswith("```"):
+                    break
+                table_lines.append(lines[j])
+                j += 1
+
+            rows = [_parse_md_row(x) for x in table_lines]
+            col_size = max((len(r) for r in rows), default=0)
+            if col_size > 0:
+                clean_rows: list[list[str]] = []
+                for r in rows:
+                    rr = [_clean_inline_markdown(c) for c in r]
+                    if len(rr) < col_size:
+                        rr.extend([""] * (col_size - len(rr)))
+                    clean_rows.append(rr[:col_size])
+
+                # 飞书空 sheet 创建限制：行列最大 9，超出时截断并提示
+                max_rows, max_cols = 9, 9
+                if len(clean_rows) > max_rows or col_size > max_cols:
+                    blocks.append(_text("提示：原表格超出飞书单块上限，已自动截断为 9x9。"))
+                clipped = [r[:max_cols] for r in clean_rows[:max_rows]]
+                blocks.append(_sheet_table(clipped))
+
+            i = j
             continue
 
         # 忽略 Markdown 水平分隔线（避免在飞书出现大量“---”影响观感）
         if line.strip() in {"---", "***", "___"}:
+            i += 1
             continue
 
         # 标题
@@ -114,6 +187,8 @@ def md_to_blocks(md: str, image_paths: list[str] | None = None) -> list:
             cleaned = _clean_inline_markdown(raw)
             if cleaned:
                 blocks.append(_text(cleaned))
+
+        i += 1
 
     return blocks
 
