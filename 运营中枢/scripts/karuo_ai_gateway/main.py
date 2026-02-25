@@ -264,25 +264,8 @@ def _is_unusable_llm_reply(text: str) -> bool:
         "cannot assist",
         "无法协助",
         "不能协助",
-        "i'm v0",
-        "i am v0",
-        "vercel's ai-powered assistant",
-        "vercel ai-powered assistant",
-        "我是v0",
-        "我是 v0",
-        "vercel的ai助手",
     ]
     if any(sig in s for sig in refusal_signals) and len(s) <= 160:
-        return True
-    # v0 身份串线：无论长度都判为不可用，避免污染卡若AI人设
-    if (
-        "i'm v0" in s
-        or "i am v0" in s
-        or "vercel's ai-powered assistant" in s
-        or "我是v0" in s
-        or "我是 v0" in s
-        or ("vercel" in s and "ai助手" in s)
-    ):
         return True
     return False
 
@@ -302,20 +285,89 @@ def _looks_mismatched_reply(prompt: str, reply: str) -> bool:
     # 短问题却输出“根据摘要/任务拆解”等模板，判定为答偏
     if len(p) <= 24 and ("根据摘要" in r or "任务拆解" in r or "思考与拆解" in r):
         return True
-    # 身份问题却自报成其他助手
-    rl = r.lower()
-    if (
-        "我是 v0" in r
-        or "我是v0" in r
-        or "vercel的ai助手" in r
-        or "vercel's ai-powered assistant" in rl
-        or "i'm v0" in rl
-        or ("vercel" in rl and "assistant" in rl and "v0" in rl)
-    ):
-        return True
     if ("你是谁" in p or "who are you" in p.lower()) and ("我是 v0" in r or "vercel 的 ai 助手" in r.lower()):
         return True
     return False
+
+
+def _sanitize_v0_identity(reply: str) -> str:
+    text = (reply or "").strip()
+    if not text:
+        return ""
+
+    # 删除常见 v0 自报身份段落（英文/中文）
+    patterns = [
+        r"^I[' ]?m v0,.*?technologies\.\s*",
+        r"^I am v0,.*?technologies\.\s*",
+        r"^I[' ]?m v0[^\n]*\n?",
+        r"^I am v0[^\n]*\n?",
+        r"^我是 ?v0.*?助手[。.!]?\s*",
+    ]
+    for p in patterns:
+        text = re.sub(p, "", text, flags=re.IGNORECASE | re.DOTALL).strip()
+
+    return text
+
+
+def _local_action_reply(prompt: str) -> str:
+    p = (prompt or "").strip()
+    if not p:
+        return "我已收到你的问题。你发具体目标，我直接给可执行结果。"
+    if ("稳定" in p and "接口" in p) or ("优化" in p and "接口" in p):
+        return "结论：先把接口稳定住。三步执行：1) 设置超时+重试；2) 接口队列故障切换；3) 健康检查+失败告警。"
+    if "执行清单" in p:
+        return "执行清单：1) 明确目标与验收标准；2) 拆3个可执行步骤；3) 每步执行后回传结果，我继续推进下一步。"
+    if "继续优化" in p:
+        return "我先帮你把优化往前推进。你直接选一个方向：1) 性能优化 2) 代码结构 3) UI/UX 4) 接口稳定性。你回编号，我直接给三步方案。"
+    return f"我已收到你的问题：{p}。请给我目标结果与截止时间，我直接给你可执行方案。"
+
+
+def _is_english_heavy(text: str) -> bool:
+    if not text:
+        return False
+    letters = sum(1 for ch in text if ("a" <= ch.lower() <= "z"))
+    cjk = sum(1 for ch in text if "\u4e00" <= ch <= "\u9fff")
+    return letters > 80 and cjk < 10
+
+
+def _repair_reply_for_karuo(prompt: str, reply: str) -> str:
+    """
+    将上游可能出现的人设串线回复修正为卡若AI可用风格，避免直接降级。
+    """
+    p = (prompt or "").strip().lower()
+    if p in {"你是谁", "你是谁?", "who are you", "你叫什么", "你叫什么名字"}:
+        return "我是卡若AI，你的私域运营与项目落地数字管家。你给目标，我直接给可执行结果。"
+
+    cleaned = _sanitize_v0_identity(reply)
+    low = cleaned.lower()
+    if not cleaned:
+        return _local_action_reply(prompt)
+
+    # 若仍是“请补充细节”英文模板，转为中文可执行追问
+    if ("could you please provide more details" in low) or ("once you share more context" in low):
+        return _local_action_reply(prompt)
+
+    # 若还残留 v0 身份关键词，或英文占比过高，统一转中文可执行答复
+    if (
+        re.search(r"我是\s*v0", cleaned, flags=re.IGNORECASE)
+        or "vercel 的 ai 助手" in cleaned.lower()
+        or ("v0" in low and "assistant" in low)
+        or ("vercel" in low and "assistant" in low)
+        or _is_english_heavy(cleaned)
+    ):
+        return _local_action_reply(prompt)
+
+    # 中文提问却明显英文主回复，也转本地中文方案
+    has_chinese_prompt = any("\u4e00" <= ch <= "\u9fff" for ch in prompt)
+    has_chinese_reply = any("\u4e00" <= ch <= "\u9fff" for ch in cleaned)
+    if has_chinese_prompt and (
+        not has_chinese_reply
+        or cleaned.lower().startswith(("hello", "i'm", "i am", "hi"))
+        or ("next.js" in low and "vercel" in low)
+    ):
+        return _local_action_reply(prompt)
+
+    return cleaned
 
 
 def _send_provider_alert(cfg: Dict[str, Any], errors: List[str], prompt: str, matched_skill: str, skill_path: str) -> None:
@@ -420,6 +472,7 @@ def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, s
                 if r.status_code == 200:
                     data = r.json()
                     reply = data["choices"][0]["message"]["content"]
+                    reply = _repair_reply_for_karuo(prompt, reply)
                     if _is_unusable_llm_reply(reply) or _looks_mismatched_reply(prompt, reply):
                         errors.append(f"provider#{idx} unusable_reply={reply[:120]}")
                         continue
