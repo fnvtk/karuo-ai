@@ -23,6 +23,19 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 - `KARUO_GATEWAY_CONFIG`：网关配置路径（默认 `config/gateway.yaml`）。
 - `KARUO_GATEWAY_SALT`：部门 Key 的 salt（用于 sha256 校验；不写入仓库）。
 
+### API Key 填写文件地址（本地）
+
+统一在这个文件填写（已预置 V0/Cursor 项）：
+
+- `运营中枢/scripts/karuo_ai_gateway/.env.api_keys.local`
+
+填完后执行：
+
+```bash
+cd /Users/karuo/Documents/个人/卡若AI/运营中枢/scripts/karuo_ai_gateway
+cp .env.api_keys.local .env
+```
+
 ### 接口排队与自动切换（稳定性）
 
 网关会按顺序尝试接口队列：

@@ -5,6 +5,7 @@
 - 网关代码入口：`运营中枢/scripts/karuo_ai_gateway/main.py`
 - 网关说明文档：`运营中枢/scripts/karuo_ai_gateway/README.md`
 - 网关配置样例：`运营中枢/scripts/karuo_ai_gateway/config/gateway.example.yaml`
+- API Key 本地填写文件：`运营中枢/scripts/karuo_ai_gateway/.env.api_keys.local`
 
 当前支持的接口变量（不含明文密钥）：
 
@@ -46,6 +47,10 @@ export SMTP_PORT="465"
 export SMTP_USER="zhiqun@qq.com"
 export SMTP_PASS="你的QQ邮箱授权码"
 ```
+
+如需直接本地填写，优先编辑：
+
+`/Users/karuo/Documents/个人/卡若AI/运营中枢/scripts/karuo_ai_gateway/.env.api_keys.local`
 
 ---
 
