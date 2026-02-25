@@ -21,6 +21,7 @@ import sys
 import json
 import argparse
 import re
+import time
 from pathlib import Path
 from datetime import datetime
 import requests
@@ -320,46 +321,112 @@ def _post_children(doc_token: str, headers: dict, children: list, index: int | N
         return {"code": -1, "msg": f"non-json response: {wr.text[:200]}"}
 
 
+def _col_letter(n: int) -> str:
+    s = ""
+    while True:
+        s = chr(65 + n % 26) + s
+        n = n // 26 - 1
+        if n < 0:
+            break
+    return s
+
+
+def _fill_sheet_block_values(headers: dict, sheet_block_token: str, values: list[list[str]]) -> bool:
+    if not sheet_block_token or "_" not in sheet_block_token or not values:
+        return False
+    spreadsheet_token, sheet_id = sheet_block_token.rsplit("_", 1)
+    rows = len(values)
+    cols = max((len(r) for r in values), default=0)
+    if rows <= 0 or cols <= 0:
+        return False
+    norm = [list(r) + [""] * (cols - len(r)) for r in values]
+    end_col = _col_letter(cols - 1)
+    range_str = f"{sheet_id}!A1:{end_col}{rows}"
+    url = f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{spreadsheet_token}/values"
+    payload = {"valueRange": {"range": range_str, "values": norm}}
+    r = requests.put(url, headers=headers, params={"valueInputOption": "RAW"}, json=payload, timeout=30)
+    try:
+        j = r.json()
+    except Exception:
+        j = {"code": -1, "msg": r.text[:160]}
+    if j.get("code") != 0:
+        print(f"⚠️ 表格数据写入失败: {j.get('msg')} range={range_str}")
+        return False
+    return True
+
+
+def _write_block_with_sheet_data(doc_token: str, headers: dict, block: dict) -> bool:
+    values = block.get("__sheet_values")
+    post_block = dict(block)
+    post_block.pop("__sheet_values", None)
+    res = _post_children(doc_token, headers, [post_block], None)
+    if res.get("code") != 0:
+        print(f"⚠️ 表格块写入失败: code={res.get('code')} msg={res.get('msg')}")
+        return False
+    children = ((res.get("data") or {}).get("children") or [])
+    if not children:
+        print("⚠️ 表格块写入成功但未返回 children，无法回填单元格")
+        return False
+    sheet_token = ((children[0].get("sheet") or {}).get("token") or "")
+    if not sheet_token:
+        print("⚠️ 未拿到 sheet token，无法写入表格内容")
+        return False
+    ok = _fill_sheet_block_values(headers, sheet_token, values or [])
+    if ok:
+        print("✅ 表格块已写入并回填数据")
+    return ok
+
+
+def _write_batch_with_fallback(doc_token: str, headers: dict, batch: list, total_valid_len: int) -> None:
+    res = _post_children(doc_token, headers, batch, None)
+    if res.get("code") != 0:
+        debug = res.get("debug", "")
+        print(f"⚠️ 写入失败: code={res.get('code')} msg={res.get('msg')} debug={debug}")
+        if any(b.get("block_type") in (12, 18) for b in batch):
+            safe = [b for b in batch if b.get("block_type") not in (12, 18)]
+            if safe:
+                res2 = _post_children(doc_token, headers, safe, None)
+                if res2.get("code") == 0:
+                    print("⚠️ 图片块跳过，已写文本（图片已上传到文档素材）")
+                    time.sleep(0.35)
+                    return
+
+        print("⚠️ 进入逐块写入降级模式：定位并跳过非法块")
+        for b in batch:
+            if b.get("block_type") in (12, 18):
+                continue
+            r1 = _post_children(doc_token, headers, [b], None)
+            if r1.get("code") == 0:
+                time.sleep(0.35)
+                continue
+            c = _get_text_content(b)
+            preview = (c[:60] + "...") if c and len(c) > 60 else (c or "")
+            print(f"⚠️ 跳过非法块: code={r1.get('code')} msg={r1.get('msg')} preview={preview!r}")
+            time.sleep(0.35)
+        return
+    if total_valid_len > 50:
+        time.sleep(0.35)
+
+
 def write_blocks(doc_token: str, headers: dict, blocks: list) -> None:
     valid = sanitize_blocks([b for b in blocks if b is not None])
-    for i in range(0, len(valid), 50):
-        batch = valid[i : i + 50]
-        res = _post_children(doc_token, headers, batch, None)
-        if res.get("code") != 0:
-            # 含图片块时常见会失败；此处打印详情并降级为“只写文本块”
-            debug = res.get("debug", "")
-            print(f"⚠️ 写入失败: code={res.get('code')} msg={res.get('msg')} debug={debug}")
-            if any(b.get("block_type") in (12, 18) for b in batch):
-                safe = [b for b in batch if b.get("block_type") not in (12, 18)]
-                if safe:
-                    res2 = _post_children(doc_token, headers, safe, None)
-                    if res2.get("code") == 0:
-                        print("⚠️ 图片块跳过，已写文本（图片已上传到文档素材）")
-                        import time
-                        time.sleep(0.35)
-                        continue
+    pending = []
 
-            # 仍失败：逐块写入，跳过坏块，保证整体可落地
-            print("⚠️ 进入逐块写入降级模式：定位并跳过非法块")
-            for b in batch:
-                if b.get("block_type") in (12, 18):
-                    # 图片块依然不强行写，避免整批失败
-                    continue
-                r1 = _post_children(doc_token, headers, [b], None)
-                if r1.get("code") == 0:
-                    import time
-                    time.sleep(0.35)
-                    continue
-                # 这一个块不合法，跳过
-                c = _get_text_content(b)
-                preview = (c[:60] + "...") if c and len(c) > 60 else (c or "")
-                print(f"⚠️ 跳过非法块: code={r1.get('code')} msg={r1.get('msg')} preview={preview!r}")
-                import time
-                time.sleep(0.35)
-            continue
-        if len(valid) > 50:
-            import time
+    def flush_pending():
+        nonlocal pending
+        for i in range(0, len(pending), 50):
+            batch = pending[i : i + 50]
+            _write_batch_with_fallback(doc_token, headers, batch, len(valid))
+        pending = []
+
+    for b in valid:
+        if isinstance(b, dict) and "__sheet_values" in b and b.get("block_type") == 30:
+            flush_pending()
+            _write_block_with_sheet_data(doc_token, headers, b)
             time.sleep(0.35)
+            continue
+        pending.append(b)
+    flush_pending()
 
 
 def send_webhook(webhook: str, text: str) -> None:
