@@ -72,3 +72,38 @@ export SMTP_PASS="你的QQ邮箱授权码"
 2. 同时让全部接口不可用，确认收到 `zhiqun@qq.com` 告警。
 3. 查看网关响应：不应出现空白回复或长时间卡死。
 
+---
+
+## 6. 本机全量模式（不走 NAS / 不走服务器）
+
+### 6.1 域名映射到本机
+
+在本机 `/etc/hosts` 增加一行（默认用本机回环地址）：
+
+```text
+127.0.0.1 kr-ai.quwanzhi.com
+```
+
+> 如你要改成其他本机网卡地址（例如你说的 `121.0.0.1`），把 `127.0.0.1` 替换成对应地址即可。
+
+### 6.2 启动本机网关
+
+```bash
+cd /Users/karuo/Documents/个人/卡若AI/运营中枢/scripts/karuo_ai_gateway
+cp .env.api_keys.local .env
+set -a; source .env; set +a
+.venv/bin/python -m uvicorn main:app --host 127.0.0.1 --port 18080
+```
+
+### 6.3 本机调用地址
+
+- 健康检查：`http://127.0.0.1:18080/v1/health`
+- 对话接口：`http://127.0.0.1:18080/v1/chat/completions`
+- 域名模式：`http://kr-ai.quwanzhi.com:18080/v1/chat/completions`
+
+### 6.4 Cursor 配置
+
+- Override OpenAI Base URL：`http://kr-ai.quwanzhi.com:18080`
+- OpenAI API Key：`karuo-stable-20260225`
+- Model：`karuo-ai`
+
