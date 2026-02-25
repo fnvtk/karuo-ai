@@ -184,57 +184,56 @@ def resolve_doc_token(node_token: str, headers: dict) -> str:
 
 
 def clear_doc_blocks(doc_token: str, headers: dict) -> bool:
-    """清空文档根节点下直接子块（分页拉取 + 分批删除）"""
-    all_items = []
-    page_token = None
-    while True:
-        params = {"page_size": 100}
-        if page_token:
-            params["page_token"] = page_token
-        r = requests.get(
-            f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_token}/blocks",
-            headers=headers, params=params, timeout=30)
-        j = r.json()
-        if j.get("code") != 0:
-            print(f"⚠️ 获取 blocks 失败: {j.get('msg')}")
-            return False
-        data = j.get("data", {}) or {}
-        all_items.extend(data.get("items", []) or [])
-        page_token = data.get("page_token")
-        if not page_token:
-            break
+    """清空文档根节点下直接子块（按索引区间批量删除，兼容当前租户）"""
+    max_rounds = 30
+    delete_url = (
+        f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_token}/blocks/{doc_token}/children/batch_delete"
+    )
 
-    child_ids = [b["block_id"] for b in all_items if b.get("parent_id") == doc_token and b.get("block_id")]
-    if not child_ids:
-        return True
-    # 优先批量删除（快）
-    batch_ok = True
-    for i in range(0, len(child_ids), 50):
-        batch = child_ids[i : i + 50]
+    for _ in range(max_rounds):
+        # 先统计根节点直系子块数量（分页拉取）
+        all_items = []
+        page_token = None
+        while True:
+            params = {"page_size": 200}
+            if page_token:
+                params["page_token"] = page_token
+            r = requests.get(
+                f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_token}/blocks",
+                headers=headers,
+                params=params,
+                timeout=30,
+            )
+            j = r.json()
+            if j.get("code") != 0:
+                print(f"⚠️ 获取 blocks 失败: {j.get('msg')}")
+                return False
+            data = j.get("data", {}) or {}
+            all_items.extend(data.get("items", []) or [])
+            page_token = data.get("page_token")
+            if not page_token:
+                break
+
+        child_count = sum(1 for b in all_items if b.get("parent_id") == doc_token)
+        if child_count <= 1:
+            # 飞书通常至少保留 1 个占位子块，<=1 即可视为清空
+            return True
+
+        end_index = min(199, child_count - 1)
         rd = requests.delete(
-            f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_token}/blocks/{doc_token}/children/batch_delete",
-            headers=headers, json={"block_id_list": batch}, timeout=30)
+            delete_url,
+            headers=headers,
+            json={"start_index": 0, "end_index": end_index},
+            timeout=30,
+        )
         jd = rd.json()
         if jd.get("code") != 0:
-            batch_ok = False
-            print(f"⚠️ 批量清空失败: {jd.get('msg')}，改用逐块删除兜底")
-            break
-    if batch_ok:
-        return True
-
-    # 兜底：逐块删除（慢但兼容性更高）
-    for bid in child_ids:
-        rd = requests.delete(
-            f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_token}/blocks/{bid}",
-            headers=headers, timeout=30)
-        try:
-            jd = rd.json()
-        except Exception:
-            jd = {}
-        if jd.get("code") not in (0, None):
-            print(f"⚠️ 逐块删除失败: {bid} msg={jd.get('msg', rd.text[:120])}")
+            print(f"⚠️ 批量清空失败: {jd.get('msg')}")
             return False
-    return True
+        time.sleep(0.2)
+
+    print("⚠️ 清空轮次超限，文档可能未完全清空")
+    return False
 
 
 def replace_image_placeholders(blocks: list, file_tokens: list[str | None], image_paths: list[str]) -> list:
