@@ -287,6 +287,60 @@ def _messages_to_prompt(messages: List[Dict[str, Any]]) -> str:
     return (last_user or ("\n".join(chunks))).strip()
 
 
+def _deep_extract_text(node: Any, out: List[str]) -> None:
+    """
+    从任意 JSON 结构里尽量提取可读文本。
+    """
+    if isinstance(node, str):
+        s = node.strip()
+        if s:
+            out.append(s)
+        return
+    if isinstance(node, dict):
+        # 优先常见字段
+        for k in ("text", "input_text", "output_text", "content"):
+            if k in node:
+                _deep_extract_text(node.get(k), out)
+        return
+    if isinstance(node, list):
+        for it in node:
+            _deep_extract_text(it, out)
+
+
+async def _fallback_prompt_from_request_body(request: Request) -> str:
+    """
+    当标准 messages 解析失败时，从原始 body 尽力恢复用户文本。
+    """
+    try:
+        raw = await request.body()
+        if not raw:
+            return ""
+        data = json.loads(raw.decode("utf-8", errors="replace"))
+    except Exception:
+        return ""
+
+    texts: List[str] = []
+
+    # 优先取 messages
+    msgs = data.get("messages")
+    if isinstance(msgs, list):
+        _deep_extract_text(msgs, texts)
+
+    # 兼容 responses API 风格 input
+    if not texts:
+        _deep_extract_text(data.get("input"), texts)
+
+    prompt = "\n".join(t for t in texts if t).strip()
+    if prompt:
+        return prompt
+
+    # 只有附件时兜底，避免 empty messages
+    body_str = json.dumps(data, ensure_ascii=False)
+    if any(k in body_str for k in ["image_url", "input_image", "image", "file"]):
+        return "[用户发送了附件，请结合上下文处理]"
+    return ""
+
+
 def _template_reply(prompt: str, matched_skill: str, skill_path: str, error: str = "") -> str:
     """未配置 LLM 或调用失败时返回模板回复（仍含复盘格式）。"""
     err = f"\n（当前未配置 OPENAI_API_KEY 或调用失败：{error}）" if error else ""
@@ -451,6 +505,8 @@ async def openai_chat_completions(req: OpenAIChatCompletionsRequest, request: Re
     tenant_name = str((tenant or {}).get("name", "")).strip()
 
     prompt = _messages_to_prompt(req.messages)
+    if not prompt:
+        prompt = await _fallback_prompt_from_request_body(request)
     if not prompt:
         raise HTTPException(status_code=400, detail="empty messages")
 
