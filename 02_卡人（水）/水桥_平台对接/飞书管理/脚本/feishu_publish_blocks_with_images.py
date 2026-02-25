@@ -207,6 +207,8 @@ def clear_doc_blocks(doc_token: str, headers: dict) -> bool:
     child_ids = [b["block_id"] for b in all_items if b.get("parent_id") == doc_token and b.get("block_id")]
     if not child_ids:
         return True
+    # 优先批量删除（快）
+    batch_ok = True
     for i in range(0, len(child_ids), 50):
         batch = child_ids[i : i + 50]
         rd = requests.delete(
@@ -214,7 +216,23 @@ def clear_doc_blocks(doc_token: str, headers: dict) -> bool:
             headers=headers, json={"block_id_list": batch}, timeout=30)
         jd = rd.json()
         if jd.get("code") != 0:
-            print(f"⚠️ 清空失败: {jd.get('msg')}")
+            batch_ok = False
+            print(f"⚠️ 批量清空失败: {jd.get('msg')}，改用逐块删除兜底")
+            break
+    if batch_ok:
+        return True
+
+    # 兜底：逐块删除（慢但兼容性更高）
+    for bid in child_ids:
+        rd = requests.delete(
+            f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_token}/blocks/{bid}",
+            headers=headers, timeout=30)
+        try:
+            jd = rd.json()
+        except Exception:
+            jd = {}
+        if jd.get("code") not in (0, None):
+            print(f"⚠️ 逐块删除失败: {bid} msg={jd.get('msg', rd.text[:120])}")
             return False
     return True
 
