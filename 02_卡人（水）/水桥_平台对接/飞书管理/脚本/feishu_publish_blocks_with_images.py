@@ -135,20 +135,24 @@ def _is_similar_title(a: str, b: str) -> bool:
     return False
 
 
-def find_existing_node_by_title(parent_token: str, title: str, headers: dict) -> tuple[str | None, str | None, str | None]:
-    """在父节点下查找同名/相似标题文档，返回(doc_token,node_token,node_title)"""
+def find_existing_node_by_title(
+    parent_token: str, title: str, headers: dict
+) -> tuple[str | None, str | None, str | None, str | None]:
+    """在父节点下查找同名/相似标题文档，返回(doc_token,node_token,node_title,space_id)"""
     r = requests.get(
         f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={parent_token}",
         headers=headers, timeout=30)
     j = r.json()
     if j.get("code") != 0:
-        return None, None, None
+        return None, None, None, None
     node = j["data"]["node"]
     space_id = node.get("space_id") or (node.get("space") or {}).get("space_id") or node.get("origin_space_id")
     if not space_id:
-        return None, None, None
+        return None, None, None, None
 
     page_token = None
+    best = None
+    best_score = -1
     while True:
         params = {"parent_node_token": parent_token, "page_size": 50}
         if page_token:
@@ -158,19 +162,54 @@ def find_existing_node_by_title(parent_token: str, title: str, headers: dict) ->
             headers=headers, params=params, timeout=30)
         nj = nr.json()
         if nj.get("code") != 0:
-            return None, None, None
+            return None, None, None, None
         data = nj.get("data", {}) or {}
         nodes = data.get("nodes", []) or data.get("items", []) or []
         for n in nodes:
             node_title = n.get("title", "") or n.get("node", {}).get("title", "")
-            if _is_similar_title(node_title, title):
-                obj = n.get("obj_token")
-                node_token = n.get("node_token")
-                return (obj or node_token), node_token, node_title
+            if not _is_similar_title(node_title, title):
+                continue
+            obj = n.get("obj_token")
+            node_token = n.get("node_token")
+            na, nb = _normalize_title(node_title), _normalize_title(title)
+            score = 100 if na == nb else 60 + min(len(na), len(nb))
+            if score > best_score:
+                best_score = score
+                best = ((obj or node_token), node_token, node_title, space_id)
         page_token = data.get("page_token")
         if not page_token:
             break
-    return None, None, None
+    return best or (None, None, None, space_id)
+
+
+def rename_node_title(space_id: str, node_token: str, new_title: str, headers: dict) -> bool:
+    """命中相似标题后，优先把节点标题改成目标标题。"""
+    if not space_id or not node_token or not new_title:
+        return False
+    r = requests.patch(
+        f"https://open.feishu.cn/open-apis/wiki/v2/spaces/{space_id}/nodes/{node_token}",
+        headers=headers,
+        json={"title": new_title},
+        timeout=30,
+    )
+    try:
+        j = r.json()
+    except Exception:
+        return False
+    return j.get("code") == 0
+
+
+def resolve_image_full_path(raw_path: str, json_base_dir: Path, source_md_dir: Path | None) -> Path:
+    p = Path(raw_path)
+    if p.is_absolute() and p.exists():
+        return p.resolve()
+    candidates = [json_base_dir / p]
+    if source_md_dir:
+        candidates.append(source_md_dir / p)
+    for c in candidates:
+        if c.exists():
+            return c.resolve()
+    return (json_base_dir / p).resolve()
 
 
 def resolve_doc_token(node_token: str, headers: dict) -> str:
@@ -461,6 +500,8 @@ def main():
     data = json.loads(json_path.read_text(encoding="utf-8"))
     blocks = data.get("children", [])
     image_paths = data.get("image_paths", []) or []
+    source_md = (data.get("source") or "").strip()
+    source_md_dir = Path(source_md).expanduser().resolve().parent if source_md else None
 
     token = fwd.get_token(args.target or args.parent)
     if not token:
@@ -484,10 +525,15 @@ def main():
             print("⚠️ 清空失败，将以追加方式更新（仍不会新建重复文档）")
     else:
         # 默认：先查同名/相似标题，命中则更新，不再新建
-        found_doc, found_node, found_title = find_existing_node_by_title(args.parent, args.title, headers)
+        found_doc, found_node, found_title, found_space = find_existing_node_by_title(args.parent, args.title, headers)
         if found_doc and found_node:
             doc_token, node_token = found_doc, found_node
             print(f"📋 命中相似标题，改为更新: {found_title}")
+            if found_title != args.title and found_space:
+                if rename_node_title(found_space, node_token, args.title, headers):
+                    print(f"✅ 已将文档重命名为：{args.title}")
+                else:
+                    print("⚠️ 文档重命名失败，继续按原文档更新内容")
             if clear_doc_blocks(doc_token, headers):
                 print("✅ 已清空原内容")
             else:
@@ -499,9 +545,7 @@ def main():
     # 上传图片
     file_tokens = []
     for p in image_paths:
-        pth = Path(p)
-        full = (base_dir / pth) if not pth.is_absolute() else pth
-        full = full.resolve()
+        full = resolve_image_full_path(p, base_dir, source_md_dir)
         ft = upload_image_to_doc(token, doc_token, full)
         file_tokens.append(ft)
         if ft:
