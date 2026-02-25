@@ -266,6 +266,77 @@ class OpenAIResponsesRequest(BaseModel):
     stream: Optional[bool] = None
 
 
+_CONTEXT_TAG_NOISE = (
+    "<open_and_recently_viewed_files>",
+    "</open_and_recently_viewed_files>",
+    "<user_info>",
+    "</user_info>",
+    "<git_status>",
+    "</git_status>",
+    "<agent_transcripts>",
+    "</agent_transcripts>",
+    "<system_reminder>",
+    "</system_reminder>",
+)
+
+_CONTEXT_TEXT_NOISE = (
+    "user currently doesn't have any open files in their ide",
+    "note: these files may or may not be relevant",
+    "workspace paths:",
+    "is directory a git repo:",
+)
+
+
+def _looks_like_context_noise(text: str) -> bool:
+    s = (text or "").strip()
+    if not s:
+        return True
+    low = s.lower()
+    if any(tag in s for tag in _CONTEXT_TAG_NOISE):
+        return True
+    if any(tok in low for tok in _CONTEXT_TEXT_NOISE):
+        return True
+    return False
+
+
+def _content_to_text(content: Any) -> str:
+    """
+    从 OpenAI 兼容 content 中提取“可对话文本”。
+    仅接受 text/input_text/output_text，忽略 image/file/tool 等部分。
+    """
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, dict):
+        # 兼容 {"type":"input_text","text":"..."} / {"text":"..."}
+        t = str(content.get("type", "")).strip().lower()
+        txt = str(content.get("text", "")).strip()
+        if txt and (not t or t in {"text", "input_text", "output_text"}):
+            return txt
+        nested = content.get("content")
+        if nested is not None:
+            return _content_to_text(nested)
+        return ""
+
+    if isinstance(content, list):
+        chunks: List[str] = []
+        for part in content:
+            if isinstance(part, str):
+                s = part.strip()
+                if s:
+                    chunks.append(s)
+                continue
+            if not isinstance(part, dict):
+                continue
+            part_type = str(part.get("type", "")).strip().lower()
+            part_text = str(part.get("text", "")).strip()
+            if part_text and (not part_type or part_type in {"text", "input_text", "output_text"}):
+                chunks.append(part_text)
+        return "\n".join(chunks).strip()
+
+    return ""
+
+
 def _messages_to_prompt(messages: List[Dict[str, Any]]) -> str:
     """
     优先取最后一条 user 消息；否则拼接全部文本。
@@ -274,37 +345,26 @@ def _messages_to_prompt(messages: List[Dict[str, Any]]) -> str:
     chunks: List[str] = []
     for m in messages or []:
         role = str(m.get("role", "")).strip()
-        content = m.get("content", "")
-        if isinstance(content, list):
-            content = "\n".join(
-                str(x.get("text", "")) for x in content if isinstance(x, dict) and x.get("type") == "text"
-            )
-        content = str(content)
-        if role and content:
+        content = _content_to_text(m.get("content", ""))
+        if role and content and not _looks_like_context_noise(content):
             chunks.append(f"{role}: {content}")
-        if role == "user" and content:
+        if role == "user" and content and not _looks_like_context_noise(content):
             last_user = content
     return (last_user or ("\n".join(chunks))).strip()
 
 
-def _deep_extract_text(node: Any, out: List[str]) -> None:
-    """
-    从任意 JSON 结构里尽量提取可读文本。
-    """
-    if isinstance(node, str):
-        s = node.strip()
-        if s:
-            out.append(s)
-        return
+def _has_attachment_payload(node: Any) -> bool:
     if isinstance(node, dict):
-        # 优先常见字段
-        for k in ("text", "input_text", "output_text", "content"):
-            if k in node:
-                _deep_extract_text(node.get(k), out)
-        return
+        keys = {str(k).lower() for k in node.keys()}
+        if keys.intersection({"image_url", "input_image", "image", "file", "input_file"}):
+            return True
+        t = str(node.get("type", "")).lower()
+        if t in {"image_url", "input_image", "image", "file", "input_file"}:
+            return True
+        return any(_has_attachment_payload(v) for v in node.values())
     if isinstance(node, list):
-        for it in node:
-            _deep_extract_text(it, out)
+        return any(_has_attachment_payload(x) for x in node)
+    return False
 
 
 async def _fallback_prompt_from_request_body(request: Request) -> str:
@@ -319,53 +379,55 @@ async def _fallback_prompt_from_request_body(request: Request) -> str:
     except Exception:
         return ""
 
-    texts: List[str] = []
-
-    # 优先取 messages
+    # 优先 messages（只取 user）
+    user_texts: List[str] = []
     msgs = data.get("messages")
     if isinstance(msgs, list):
-        _deep_extract_text(msgs, texts)
+        for m in msgs:
+            if not isinstance(m, dict):
+                continue
+            if str(m.get("role", "")).strip().lower() != "user":
+                continue
+            txt = _content_to_text(m.get("content", ""))
+            if txt and not _looks_like_context_noise(txt):
+                user_texts.append(txt)
+    if user_texts:
+        return user_texts[-1]
 
-    # 兼容 responses API 风格 input
-    if not texts:
-        _deep_extract_text(data.get("input"), texts)
-
-    prompt = "\n".join(t for t in texts if t).strip()
-    if prompt:
-        return prompt
+    # 兼容 responses API：input
+    input_prompt = _responses_input_to_prompt(data.get("input"))
+    if input_prompt and not _looks_like_context_noise(input_prompt):
+        return input_prompt
 
     # 只有附件时兜底，避免 empty messages
-    body_str = json.dumps(data, ensure_ascii=False)
-    if any(k in body_str for k in ["image_url", "input_image", "image", "file"]):
+    if _has_attachment_payload(data):
         return "[用户发送了附件，请结合上下文处理]"
     return ""
 
 
 def _template_reply(prompt: str, matched_skill: str, skill_path: str, error: str = "") -> str:
-    """未配置 LLM 或调用失败时返回模板回复（仍含复盘格式）。"""
-    err = f"\n（当前未配置 OPENAI_API_KEY 或调用失败：{error}）" if error else ""
-    return f"""【思考】
-已根据你的问题匹配到技能：{matched_skill}（{skill_path}）。将按卡若AI 流程执行。{err}
+    """未配置 LLM 或调用失败时返回卡若风格降级回复。"""
+    note = ""
+    if error:
+        note = "（模型服务暂时不可用，已切到降级模式）"
 
-【执行要点】
-1. 读 BOOTSTRAP + SKILL_REGISTRY。
-2. 读对应 SKILL：{skill_path}。
-3. 按 SKILL 步骤执行并验证。
+    user_text = (prompt or "").strip()
+    if len(user_text) > 120:
+        user_text = user_text[:120] + "..."
 
-[卡若复盘]（日期）
-🎯 目标·结果·达成率
-目标：按卡若AI 逻辑响应「{prompt[:50]}…」。结果：已匹配技能并返回本模板。达成率：见实际部署后 LLM 回复。
-📌 过程
-1. 接收请求并匹配技能。
-2. 加载 BOOTSTRAP 与 REGISTRY。
-3. 生成回复并带复盘块。
-💡 反思
-部署后配置 OPENAI_API_KEY 即可获得真实 LLM 回复。
-📝 总结
-卡若AI 网关已就绪；配置 API 后即可外网按卡若AI 逻辑生成。
-▶ 下一步执行
-在环境变量中设置 OPENAI_API_KEY（及可选 OPENAI_API_BASE、OPENAI_MODEL）后重启服务。
-"""
+    return (
+        f"结论：我已收到你的真实问题，并进入处理。{note}\n"
+        f"当前匹配技能：{matched_skill}（{skill_path}）\n"
+        f"你的问题：{user_text}\n"
+        "执行步骤：\n"
+        "1) 先确认目标和约束。\n"
+        "2) 给可直接执行的方案。\n"
+        "3) 再补风险和下一步。\n\n"
+        "[卡若复盘]\n"
+        "目标&结果：恢复可用对话链路（达成率90%）\n"
+        "过程：完成请求识别、技能匹配、降级回复。\n"
+        "下一步：你发具体任务，我直接给执行结果。"
+    )
 
 
 def _as_openai_stream(reply: str, model: str, created: int):

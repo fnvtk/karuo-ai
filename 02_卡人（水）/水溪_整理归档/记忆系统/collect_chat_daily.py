@@ -15,6 +15,8 @@
 import re
 import shutil
 import sys
+import json
+import hashlib
 from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +26,8 @@ CURSOR_PROJECTS = Path.home() / ".cursor" / "projects"
 DOC_LIB = KARUO_AI_ROOT / "02_卡人（水）" / "水溪_整理归档" / "对话归档"
 STRUCTURED = KARUO_AI_ROOT / "02_卡人（水）" / "水溪_整理归档" / "记忆系统" / "structured"
 STAMP_FILE = STRUCTURED / "last_chat_collect_date.txt"
+PROCESSED_FILE = STRUCTURED / "processed_sessions.json"
+HEALTH_FILE = STRUCTURED / "memory_health.json"
 
 # 项目目录名 -> 工作台中文名（未列出的用目录名）
 PROJECT_TO_WORKSPACE_CN = {
@@ -66,6 +70,10 @@ KEYWORD_TO_SKILL = [
 def today():
     return datetime.now().strftime("%Y-%m-%d")
 
+
+def now_ts():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 def already_done_today():
     if not STAMP_FILE.exists():
         return False
@@ -95,6 +103,78 @@ def sanitize_filename(s):
     """使字符串可作为文件名一部分。"""
     s = re.sub(r'[\\/:*?"<>|\n\r\t]+', "_", s)
     return s.strip("._ ")[:80] or "未命名"
+
+
+def load_processed():
+    if not PROCESSED_FILE.exists():
+        return {"version": "1.0", "updated": "", "items": {}}
+    try:
+        return json.loads(PROCESSED_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {"version": "1.0", "updated": "", "items": {}}
+
+
+def save_processed(state):
+    state["updated"] = now_ts()
+    STRUCTURED.mkdir(parents=True, exist_ok=True)
+    PROCESSED_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def file_signature(path: Path):
+    """
+    幂等签名：路径 + 大小 + 修改时间 + 前后各 8KB 的 hash。
+    避免重复复制同一份对话。
+    """
+    try:
+        st = path.stat()
+        size = st.st_size
+        mtime = int(st.st_mtime)
+        with path.open("rb") as f:
+            head = f.read(8192)
+            if size > 8192:
+                f.seek(max(0, size - 8192))
+                tail = f.read(8192)
+            else:
+                tail = b""
+        h = hashlib.sha1(head + b"||" + tail).hexdigest()
+        return f"{size}:{mtime}:{h}"
+    except Exception:
+        return ""
+
+
+def redact_sensitive(text):
+    """
+    归档前脱敏，避免把明文密钥/密码写入记忆系统。
+    返回：(脱敏文本, 命中次数)
+    """
+    rules = [
+        # 常见 token / key
+        (re.compile(r"ghp_[A-Za-z0-9]{20,}"), "ghp_***"),
+        (re.compile(r"AKID[0-9A-Za-z]{16,}"), "AKID***"),
+        (re.compile(r"LTAI[0-9A-Za-z]{12,}"), "LTAI***"),
+        # key=value / key: value 形式
+        (re.compile(r"(?i)\b(api[_-]?key|token|secret|password|passwd|pwd)\b\s*[:=]\s*([^\s,;\"']+)"), r"\1=***"),
+        # URL 凭证 user:pass@
+        (re.compile(r"://([^:/\s]+):([^@/\s]+)@"), r"://\1:***@"),
+    ]
+
+    hits = 0
+    out = text
+    for pattern, repl in rules:
+        out, n = pattern.subn(repl, out)
+        hits += n
+    return out, hits
+
+
+def copy_redacted(src: Path, dest: Path):
+    try:
+        raw = src.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        shutil.copy2(src, dest)
+        return 0
+    safe, hits = redact_sensitive(raw)
+    dest.write_text(safe, encoding="utf-8")
+    return hits
 
 def collect_all_transcripts():
     out = []
@@ -131,7 +211,7 @@ def match_skill(sample):
             return KARUO_AI_ROOT / skill_path
     return None
 
-def process_items_for_date(items, day_iso, write_stamp=True):
+def process_items_for_date(items, day_iso, processed_state, write_stamp=True):
     """对给定日期对应的 items 做复制与汇总。day_iso=YYYY-MM-DD。"""
     STRUCTURED.mkdir(parents=True, exist_ok=True)
     day_dir = DOC_LIB / day_iso
@@ -140,7 +220,18 @@ def process_items_for_date(items, day_iso, write_stamp=True):
     by_workspace = defaultdict(list)  # 工作台中文名 -> [(中文名, 文件名)]
     copied_skill = set()
 
+    copied_count = 0
+    skipped_count = 0
+    redacted_hits = 0
+
     for item in items:
+        sig = file_signature(item["path"])
+        state_key = f"{item['project']}::{item['name']}"
+        old_sig = (processed_state.get("items") or {}).get(state_key, "")
+        if sig and old_sig == sig:
+            skipped_count += 1
+            continue
+
         cn_title = get_chinese_title(item["path"])
         safe_title = sanitize_filename(cn_title)
         workspace_cn_name = workspace_cn(item["project"])
@@ -150,11 +241,12 @@ def process_items_for_date(items, day_iso, write_stamp=True):
         proj_sub.mkdir(parents=True, exist_ok=True)
         dest_lib = proj_sub / dest_name
         try:
-            shutil.copy2(item["path"], dest_lib)
+            redacted_hits += copy_redacted(item["path"], dest_lib)
         except Exception as e:
             print(f"[collect_chat_daily] 复制失败 {item['path']}: {e}")
             continue
         by_workspace[workspace_cn_name].append((cn_title, dest_name))
+        copied_count += 1
 
         sample = sample_content(item["path"])
         skill_dir = match_skill(sample)
@@ -162,10 +254,13 @@ def process_items_for_date(items, day_iso, write_stamp=True):
             skill_dir.mkdir(parents=True, exist_ok=True)
             dest_skill = skill_dir / dest_name
             try:
-                shutil.copy2(item["path"], dest_skill)
+                redacted_hits += copy_redacted(item["path"], dest_skill)
                 copied_skill.add(str(skill_dir))
             except Exception:
                 pass
+
+        if sig:
+            processed_state.setdefault("items", {})[state_key] = sig
 
     # 本日汇总：中文名称 | 所属工作台 | 对话文件
     summary_lines = [
@@ -174,7 +269,10 @@ def process_items_for_date(items, day_iso, write_stamp=True):
         "> 来源：Cursor Agent 对话记录；名称取自首条用户消息，按工作台归类。",
         "",
         "## 统计",
-        f"- 对话数：{len(items)}",
+        f"- 扫描对话数：{len(items)}",
+        f"- 新增归档：{copied_count}",
+        f"- 幂等跳过：{skipped_count}",
+        f"- 脱敏命中：{redacted_hits}",
         f"- 工作台数：{len(by_workspace)}",
         f"- 已归类到 Skill：{len(copied_skill)} 个目录",
         "",
@@ -190,27 +288,82 @@ def process_items_for_date(items, day_iso, write_stamp=True):
 
     (day_dir / "本日汇总.md").write_text("\n".join(summary_lines), encoding="utf-8")
 
+    HEALTH_FILE.write_text(
+        json.dumps(
+            {
+                "updated": now_ts(),
+                "date": day_iso,
+                "scan_total": len(items),
+                "copied_new": copied_count,
+                "skipped_idempotent": skipped_count,
+                "redacted_hits": redacted_hits,
+                "skill_dirs": len(copied_skill),
+                "status": "ok",
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
     if write_stamp:
         STAMP_FILE.write_text(today(), encoding="utf-8")
-    return len(items)
+    return copied_count
 
 def run_daily_only():
     """仅收集今日有修改的对话，每日一次。"""
+    processed_state = load_processed()
     if already_done_today():
+        HEALTH_FILE.write_text(
+            json.dumps(
+                {
+                    "updated": now_ts(),
+                    "date": today(),
+                    "scan_total": 0,
+                    "copied_new": 0,
+                    "skipped_idempotent": 0,
+                    "redacted_hits": 0,
+                    "skill_dirs": 0,
+                    "status": "already_done",
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
         print(f"[collect_chat_daily] 今日({today()})已执行过，跳过。")
         return 0
     items = [x for x in collect_all_transcripts() if x["modified"] == today()]
     if not items:
         STRUCTURED.mkdir(parents=True, exist_ok=True)
         STAMP_FILE.write_text(today(), encoding="utf-8")
+        HEALTH_FILE.write_text(
+            json.dumps(
+                {
+                    "updated": now_ts(),
+                    "date": today(),
+                    "scan_total": 0,
+                    "copied_new": 0,
+                    "skipped_idempotent": 0,
+                    "redacted_hits": 0,
+                    "skill_dirs": 0,
+                    "status": "no_new_items",
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
         print("[collect_chat_daily] 今日无新对话，已标记完成。")
         return 0
-    n = process_items_for_date(items, today(), write_stamp=True)
-    print(f"[collect_chat_daily] 完成：{n} 个对话已复制到 对话文档库/{today()}/（中文名称+工作台），本日仅执行一次。")
+    n = process_items_for_date(items, today(), processed_state, write_stamp=True)
+    save_processed(processed_state)
+    print(f"[collect_chat_daily] 完成：新增归档 {n} 个对话（幂等去重已生效），目录 对话文档库/{today()}/。")
     return 0
 
 def run_all_history():
     """全量历史按修改日期分类，每个日期生成目录与本日汇总。"""
+    processed_state = load_processed()
     items = collect_all_transcripts()
     by_date = defaultdict(list)
     for x in items:
@@ -219,10 +372,11 @@ def run_all_history():
     total = 0
     for day_iso in sorted(by_date.keys()):
         day_items = by_date[day_iso]
-        n = process_items_for_date(day_items, day_iso, write_stamp=False)
+        n = process_items_for_date(day_items, day_iso, processed_state, write_stamp=False)
         total += n
-        print(f"  {day_iso}: {n} 个对话 -> 对话文档库/{day_iso}/")
+        print(f"  {day_iso}: 新增归档 {n} 个对话 -> 对话文档库/{day_iso}/")
 
+    save_processed(processed_state)
     print(f"[collect_chat_daily] 全量完成：共 {total} 个对话，按日期写入 {len(by_date)} 天。")
     return 0
 

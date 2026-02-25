@@ -21,6 +21,9 @@
 | `structured/skills_registry.json` | 全部 38 个 SKILL 的结构化索引，供程序化路由 |
 | `structured/agent_results.json` | Agent 对话成果追踪表 |
 | `structured/daily_digest.md` | 每日自动生成的成果摘要 |
+| `structured/processed_sessions.json` | 对话采集幂等游标（避免重复归档） |
+| `structured/memory_health.json` | 记忆采集健康指标（扫描/新增/跳过/脱敏） |
+| `structured/watchdog_report.json` | 记忆系统巡检结果（告警前置状态） |
 | `structured/weekly_report_*.md` | 每周优化审计报告 |
 
 ---
@@ -29,14 +32,17 @@
 
 | 脚本 | 用途 | 频率 |
 |:---|:---|:---|
+| `collect_chat_daily.py` | 每日对话归档（幂等去重 + 脱敏） | 每日 |
 | `collect_daily.py` | 扫描当日活跃 Agent，生成摘要 | 每日 |
 | `weekly_optimize.py` | SKILL 质量审计 + 经验库整理 | 每周 |
+| `memory_watchdog.py` | 记忆系统健康巡检（连续2次异常才告警） | 每2小时 |
 
 ### 使用方式
 
 ```bash
 # 每日收集
 cd /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水溪_整理归档/记忆系统
+python collect_chat_daily.py
 python collect_daily.py
 
 # 每周优化
@@ -44,6 +50,9 @@ python weekly_optimize.py
 
 # 仅审计 SKILL 质量
 python weekly_optimize.py --audit
+
+# 健康巡检
+python memory_watchdog.py
 ```
 
 ---
