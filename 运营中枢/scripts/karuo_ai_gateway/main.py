@@ -252,6 +252,24 @@ def _build_provider_queue(llm_cfg: Dict[str, Any]) -> List[Dict[str, str]]:
     return providers
 
 
+def _is_unusable_llm_reply(text: str) -> bool:
+    s = (text or "").strip().lower()
+    if not s:
+        return True
+    refusal_signals = [
+        "i'm sorry",
+        "i am sorry",
+        "not able to assist",
+        "can't assist",
+        "cannot assist",
+        "无法协助",
+        "不能协助",
+    ]
+    if any(sig in s for sig in refusal_signals) and len(s) <= 160:
+        return True
+    return False
+
+
 def _send_provider_alert(cfg: Dict[str, Any], errors: List[str], prompt: str, matched_skill: str, skill_path: str) -> None:
     """
     当所有 LLM 接口都失败时，发邮件告警（支持 QQ SMTP）。
@@ -302,7 +320,19 @@ def _send_provider_alert(cfg: Dict[str, Any], errors: List[str], prompt: str, ma
     )
     msg.set_content(body)
 
-    with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as s:
+    # 先走 SSL（465），失败再尝试 STARTTLS（587）
+    try:
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15) as s:
+            s.login(smtp_user, smtp_pass)
+            s.send_message(msg)
+            return
+    except Exception:
+        pass
+
+    with smtplib.SMTP(smtp_host, 587, timeout=15) as s:
+        s.ehlo()
+        s.starttls()
+        s.ehlo()
         s.login(smtp_user, smtp_pass)
         s.send_message(msg)
 
@@ -335,7 +365,11 @@ def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, s
                 )
                 if r.status_code == 200:
                     data = r.json()
-                    return data["choices"][0]["message"]["content"]
+                    reply = data["choices"][0]["message"]["content"]
+                    if _is_unusable_llm_reply(reply):
+                        errors.append(f"provider#{idx} unusable_reply={reply[:120]}")
+                        continue
+                    return reply
                 errors.append(f"provider#{idx} status={r.status_code} body={r.text[:120]}")
             except Exception as e:
                 errors.append(f"provider#{idx} exception={type(e).__name__}: {str(e)[:160]}")
