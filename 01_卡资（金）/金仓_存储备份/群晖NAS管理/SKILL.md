@@ -90,6 +90,14 @@ updated: "2026-02-16"
 | 8890 | bt-hub | 宝塔中控 |
 | 8888 | 本地宝塔 | 网站管理 |
 
+### Docker 容器分组约定（本机与 NAS 统一）
+
+在 NAS 或本机编排 Docker 时，须遵守卡若AI 统一约定：
+
+- **datacenter 分组**：所有**数据库相关**服务（MongoDB、Redis、MySQL、向量库等）归入 **datacenter** 编排，编排见 卡若AI `01_卡资（金）/金仓_存储备份/datacenter/`。
+- **website 分组**：网站类服务（神射手、玩值电竞 Web 等）归入 **website**，通过网络连接 datacenter 内数据库。
+- 详见：`运营中枢/工作台/唯一MongoDB约定.md`、**本地项目启动** Skill 内「Docker 部署约定」。
+
 ---
 
 ## 一键操作（卡若习惯）

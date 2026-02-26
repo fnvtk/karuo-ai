@@ -1,0 +1,40 @@
+# datacenter 分组：所有数据库相关 Docker 服务归入此编排
+# 使用方式：在本目录执行 docker compose -p datacenter up -d
+# 网络 datacenter_network 供 website 等编排通过 external 接入，连接 datacenter_mongodb
+
+name: datacenter
+
+services:
+  mongodb:
+    image: mongo:6.0
+    container_name: datacenter_mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - /Users/karuo/数据库/mongodb/data:/data/db
+      - /Users/karuo/数据库/mongodb/config:/etc/mongodb
+      - /Users/karuo/数据库/mongodb/logs:/var/log/mongodb
+      - /Users/karuo/数据库/mongodb/init:/docker-entrypoint-initdb.d
+    command: mongod --noauth --bind_ip_all
+    networks:
+      - datacenter_network
+
+  # 可选：MongoDB 管理界面，按需启用
+  # mongo-express:
+  #   image: mongo-express:latest
+  #   container_name: datacenter_mongo_express
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8081:8081"
+  #   environment:
+  #     ME_CONFIG_MONGODB_URL: mongodb://datacenter_mongodb:27017/
+  #   depends_on:
+  #     - mongodb
+  #   networks:
+  #     - datacenter_network
+
+networks:
+  datacenter_network:
+    driver: bridge
+    name: datacenter_network

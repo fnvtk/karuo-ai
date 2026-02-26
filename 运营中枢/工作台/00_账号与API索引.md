@@ -79,6 +79,22 @@
 
 ## 二、数据库（明文）
 
+### 本机 MongoDB（统一）
+
+> **规则**：本机所有项目共用**同一个 MongoDB 实例**，不新增新实例。详见《本机数据库统一规则》。  
+> **玩值电竞等需连本机 27017 时**：账号密码从此表取，连接串格式见下表。
+
+| 项 | 值 |
+|----|-----|
+| 连接串（无认证） | `mongodb://localhost:27017` |
+| 连接串（有认证时） | `mongodb://admin:admin123@localhost:27017?authSource=admin`（库名在应用内指定，如玩值电竞为 `wanzhi_esports`） |
+| 账号 | `admin` |
+| 密码 | `admin123` |
+| 连接串（有认证，完整示例） | `mongodb://admin:admin123@localhost:27017?authSource=admin` |
+| 玩值电竞库名 | `wanzhi_esports`（Compass/客户端里显示此英文名，非「玩值」中文；玩值电竞App 使用本实例下该库） |
+
+本机开发时各项目设置 `MONGODB_URI` 为上表连接串（有认证时用 `mongodb://账号:密码@localhost:27017?authSource=admin`），库名在应用内指定（如玩值电竞为 `wanzhi_esports`）。
+
 ### 卡若私域数据库
 | 项 | 值 |
 |----|-----|
@@ -179,6 +195,19 @@
 | **妙记导出（正文）** | 妙记文字/导出接口 | 开放平台**不提供**转写正文；需 **Cookie**（妙记列表 list 请求头）写入 `智能纪要/脚本/cookie_minutes.txt`，或 Playwright 页面内登录后导出 |
 
 **飞书任务优先命令行+API+TOKEN**：妙记/会议等流程与一键命令见 `运营中枢/参考资料/飞书任务_命令行与API优先_经验总结.md`。
+
+### 玩值电竞用户资产 API（管理端用户详情完善/清洗）
+
+> 玩值电竞 App 管理端「用户详情」通过该 API 拉取消费记录、绑定主播等，用于数据完善与清洗。配置在玩值电竞 App 根目录 `.env.local`。
+
+| 项 | 值 |
+|----|-----|
+| 接口基址 | `http://localhost:3117` |
+| API Key | `sk-archer-jzuw3i5uhh` |
+| API Secret | `sec-2ekp6pq6f89` |
+| 说明 | 环境变量：`USER_ASSET_API_BASE_URL`、`USER_ASSET_API_KEY`、`USER_ASSET_API_SECRET`；不配置则详情页仅展示本库数据 |
+
+---
 
 ### 飞书项目（玩值电竞 · 账号金融 · 存客宝）
 
