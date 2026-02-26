@@ -170,7 +170,15 @@
 | refresh_token | `ur-6Wu3DdR8h4TGJErCFjTarE5lhbzk5kirpO0aiN6000SA` |
 | 说明 | 飞书用户，授权时间 2026-01-29；过期后需重新授权或刷新 |
 
-**飞书任务优先命令行+API+TOKEN**：妙记/会议等流程与一键命令见 `运营中枢/参考资料/飞书任务_命令行与API优先_经验总结.md`。应用凭证（APP_ID/APP_SECRET）在智能纪要脚本内置或环境变量。
+### 卡若AI 脚本如何取飞书 Token
+
+| 方式 | 用途 | 位置/用法 |
+|:---|:---|:---|
+| **用户 access_token** | Wiki/文档/日历等需「用户身份」的接口 | ① 环境变量 `FEISHU_TOKEN="u-xxx"`（或 `t-xxx` tenant_token）<br>② 本文件 § 六 上表 `access_token`<br>③ `02_卡人（水）/水桥_平台对接/飞书管理/脚本/.feishu_tokens.json`（由 `auto_log.py` 授权后写入） |
+| **应用 tenant_access_token** | 开放平台接口（妙记元数据、部分管理接口） | 由 `FEISHU_APP_ID` + `FEISHU_APP_SECRET` 调用 `POST /auth/v3/tenant_access_token/internal` 获取；APP 凭证在飞书管理脚本内置（如 `feishu_wiki_download_images.py`）或环境变量 `FEISHU_APP_ID` / `FEISHU_APP_SECRET` |
+| **妙记导出（正文）** | 妙记文字/导出接口 | 开放平台**不提供**转写正文；需 **Cookie**（妙记列表 list 请求头）写入 `智能纪要/脚本/cookie_minutes.txt`，或 Playwright 页面内登录后导出 |
+
+**飞书任务优先命令行+API+TOKEN**：妙记/会议等流程与一键命令见 `运营中枢/参考资料/飞书任务_命令行与API优先_经验总结.md`。
 
 ### 飞书项目（玩值电竞 · 账号金融 · 存客宝）
 
