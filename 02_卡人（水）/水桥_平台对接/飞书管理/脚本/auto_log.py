@@ -204,21 +204,23 @@ def build_blocks(date_str, tasks):
                 'style': {'done': False, 'align': 1}}})
             blocks.append({'block_type': 2, 'text': {'elements': [{'text_run': {'content': '{'}}], 'style': {}}})
             
-            # TNTWF格式，标注清楚
+            # TNTWF格式：仅 W(工作) F(反馈) 有复选框，T/N/T 为纯文本
             labels = [
-                ('T', 't_targets', '目标'),
-                ('N', 'n_process', '过程'),
-                ('T', 't_thoughts', '思考'),
-                ('W', 'w_work', '工作'),
-                ('F', 'f_feedback', '反馈')
+                ('T', 't_targets', '目标', False),
+                ('N', 'n_process', '过程', False),
+                ('T', 't_thoughts', '思考', False),
+                ('W', 'w_work', '工作', True),
+                ('F', 'f_feedback', '反馈', True)
             ]
-            
-            for label, key, name in labels:
+            for label, key, name, use_todo in labels:
                 items = task.get(key, [])
                 if items:
                     blocks.append({'block_type': 2, 'text': {'elements': [{'text_run': {'content': f'{label} ({name})', 'text_element_style': {'bold': True}}}], 'style': {}}})
                     for item in items:
-                        blocks.append({'block_type': 17, 'todo': {'elements': [{'text_run': {'content': item}}], 'style': {'done': False}}})
+                        if use_todo:
+                            blocks.append({'block_type': 17, 'todo': {'elements': [{'text_run': {'content': item}}], 'style': {'done': False}}})
+                        else:
+                            blocks.append({'block_type': 2, 'text': {'elements': [{'text_run': {'content': item}}], 'style': {}}})
             
             blocks.append({'block_type': 2, 'text': {'elements': [{'text_run': {'content': '}'}}], 'style': {}}})
         blocks.append({'block_type': 2, 'text': {'elements': [{'text_run': {'content': ''}}], 'style': {}}})
@@ -246,8 +248,39 @@ def resolve_wiki_token_for_date(date_str, explicit_wiki_token=None):
         return CONFIG['MONTH_WIKI_TOKENS'][month]
     return CONFIG['WIKI_TOKEN']
 
-def write_log(token, date_str=None, tasks=None, wiki_token=None):
-    """写入日志（倒序插入：新日期在最上面）"""
+def _find_date_section_block_ids(blocks, date_str, doc_id):
+    """找到某日期区块的 block_id 列表（用于覆盖删除）"""
+    date_re = re.compile(r'\d+\s*月\s*\d+\s*日')
+    start_i = None
+    for i, block in enumerate(blocks):
+        for key in ['heading4', 'text']:
+            if key in block:
+                for el in block[key].get('elements', []):
+                    c = el.get('text_run', {}).get('content', '')
+                    if date_str in c:
+                        start_i = i
+                        break
+        if start_i is not None:
+            break
+    if start_i is None:
+        return []
+    # 从 start_i 向后收集，直到遇到下一个日期标题
+    ids = []
+    for i in range(start_i, len(blocks)):
+        b = blocks[i]
+        bid = b.get('block_id')
+        if not bid:
+            continue
+        # 若遇下一个日期 heading4，停止
+        if i > start_i and 'heading4' in b:
+            for el in b.get('heading4', {}).get('elements', []):
+                if date_re.search(el.get('text_run', {}).get('content', '')):
+                    return ids
+        ids.append(bid)
+    return ids
+
+def write_log(token, date_str=None, tasks=None, wiki_token=None, overwrite=False):
+    """写入日志（倒序插入：新日期在最上面）；overwrite=True 时先删后写"""
     headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
     
     if not date_str or not tasks:
@@ -264,27 +297,58 @@ def write_log(token, date_str=None, tasks=None, wiki_token=None):
     doc_id = node['obj_token']
     doc_title = node.get('title', '')
 
-    # 防串月：日期月份与文档标题不一致时拒绝写入
+    # 防串月
     month = parse_month_from_date_str(date_str)
     if month and f"{month}月" not in doc_title:
         print(f"❌ 月份校验失败：{date_str} 不应写入《{doc_title}》")
         return False
     
-    # 获取blocks检查日期是否存在
     r = requests.get(f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks", 
-        headers=headers, params={'page_size': 500}, timeout=30)
-    blocks = r.json().get('data', {}).get('items', [])
+        headers=headers, params={'document_revision_id': -1, 'page_size': 500}, timeout=30)
+    blk_data = r.json().get('data', {})
+    blocks = blk_data.get('items', [])
     
     # 检查是否已存在
+    exists = False
     for block in blocks:
         for key in ['heading4', 'text']:
             if key in block:
                 for el in block[key].get('elements', []):
                     if 'text_run' in el and date_str in el['text_run'].get('content', ''):
-                        print(f"✅ {date_str} 日志已存在，无需重复写入")
-                        return True
+                        exists = True
+                        break
+        if exists:
+            break
     
-    # 找插入位置（倒序：插入到"本月最重要的任务"标题后，即第一个位置）
+    if exists and overwrite:
+        to_del = _find_date_section_block_ids(blocks, date_str, doc_id)
+        if to_del:
+            try:
+                for i in range(0, len(to_del), 20):
+                    batch = to_del[i:i+20]
+                    body = {"requests": [{"block_id": bid} for bid in batch]}
+                    rd = requests.post(f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/batch_delete",
+                        headers=headers, json=body, timeout=30)
+                    try:
+                        j = rd.json()
+                    except Exception:
+                        j = {}
+                    if j.get('code') != 0:
+                        print(f"⚠️ 覆盖删除失败: {j.get('msg', rd.text[:80])}，请手动删飞书中 {date_str} 后重试")
+                        break
+                else:
+                    r = requests.get(f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks", 
+                        headers=headers, params={'document_revision_id': -1, 'page_size': 500}, timeout=30)
+                    blocks = r.json().get('data', {}).get('items', [])
+                    exists = False
+            except Exception as e:
+                print(f"⚠️ 覆盖删除异常: {e}，请手动删飞书中 {date_str} 后重试")
+    
+    if exists:
+        print(f"✅ {date_str} 日志已存在，无需重复写入（可用 --overwrite 覆盖）")
+        return True
+    
+    # 找插入位置（倒序：插入到"本月最重要的任务"标题后）
     insert_index = 1
     for i, block in enumerate(blocks):
         if block.get('parent_id') == doc_id and 'heading2' in block:

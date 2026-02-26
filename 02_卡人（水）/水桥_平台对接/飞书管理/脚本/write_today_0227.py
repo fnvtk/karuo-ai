@@ -24,19 +24,19 @@ def build_tasks_0227():
             "events": ["一人公司Agent", "玩值电竞", "重要未完成项", "飞书日志迭代"],
             "quadrant": "重要紧急",
             "t_targets": [
-                "一人公司Agent→视频切片/文章/直播/小程序/朋友圈/聚合 (5%)",
-                "玩值电竞→Docker部署与功能推进 (第二) (25%)",
+                "一人公司Agent→视频切片/文章/直播/小程序/朋友圈/聚合 (5%) 【自2月17日迭代】",
+                "玩值电竞→Docker部署与功能推进 (第二) (25%) 【自2月17日迭代】",
                 "卡若AI 4项优化→减重+收口+规则+输出+护栏 (执行中)",
                 "飞书日志→每日迭代+进度百分比更新 (100%)",
             ],
             "n_process": [
                 "【一人公司】视频切片分发、文章全网、每日直播、小程序、朋友圈→聚合平台",
                 "【玩值电竞】Docker 3001，MongoDB wanzhi_esports，持续迭代",
-                "【重要未完成】卡若AI优化、书小程序、玉宁直播等持续迭代",
+                "【重要未完成】卡若AI优化、书小程序、玉宁直播等 自2月17日持续迭代",
                 "【昨日2月26】卡若AI 56%、一场创业实验→永平、GitHub yongpxu-soul",
             ],
             "t_thoughts": [
-                "一人公司第一、玩值电竞第二；重要未完成项加入今日迭代",
+                "一人公司第一、玩值电竞第二；未完成进度自2月17日迭代至今日",
             ],
             "w_work": ["一人公司Agent", "玩值电竞", "卡若AI优化", "飞书日志登记"],
             "f_feedback": [
@@ -50,9 +50,14 @@ def build_tasks_0227():
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--overwrite", action="store_true", help="覆盖已有当日日志")
+    args = parser.parse_args()
+
     date_str = "2月27日"
     print("=" * 50)
-    print(f"📝 写入飞书日志：{date_str}")
+    print(f"📝 写入飞书日志：{date_str}" + (" [覆盖]" if args.overwrite else ""))
     print("=" * 50)
 
     token = get_token_silent()
@@ -62,7 +67,7 @@ def main():
 
     tasks = build_tasks_0227()
     target_wiki_token = resolve_wiki_token_for_date(date_str)
-    ok = write_log(token, date_str, tasks, target_wiki_token)
+    ok = write_log(token, date_str, tasks, target_wiki_token, overwrite=args.overwrite)
     if ok:
         open_result(target_wiki_token)
         print(f"✅ {date_str} 日志写入成功")
