@@ -34,8 +34,8 @@ updated: "2026-02-26"
    - 详见：`运营中枢/工作台/唯一MongoDB约定.md` 与 金仓 `datacenter/README.md`。
 
 2. **website 分组（网站）**
-   - 网站类服务（如玩值电竞 web、神射手）归入 **website** 编排，不单独为某站新建独立 compose 或独立 MongoDB。
-   - 编排位置：神射手目录 `docker-compose.yml`（project name: website）；端口与分组以 **《项目与端口注册表》** 为准。
+   - 网站类服务（玩值电竞 web、神射手、卡若ai网站、玩值大屏、Soul 创业实验等）归入 **website** 编排，不单独为某站新建独立 MongoDB；各站 compose 均设 **`name: website`**，在 Docker Desktop 中统一显示为 website 分组。
+   - 编排位置：神射手目录 `docker-compose.yml`（主站）；**全量 website 项目**见工作台 **`website分组清单.md`**；端口以 **《项目与端口注册表》** 为准。
    - website 内服务通过外部网络 **datacenter_network** 连接 datacenter 内数据库，例如 **`MONGODB_URI=mongodb://datacenter_mongodb:27017`**。
 
 执行 Docker 部署或修改 compose 时，先对照上述两条检查，不符合则修正后再部署。

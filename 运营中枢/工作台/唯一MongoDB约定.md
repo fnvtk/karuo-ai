@@ -9,9 +9,9 @@
 | 分组 | 用途 | 编排位置 |
 |:---|:---|:---|
 | **datacenter** | 所有**数据库相关** Docker 服务（MongoDB、Redis、MySQL、向量库等） | 卡若AI `01_卡资（金）/金仓_存储备份/datacenter/docker-compose.yml`，或 数据中台 系统基座 |
-| **website** | 网站类服务（神射手、玩值电竞 Web 等），不在此分组内建数据库 | 神射手目录 `docker-compose.yml`（project name: website） |
+| **website** | 网站类服务（神射手、玩值电竞 Web、卡若ai网站、玩值大屏、Soul 创业实验等），不在此分组内建数据库 | 神射手目录 `docker-compose.yml`（主站）；其余见 **`website分组清单.md`** |
 
-以后新增数据库类服务一律放入 **datacenter** 分组；新增网站类服务放入 **website** 分组，通过外部网络 `datacenter_network` 连接 datacenter 内容器。
+以后新增数据库类服务一律放入 **datacenter** 分组；新增网站类服务放入 **website** 分组（各 compose 设 `name: website`），通过外部网络 `datacenter_network` 连接 datacenter 内容器。**全量 website 项目列表**见工作台 **`website分组清单.md`**。
 
 ---
 
@@ -55,3 +55,4 @@
 |:---|:---|
 | 2026-02-26 | 初始约定；website 仅含 shensheshou + wanzhi-web，统一连 datacenter_mongodb 27017 |
 | 2026-02-26 | 新增 datacenter 分组约定；所有数据库相关 Docker 项目归入 datacenter，website 通过 datacenter_network 连接 |
+| 2026-02-27 | website 分组扩展：卡若ai网站、玩值大屏、Soul 创业实验归入 website；详见 `website分组清单.md` |

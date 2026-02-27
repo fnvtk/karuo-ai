@@ -1,0 +1,34 @@
+-- 仅删除「今天」的重复日历项（保留每类第一个）
+set targetDay to (current date)
+set hours of targetDay to 0
+set minutes of targetDay to 0
+set seconds of targetDay to 0
+set dayEnd to targetDay + 86400
+
+tell application "Calendar"
+	set allCals to (every calendar whose writable is true)
+	if (count of allCals) is 0 then set allCals to calendars
+	repeat with cal in allCals
+		try
+			set dayEvents to (every event of cal where start date ≥ targetDay and start date < dayEnd)
+			set seen to {}
+			set toDelete to {}
+			repeat with ev in dayEvents
+				try
+					set k to (summary of ev) & "|" & ((start date of ev) as text)
+					if seen contains k then
+						set end of toDelete to ev
+					else
+						set end of seen to k
+					end if
+				end try
+			end repeat
+			repeat with ev in toDelete
+				try
+					delete ev
+				end try
+			end repeat
+		end try
+	end repeat
+end tell
+return "今日重复项已删"

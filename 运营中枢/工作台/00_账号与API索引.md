@@ -59,10 +59,6 @@
 | Secret | `v1:C6mw1SlvXsJdlO4VFEXSQEVf:519gA0DPqIMbjvfMh7CXf4B2` |
 | 模型 | `claude-opus` |
 
-### Gemini（卡若AI 工作台）
-| 项 | 值 |
-|----|-----|
-| API Key | `AIzaSyCPARryq8o6MKptLoT4STAvCsRB7uZuOK8` |
 
 ### Gitea（CKB NAS 自建 Git）
 | 项 | 值 |
