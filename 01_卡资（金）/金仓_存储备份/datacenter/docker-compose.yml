@@ -1,6 +1,7 @@
 # datacenter 分组：所有数据库相关 Docker 服务归入此编排
 # 使用方式：在本目录执行 docker compose -p datacenter up -d
-# 网络 datacenter_network 供 website 等编排通过 external 接入，连接 datacenter_mongodb
+# 网络 datacenter_network 供 website、存客宝等编排通过 external 接入
+# 存客宝 MySQL 数据目录：/Users/karuo/数据库/mysql/cunkebao
 
 name: datacenter
 
@@ -17,6 +18,31 @@ services:
       - /Users/karuo/数据库/mongodb/logs:/var/log/mongodb
       - /Users/karuo/数据库/mongodb/init:/docker-entrypoint-initdb.d
     command: mongod --noauth --bind_ip_all
+    networks:
+      - datacenter_network
+
+  # 存客宝业务 MySQL（归入 doc 的数据库，与 MongoDB 同组）
+  mysql:
+    image: mariadb:10.6
+    container_name: datacenter_mysql
+    restart: unless-stopped
+    ports:
+      - "3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: cunkebao123
+      MYSQL_DATABASE: cunkebao
+      MYSQL_USER: cunkebao
+      MYSQL_PASSWORD: cunkebao123
+    volumes:
+      - /Users/karuo/数据库/mysql/cunkebao:/var/lib/mysql
+      # 存客宝建表脚本（若本机 cunkebao_v3 路径不同请改此路径或首次启动后手动执行 sql）
+      - /Users/karuo/Documents/开发/2、私域银行/cunkebao_v3/Server/sql.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     networks:
       - datacenter_network
 

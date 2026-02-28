@@ -17,7 +17,8 @@
 ## 当前服务（本分组内）
 
 - **datacenter_mongodb**：MongoDB 6.0，端口 27017，数据目录见 compose 卷配置。
-- 后续新增 Redis、MySQL、向量库等数据库类服务时，一律加入本 compose，保持 `name: datacenter`、网络 `datacenter_network`。
+- **datacenter_mysql**：MariaDB 10.6（存客宝用），宿主机端口 **3307**，库名 `cunkebao`，数据目录 **`/Users/karuo/数据库/mysql/cunkebao`**。存客宝编排通过 `datacenter_network` 连接此容器，不再自建 MySQL。首次启动前请确保数据目录存在（`mkdir -p /Users/karuo/数据库/mysql/cunkebao`）；建表脚本若需从存客宝项目引入，见 compose 内 init 卷挂载路径（按本机 cunkebao_v3 位置调整）。
+- 后续新增 Redis、向量库等数据库类服务时，一律加入本 compose，保持 `name: datacenter`、网络 `datacenter_network`。
 
 ---
 
@@ -47,3 +48,4 @@ docker compose -p datacenter up -d
 | 日期 | 变更 |
 |:---|:---|
 | 2026-02-26 | 新建 datacenter 分组约定；Skill 与唯一MongoDB约定同步更新 |
+| 2026-02-28 | 新增 datacenter_mysql（存客宝），端口 3307，数据目录 数据库/mysql/cunkebao |
