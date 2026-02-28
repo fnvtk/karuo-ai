@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-receivesms.co 整站收短信内容分析：拉取英国号列表下所有号码的收件页，汇总全部短信，
-按发件人、类型、关键词做统计并输出分析报告。
+receivesms.co 整站收短信内容分析：拉取英国号列表下所有号码的【全部历史分页】收件，
+汇总所有短信，按发件人、类型、关键词做统计并输出分析报告。
 """
 import re
 import time
@@ -11,11 +11,12 @@ from collections import Counter, defaultdict
 
 BASE = "https://www.receivesms.co"
 LIST_URL = BASE + "/british-phone-numbers/gb/"
+MAX_PAGES_PER_NUMBER = 50  # 每号最多历史页数
 
 
 def fetch(url):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"})
-    with urllib.request.urlopen(req, timeout=20) as r:
+    with urllib.request.urlopen(req, timeout=25) as r:
         return r.read().decode("utf-8", errors="replace")
 
 
@@ -28,19 +29,58 @@ def parse_number_list(html):
     return [(mid, num.replace(" ", "").strip()) for mid, num in blocks]
 
 
+def get_next_page_url(html, mid):
+    """解析本页是否还有「Next」分页，返回下一页完整 URL 或 None。"""
+    # 下一页链接形如: /united-kingdom-phone-number/21808/2/
+    m = re.search(r'<a href="(/united-kingdom-phone-number/\d+/(\d+)/)">Next</a>', html)
+    if not m:
+        return None
+    return BASE + m.group(1)
+
+
 def parse_all_sms_in_inbox(html):
-    """解析一页收件页中所有短信：发件人 + 正文。"""
-    # 按 entry 块切：from-link 与紧随其后的 entry-body > div.sms
-    pattern = r'<a href="[^"]*" class="from-link">([^<]*)</a>\s*<div class="entry-body"><div class="sms">(.*?)</div></div>'
-    matches = re.findall(pattern, html, re.DOTALL)
+    """解析一页收件页中所有短信：按 entry-card 块切分，每块内取发件人 + 正文。"""
+    # 每个 entry-card 内：from-link 与 entry-body > div.sms 一一对应
+    blocks = re.findall(
+        r'<article[^>]*class="[^"]*entry-card[^"]*"[^>]*>(.*?)</article>',
+        html,
+        re.DOTALL
+    )
     out = []
-    for sender, raw in matches:
+    for blk in blocks:
+        m_sender = re.search(r'class="from-link">([^<]*)</a>', blk)
+        m_sms = re.search(r'<div class="entry-body"><div class="sms">(.*?)</div></div>', blk, re.DOTALL)
+        if not m_sender or not m_sms:
+            continue
+        sender = m_sender.group(1).strip()
+        raw = m_sms.group(1)
         text = re.sub(r"<[^>]+>", "", raw)
         text = text.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&#039;", "'")
         text = " ".join(text.split()).strip()
         if text:
-            out.append((sender.strip(), text))
+            out.append((sender, text))
     return out
+
+
+def fetch_all_pages_for_number(mid, number):
+    """拉取该号码的全部历史分页，返回 [(sender, text), ...]。"""
+    all_msgs = []
+    url = f"{BASE}/gb-phone-number/{mid}/"
+    page_num = 1
+    while url and page_num <= MAX_PAGES_PER_NUMBER:
+        try:
+            html = fetch(url)
+            msgs = parse_all_sms_in_inbox(html)
+            all_msgs.extend(msgs)
+            next_url = get_next_page_url(html, mid)
+            if not next_url or not msgs:
+                break
+            url = next_url
+            page_num += 1
+            time.sleep(0.6)
+        except Exception as e:
+            break
+    return all_msgs
 
 
 def classify_content(text):
@@ -62,16 +102,19 @@ def main():
     if not pairs:
         print("未解析到任何号码")
         return
-    print(f"共 {len(pairs)} 个号码，开始逐页拉取收件…", flush=True)
+    # 可选：仅前 N 个号码（用于快速测试）；设为 None 表示全部
+    limit_numbers = None  # None=全部号码（约31个，耗时长）；整数=仅前 N 个号
+    if limit_numbers:
+        pairs = pairs[:limit_numbers]
+        print(f"（仅抓前 {limit_numbers} 个号码）", flush=True)
+    print(f"共 {len(pairs)} 个号码，开始拉取每个号码的【全部历史分页】…", flush=True)
     all_messages = []  # (number, sender, text)
     for i, (mid, number) in enumerate(pairs):
-        url = f"{BASE}/gb-phone-number/{mid}/"
         try:
-            html = fetch(url)
-            msgs = parse_all_sms_in_inbox(html)
+            msgs = fetch_all_pages_for_number(mid, number)
             for sender, text in msgs:
                 all_messages.append((number, sender, text))
-            print(f"  [{i+1}/{len(pairs)}] {number}: {len(msgs)} 条", flush=True)
+            print(f"  [{i+1}/{len(pairs)}] {number}: 共 {len(msgs)} 条", flush=True)
         except Exception as e:
             print(f"  [{i+1}/{len(pairs)}] {number}: 失败 {e}", flush=True)
         time.sleep(0.8)
@@ -90,7 +133,7 @@ def main():
     lines = [
         "# receivesms.co 整站收短信内容分析报告",
         "",
-        "> 数据来源：receivesms.co 英国临时号码列表下全部号码的收件页；采集时间：一次运行。",
+        "> 数据来源：receivesms.co 英国临时号码列表下全部号码的**全部历史分页**收件；采集时间：一次运行。",
         "",
         "## 一、概览",
         "",
