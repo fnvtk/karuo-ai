@@ -73,8 +73,8 @@ def fallback_highlights(transcript_path: str, clip_count: int) -> list:
     return result
 
 
-def srt_to_timestamped_text(srt_path: str) -> str:
-    """将 SRT 转为带时间戳的纯文本"""
+def srt_to_timestamped_text(srt_path: str, skip_repetitive_head: int = 150) -> str:
+    """将 SRT 转为带时间戳的纯文本。跳过开头重复段落（如「我看你不太好」循环）"""
     with open(srt_path, "r", encoding="utf-8") as f:
         content = f.read()
     lines = []
@@ -82,8 +82,36 @@ def srt_to_timestamped_text(srt_path: str) -> str:
     for m in re.findall(pattern, content, re.DOTALL):
         start = m[1].replace(",", ".")
         text = m[3].strip().replace("\n", " ")
-        lines.append(f"[{start}] {text}")
-    return "\n".join(lines)
+        lines.append((start, text))
+    # 跳过开头重复段，直到出现连续 3 段不同且长度>=5 的内容
+    varied_start = 0
+    recent = []
+    for i, (s, t) in enumerate(lines):
+        if len(t) >= 5:
+            recent = (recent + [t])[-3:]
+            if len(recent) == 3 and len(set(recent)) >= 2:
+                varied_start = max(0, i - 2)
+                break
+        else:
+            recent = []
+    if varied_start > 0:
+        lines = lines[varied_start:]
+    # 过滤单字/短句重复段（如「你」循环），连续 5 次以上则整块跳过
+    out = []
+    prev, cnt = None, 0
+    skip_until = -1
+    for i, (s, t) in enumerate(lines):
+        if len(t) <= 2 and t == prev:
+            cnt += 1
+            if cnt >= 5 and skip_until < 0:
+                skip_until = i  # 开始跳过
+            if skip_until >= 0:
+                continue
+        else:
+            prev, cnt = t, 1
+            skip_until = -1
+        out.append((s, t))
+    return "\n".join(f"[{s}] {t}" for s, t in out)
 
 
 def _sec_to_hhmmss(sec: float) -> str:
@@ -127,44 +155,46 @@ def _filter_short_clips(data: list) -> list:
 
 
 def _build_prompt(transcript: str, clip_count: int) -> str:
-    """构建高光识别 prompt（1-5分钟，主题与内容必须一致，全中文）"""
-    txt = transcript[:25000] if len(transcript) > 25000 else transcript
-    return f"""你是资深短视频策划师。请从视频文字稿中识别尽可能多的**完整干货片段**，目标 {clip_count} 个以上。
+    """构建高光识别 prompt（提问→回答：有提问时 question/hook_3sec 用提问问题）"""
+    txt = transcript[:5000] if len(transcript) > 5000 else transcript
+    return f"""识别视频文字稿中的 {clip_count} 个高光片段，直接输出 JSON 数组，第一个字符必须是 [。
 
-【时长要求】每个片段 **60-300 秒（1-5 分钟）**，少于 60 秒的不要输出。
-【主题一致】title、hook_3sec、transcript_excerpt 必须**完全对应**该时间段内的实际内容，禁止泛泛而谈。
-  - title：从该段时间内的核心观点提炼，15字内
-  - hook_3sec：从该段第一句或核心金句提炼，15字内
-  - transcript_excerpt：该段内容的中文摘要，50字内
+重要：若某片段里有人提问（观众/连麦者问的问题），必须提取提问内容填 question，且 hook_3sec 用该提问。成片前3秒先展示提问，再播回答。
 
-【切片原则】
-- 每段必须是完整话题，有头有尾
-- 优先：金句、故事、方法论、反常识、情绪高点
-- 相邻片段间隔至少 60 秒
-- 从文字稿时间戳精确提取 start_time、end_time
+示例（有提问）：
+[{{"title":"普通人怎么敢跟ZF搞","start_time":"01:12:30","end_time":"01:15:30","question":"普通人怎么敢跟ZF搞？","hook_3sec":"普通人怎么敢跟ZF搞？","cta_ending":"{DEFAULT_CTA}","transcript_excerpt":"维权起头跑通就成生意","reason":"提问+回答完整"}}]
+示例（无提问）：
+[{{"title":"起头难","start_time":"00:05:55","end_time":"00:08:00","hook_3sec":"没人起头就起头","cta_ending":"{DEFAULT_CTA}","transcript_excerpt":"起头难跑通就能变成付费服务","reason":"核心观点"}}]
 
-【输出字段】全部**简体中文**，英文原文需翻译：
-- title、start_time、end_time、hook_3sec、cta_ending（用"{DEFAULT_CTA}"）、transcript_excerpt、reason
-
-只输出 JSON 数组，不要 ``` 或其他文字。
-
-视频文字稿：
----
+文字稿（从时间戳提取 start_time、end_time，每段 60-300 秒）：
 {txt}
----"""
+
+直接输出 JSON 数组，以 [ 开头。有提问的片段必须带 question 且 hook_3sec 与 question 一致。"""
 
 
 def _parse_ai_json(text: str) -> list:
     """从 AI 输出中提取 JSON 数组"""
+    if not text or not text.strip():
+        raise ValueError("AI 返回为空")
     text = text.strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
         text = re.sub(r"\s*```\s*$", "", text)
-    # 尝试找到 [...]
+    # 优先匹配完整 [...]，若模型只返回单个对象则包成数组
     m = re.search(r"\[[\s\S]*\]", text)
     if m:
-        return json.loads(m.group())
-    return json.loads(text)
+        try:
+            return json.loads(m.group())
+        except json.JSONDecodeError:
+            pass
+    # 尝试解析为单个对象后包成数组
+    m = re.search(r"\{[\s\S]*\}", text)
+    if m:
+        try:
+            return [json.loads(m.group())]
+        except json.JSONDecodeError:
+            pass
+    raise ValueError("未找到合法 JSON 数组或对象")
 
 
 def _is_mostly_chinese(text: str) -> bool:
@@ -205,7 +235,7 @@ def _ensure_chinese_highlights(data: list) -> list:
     for i, item in enumerate(data):
         if not isinstance(item, dict):
             continue
-        for key in ["title", "hook_3sec", "transcript_excerpt"]:
+        for key in ["title", "hook_3sec", "question", "transcript_excerpt"]:
             val = item.get(key)
             if val and not _is_mostly_chinese(str(val)):
                 translated = _translate_to_chinese(str(val))
@@ -217,24 +247,41 @@ def _ensure_chinese_highlights(data: list) -> list:
     return data
 
 
-def call_ollama(transcript: str, clip_count: int = CLIP_COUNT) -> str:
-    """调用卡若AI本地模型（Ollama）"""
+OLLAMA_MODELS = ["qwen2.5:3b", "qwen2.5:1.5b"]  # 优先 3b，能力更强
+
+
+def call_ollama(transcript: str, clip_count: int = CLIP_COUNT, model: str = "qwen2.5:3b") -> str:
+    """调用卡若AI本地模型（Ollama），使用 chat 接口避免对话式误判"""
     import requests
     prompt = _build_prompt(transcript, clip_count)
+    system = (
+        "你是短视频策划师。用户会提供视频文字稿，你只输出一个 JSON 数组。"
+        "若某片段内有人提问（观众/连麦者问的问题），必须提取提问原文填 question，且 hook_3sec 用该提问（前3秒先展示提问再回答）；无提问则 hook_3sec 用金句/悬念。"
+        "格式含 title, start_time, end_time, hook_3sec, cta_ending, transcript_excerpt, reason；有提问时加 question。"
+        "禁止输出任何非 JSON 内容。"
+    )
     try:
         r = requests.post(
-            f"{OLLAMA_URL}/api/generate",
+            f"{OLLAMA_URL}/api/chat",
             json={
-                "model": "qwen2.5:1.5b",
-                "prompt": prompt,
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": prompt},
+                ],
                 "stream": False,
-                "options": {"temperature": 0.3, "num_predict": 4096},
+                "options": {"temperature": 0.2, "num_predict": 8192},
             },
-            timeout=90,
+            timeout=300,
         )
         if r.status_code != 200:
             raise RuntimeError(f"Ollama {r.status_code}")
-        return r.json().get("response", "").strip()
+        body = r.json()
+        msg = body.get("message", {})
+        resp = (msg.get("content") or "").strip()
+        if not resp:
+            raise RuntimeError("Ollama 返回空响应")
+        return resp
     except Exception as e:
         raise RuntimeError(f"Ollama 调用失败: {e}") from e
 
@@ -244,6 +291,7 @@ def main():
     parser.add_argument("--transcript", "-t", required=True, help="transcript.srt 路径")
     parser.add_argument("--output", "-o", required=True, help="highlights.json 输出路径")
     parser.add_argument("--clips", "-n", type=int, default=CLIP_COUNT, help="切片数量")
+    parser.add_argument("--require-ai", action="store_true", help="必须用 AI 识别，失败则退出不兜底")
     args = parser.parse_args()
     transcript_path = Path(args.transcript)
     if not transcript_path.exists():
@@ -253,20 +301,27 @@ def main():
     if len(text) < 100:
         print("❌ 文字稿过短，请检查 SRT 格式", file=sys.stderr)
         sys.exit(1)
-    # 级联：Ollama(卡若AI本地) → 规则备用
+    # 级联：Ollama 3b → 1.5b → 规则备用（--require-ai 时不用规则）
     data = None
-    for name, fn in [
-        ("Ollama (卡若AI本地)", call_ollama),
-    ]:
+    raw = ""
+    for model in OLLAMA_MODELS:
         try:
-            print(f"正在调用 {name} 分析高光片段...")
-            raw = fn(text, args.clips)
+            print(f"正在调用 Ollama {model} 分析高光片段...")
+            raw = call_ollama(text, args.clips, model)
+            if not raw:
+                raise ValueError("模型返回空")
             data = _parse_ai_json(raw)
             if data and isinstance(data, list) and len(data) > 0:
+                print(f"  ✓ {model} 成功，识别 {len(data)} 段")
                 break
         except Exception as e:
-            print(f"{name} 调用失败 ({e})", file=sys.stderr)
+            print(f"  {model} 失败: {e}", file=sys.stderr)
+            if raw:
+                print(f"  返回预览: {str(raw)[:400]}...", file=sys.stderr)
     if not data or not isinstance(data, list):
+        if getattr(args, "require_ai", False):
+            print("❌ 必须用 AI 识别，当前无可用模型或解析失败", file=sys.stderr)
+            sys.exit(1)
         print("使用规则备用切分", file=sys.stderr)
         data = fallback_highlights(str(transcript_path), args.clips)
     if not data:

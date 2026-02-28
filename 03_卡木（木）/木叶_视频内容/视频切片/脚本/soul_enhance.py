@@ -10,12 +10,13 @@ Soul切片增强脚本 v2.0
 """
 
 import argparse
-import subprocess
+import json
 import os
 import re
-import json
-import tempfile
 import shutil
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
@@ -38,6 +39,12 @@ FALLBACK_FONT = "/System/Library/Fonts/STHeiti Medium.ttc"
 SPEED_FACTOR = 1.10  # 加速10%
 SILENCE_THRESHOLD = -40  # 静音阈值(dB)
 SILENCE_MIN_DURATION = 0.5  # 最短静音时长(秒)
+
+# Soul 竖屏裁剪（与 soul_vertical_crop 一致，成片直出用）
+CROP_VF = "crop=608:1080:483:0,crop=498:1080:60:0"
+# 竖屏成片时封面/字幕用此尺寸，叠在横版上的 x 位置（与 crop 后保留区域对齐）
+VERTICAL_W, VERTICAL_H = 498, 1080
+OVERLAY_X = 543  # 1920 下保留区域左缘：483+60
 
 # 繁转简（OpenCC 优先，否则用映射）
 _OPENCC = None
@@ -104,6 +111,14 @@ COVER_FONT_PRIORITY = [
     "/System/Library/Fonts/Supplemental/Songti.ttc",
 ]
 
+# Soul 品牌绿（绿点/绿色社交）
+SOUL_GREEN = (0, 210, 106)   # #00D26A
+SOUL_GREEN_DARK = (0, 160, 80)
+# 竖屏封面高级背景：深色渐变（不超出界面）
+VERTICAL_COVER_TOP = (12, 32, 24)    # 深墨绿
+VERTICAL_COVER_BOTTOM = (8, 48, 36)  # 略亮绿
+VERTICAL_COVER_PADDING = 44  # 左右留白，保证文字不贴边、不超出
+
 # 样式配置
 STYLE = {
     'cover': {
@@ -158,6 +173,19 @@ def draw_text_with_outline(draw, pos, text, font, color, outline_color, outline_
         draw.text((x + dx, y + dy), text, font=font, fill=outline_color)
     # 主体
     draw.text((x, y), text, font=font, fill=color)
+
+def sanitize_filename(name: str, max_length: int = 50) -> str:
+    """成片文件名：仅保留中文、空格、_-，与 batch_clip 一致"""
+    name = _to_simplified(str(name))
+    safe = []
+    for c in name:
+        if c in " _-" or "\u4e00" <= c <= "\u9fff":
+            safe.append(c)
+    result = "".join(safe).strip()
+    if len(result) > max_length:
+        result = result[:max_length]
+    return result.strip(" _-") or "片段"
+
 
 def clean_filler_words(text):
     """清理语助词 + 去除多余空格"""
@@ -322,83 +350,142 @@ def get_cover_font(size):
     return ImageFont.load_default()
 
 
+def _draw_vertical_gradient(draw, width, height, top_rgb, bottom_rgb):
+    """绘制竖屏封面用深色渐变背景，高级感"""
+    for y in range(height):
+        t = y / max(height - 1, 1)
+        r = int(top_rgb[0] + (bottom_rgb[0] - top_rgb[0]) * t)
+        g = int(top_rgb[1] + (bottom_rgb[1] - top_rgb[1]) * t)
+        b = int(top_rgb[2] + (bottom_rgb[2] - top_rgb[2]) * t)
+        draw.rectangle([0, y, width, y + 1], fill=(r, g, b))
+
+
 def create_cover_image(hook_text, width, height, output_path, video_path=None):
-    """创建封面贴片（简体中文，字体优化）"""
+    """创建封面贴片。竖屏 498x1080 时：高级渐变背景、文字严格在界面内居中不超出、左上角 Soul logo。"""
     hook_text = _to_simplified(str(hook_text or "").strip())
     if not hook_text:
         hook_text = "精彩切片"
     style = STYLE['cover']
     hook_style = STYLE['hook']
+    is_vertical = (width, height) == (VERTICAL_W, VERTICAL_H)
     
-    # 从视频提取背景帧
-    if video_path and os.path.exists(video_path):
-        temp_frame = output_path.replace('.png', '_frame.jpg')
-        subprocess.run([
-            'ffmpeg', '-y', '-ss', '1', '-i', video_path,
-            '-vframes', '1', '-q:v', '2', temp_frame
-        ], capture_output=True)
-        
-        if os.path.exists(temp_frame):
-            bg = Image.open(temp_frame).resize((width, height))
-            bg = bg.filter(ImageFilter.GaussianBlur(radius=style['bg_blur']))
-            os.remove(temp_frame)
-        else:
-            bg = Image.new('RGB', (width, height), (30, 30, 50))
+    if is_vertical:
+        # 竖屏成片：高级深色渐变背景，不依赖视频帧，保证不超出界面
+        img = Image.new('RGB', (width, height), VERTICAL_COVER_TOP)
+        draw = ImageDraw.Draw(img)
+        _draw_vertical_gradient(draw, width, height, VERTICAL_COVER_TOP, VERTICAL_COVER_BOTTOM)
+        # 轻微半透明暗角，让文字更突出
+        overlay = Image.new('RGBA', (width, height), (0, 0, 0, 100))
+        img = img.convert('RGBA')
+        img = Image.alpha_composite(img, overlay)
+        draw = ImageDraw.Draw(img)
     else:
-        bg = Image.new('RGB', (width, height), (30, 30, 50))
-    
-    # 叠加暗层
-    overlay = Image.new('RGBA', (width, height), (0, 0, 0, style['overlay_alpha']))
-    bg = bg.convert('RGBA')
-    img = Image.alpha_composite(bg, overlay)
-    
-    draw = ImageDraw.Draw(img)
-    
-    # 顶部装饰线
-    for i in range(3):
-        alpha = 150 - i * 40
-        draw.rectangle([0, i*3, width, i*3+2], fill=(255, 215, 0, alpha))
-    
-    # 底部装饰线
-    for i in range(3):
-        alpha = 150 - i * 40
-        draw.rectangle([0, height - i*3 - 2, width, height - i*3], fill=(255, 215, 0, alpha))
-    
-    # Hook 文字（封面用更好看的字体）
-    font = get_cover_font(hook_style['font_size'])
-    
-    # 计算换行
-    max_width = width - 80
-    lines = []
-    current_line = ""
-    
-    for char in hook_text:
-        test_line = current_line + char
-        test_w, _ = get_text_size(draw, test_line, font)
-        if test_w <= max_width:
-            current_line = test_line
+        # 横版：沿用视频帧模糊背景
+        if video_path and os.path.exists(video_path):
+            temp_frame = output_path.replace('.png', '_frame.jpg')
+            subprocess.run([
+                'ffmpeg', '-y', '-ss', '1', '-i', video_path,
+                '-vframes', '1', '-q:v', '2', temp_frame
+            ], capture_output=True)
+            if os.path.exists(temp_frame):
+                bg = Image.open(temp_frame).resize((width, height))
+                bg = bg.filter(ImageFilter.GaussianBlur(radius=style['bg_blur']))
+                os.remove(temp_frame)
+            else:
+                bg = Image.new('RGB', (width, height), (25, 35, 30))
         else:
+            bg = Image.new('RGB', (width, height), (25, 35, 30))
+        overlay = Image.new('RGBA', (width, height), (0, 25, 15, style['overlay_alpha']))
+        img = bg.convert('RGBA')
+        img = Image.alpha_composite(img, overlay)
+        draw = ImageDraw.Draw(img)
+    
+    # Soul 绿装饰线（顶部、底部）
+    for i in range(3):
+        alpha = 180 - i * 50
+        draw.rectangle([0, i * 3, width, i * 3 + 2], fill=(*SOUL_GREEN, alpha))
+    for i in range(3):
+        alpha = 180 - i * 50
+        draw.rectangle([0, height - i * 3 - 2, width, height - i * 3], fill=(*SOUL_GREEN, alpha))
+    
+    # 左上角 Soul logo 小图标（绿圆 + 白字 S），保证在界面内
+    logo_x, logo_y = 28, 28
+    logo_r = 20
+    draw.ellipse([logo_x - logo_r, logo_y - logo_r, logo_x + logo_r, logo_y + logo_r], fill=SOUL_GREEN, outline=(255, 255, 255))
+    try:
+        logo_font = get_cover_font(26)
+        draw.text((logo_x - 5, logo_y - 12), "S", font=logo_font, fill=(255, 255, 255))
+    except Exception:
+        pass
+    
+    # 标题文字：竖屏时严格限制在 padding 内，多行居中，绝不超出界面
+    if is_vertical:
+        max_text_width = width - 2 * VERTICAL_COVER_PADDING  # 498 - 88 = 410
+        cover_font_size = 48
+        font = get_cover_font(cover_font_size)
+        lines = []
+        for _ in range(20):
+            current_line = ""
+            lines = []  # 本轮换行结果
+            for char in hook_text:
+                test_line = current_line + char
+                test_w, _ = get_text_size(draw, test_line, font)
+                if test_w <= max_text_width:
+                    current_line = test_line
+                else:
+                    if current_line:
+                        lines.append(current_line)
+                    current_line = char
             if current_line:
                 lines.append(current_line)
-            current_line = char
-    if current_line:
-        lines.append(current_line)
-    
-    # 绘制文字（完全居中）
-    line_height = hook_style['font_size'] + 15
-    total_height = len(lines) * line_height
-    start_y = (height - total_height) // 2
-    for i, line in enumerate(lines):
-        line_w, line_h = get_text_size(draw, line, font)
-        x = (width - line_w) // 2
-        y = start_y + i * line_height
-        
-        draw_text_with_outline(
-            draw, (x, y), line, font,
-            hook_style['color'],
-            hook_style['outline_color'],
-            hook_style['outline_width']
-        )
+            if cover_font_size <= 28 or len(lines) <= 6:
+                break
+            cover_font_size -= 2
+            font = get_cover_font(cover_font_size)
+        line_height = cover_font_size + 14
+        total_height = len(lines) * line_height
+        start_y = (height - total_height) // 2
+        for i, line in enumerate(lines):
+            line_w, line_h = get_text_size(draw, line, font)
+            x = (width - line_w) // 2
+            x = max(VERTICAL_COVER_PADDING, min(width - VERTICAL_COVER_PADDING - line_w, x))
+            y = start_y + i * line_height
+            draw_text_with_outline(
+                draw, (x, y), line, font,
+                hook_style['color'],
+                hook_style['outline_color'],
+                min(hook_style['outline_width'], 3)
+            )
+    else:
+        cover_font_size = hook_style['font_size']
+        font = get_cover_font(cover_font_size)
+        max_width = width - 80
+        lines = []
+        current_line = ""
+        for char in hook_text:
+            test_line = current_line + char
+            test_w, _ = get_text_size(draw, test_line, font)
+            if test_w <= max_width:
+                current_line = test_line
+            else:
+                if current_line:
+                    lines.append(current_line)
+                current_line = char
+        if current_line:
+            lines.append(current_line)
+        line_height = cover_font_size + 12
+        total_height = len(lines) * line_height
+        start_y = (height - total_height) // 2
+        for i, line in enumerate(lines):
+            line_w, line_h = get_text_size(draw, line, font)
+            x = (width - line_w) // 2
+            y = start_y + i * line_height
+            draw_text_with_outline(
+                draw, (x, y), line, font,
+                hook_style['color'],
+                hook_style['outline_color'],
+                hook_style['outline_width']
+            )
     
     img.save(output_path, 'PNG')
     return output_path
@@ -406,29 +493,39 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
 # ============ 字幕图片生成 ============
 
 def create_subtitle_image(text, width, height, output_path):
-    """创建字幕图片（关键词加粗加大突出）"""
+    """创建字幕图片（关键词加粗加大突出）。竖屏 498 宽时字号略小、保证居中且不溢出。"""
     style = STYLE['subtitle']
     
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
+    # 竖屏窄幅时缩小字号，保证整行在画面内且居中
     base_size = style['font_size']
-    kw_size = base_size + style.get('keyword_size_add', 4)
+    if (width, height) == (VERTICAL_W, VERTICAL_H):
+        base_size = min(base_size, 38)
     font = get_font(FONT_BOLD, base_size)
-    kw_font = get_font(FONT_HEAVY, kw_size)  # 关键词用粗体+大字
     text_w, text_h = get_text_size(draw, text, font)
+    while text_w > width - 80 and base_size > 24:
+        base_size -= 2
+        font = get_font(FONT_BOLD, base_size)
+        text_w, text_h = get_text_size(draw, text, font)
+    kw_size = base_size + style.get('keyword_size_add', 4)
+    kw_font = get_font(FONT_HEAVY, kw_size)
     
-    # 字幕完全居中
+    # 字幕完全居中（水平+垂直正中间）；竖屏时限制在界面内不超出
     base_x = (width - text_w) // 2
-    base_y = height - text_h - style['margin_bottom']
+    if (width, height) == (VERTICAL_W, VERTICAL_H):
+        pad = 24
+        base_x = max(pad, min(width - pad - text_w, base_x))
+    base_y = (height - text_h) // 2
     
-    # 背景条
+    # 背景条（不超出画布）
     padding = 15
     bg_rect = [
-        base_x - padding - 10,
-        base_y - padding,
-        base_x + text_w + padding + 10,
-        base_y + text_h + padding
+        max(0, base_x - padding - 10),
+        max(0, base_y - padding),
+        min(width, base_x + text_w + padding + 10),
+        min(height, base_y + text_h + padding)
     ]
     
     # 绘制圆角背景
@@ -562,8 +659,8 @@ def _parse_clip_index(filename: str) -> int:
 
 
 def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_path,
-                 force_burn_subs=False, skip_subs=False):
-    """增强单个切片。检测原片是否已有字幕，有则跳过烧录，无则烧录中文"""
+                 force_burn_subs=False, skip_subs=False, vertical=False):
+    """增强单个切片。vertical=True 时最后裁成竖屏 498x1080 直出成片。"""
     
     print(f"\n处理: {os.path.basename(clip_path)}")
     
@@ -573,16 +670,21 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     
     print(f"  分辨率: {width}x{height}, 时长: {duration:.1f}秒")
     
-    hook_text = highlight_info.get('hook_3sec') or highlight_info.get('title') or ''
+    # 前3秒优先用「提问问题」：有 question 则封面/前贴先展示提问，再播回答
+    hook_text = highlight_info.get('question') or highlight_info.get('hook_3sec') or highlight_info.get('title') or ''
     if not hook_text and clip_path:
         m = re.search(r'\d+[_\s]+(.+?)(?:_enhanced)?\.mp4$', os.path.basename(clip_path))
         if m:
             hook_text = m.group(1).strip()
     cover_duration = STYLE['cover']['duration']
     
+    # 竖屏成片：封面/字幕按 498x1080 做，叠在裁切区域，文字与字幕在竖屏上完整且居中
+    out_w, out_h = (VERTICAL_W, VERTICAL_H) if vertical else (width, height)
+    overlay_pos = f"{OVERLAY_X}:0" if vertical else "0:0"
+    
     # 1. 生成封面
     cover_img = os.path.join(temp_dir, 'cover.png')
-    create_cover_image(hook_text, width, height, cover_img, clip_path)
+    create_cover_image(hook_text, out_w, out_h, cover_img, clip_path)
     print(f"  ✓ 封面生成")
     
     # 2. 字幕逻辑：有字幕/图片则跳过，无则烧录中文
@@ -610,7 +712,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         print(f"  ✓ 字幕解析 ({len(subtitles)}条)，已转中文")
         for i, sub in enumerate(subtitles[:50]):
             img_path = os.path.join(temp_dir, f'sub_{i:04d}.png')
-            create_subtitle_image(sub['text'], width, height, img_path)
+            create_subtitle_image(sub['text'], out_w, out_h, img_path)
             sub_images.append({'path': img_path, 'start': sub['start'], 'end': sub['end']})
     if sub_images:
         print(f"  ✓ 字幕图片 ({len(sub_images)}张)")
@@ -622,12 +724,12 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     # 5. 构建FFmpeg命令
     current_video = clip_path
     
-    # 5.1 添加封面
+    # 5.1 添加封面（竖屏时叠在 x=543，与最终裁切区域对齐）
     cover_output = os.path.join(temp_dir, 'with_cover.mp4')
     cmd = [
         'ffmpeg', '-y',
         '-i', current_video, '-i', cover_img,
-        '-filter_complex', f"[0:v][1:v]overlay=0:0:enable='lt(t,{cover_duration})'[v]",
+        '-filter_complex', f"[0:v][1:v]overlay={overlay_pos}:enable='lt(t,{cover_duration})'[v]",
         '-map', '[v]', '-map', '0:a',
         '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
         '-c:a', 'copy', cover_output
@@ -638,7 +740,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         current_video = cover_output
     print(f"  ✓ 封面烧录")
     
-    # 5.2 分批烧录字幕
+    # 5.2 分批烧录字幕（封面结束后才显示，不盖住封面）
     if sub_images:
         batch_size = 8
         for batch_idx in range(0, len(sub_images), batch_size):
@@ -650,12 +752,16 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
             
             filters = []
             last_output = '0:v'
-            
             for i, img in enumerate(batch):
                 input_idx = i + 1
                 output_name = f'v{i}'
-                enable = f"between(t,{img['start']:.3f},{img['end']:.3f})"
-                filters.append(f"[{last_output}][{input_idx}:v]overlay=0:0:enable='{enable}'[{output_name}]")
+                # 封面结束后才显示字幕，不盖住封面
+                sub_start = max(img['start'], cover_duration)
+                if sub_start < img['end']:
+                    enable = f"between(t,{sub_start:.3f},{img['end']:.3f})"
+                    filters.append(f"[{last_output}][{input_idx}:v]overlay={overlay_pos}:enable='{enable}'[{output_name}]")
+                else:
+                    filters.append(f"[{last_output}]copy[{output_name}]")
                 last_output = output_name
             
             filter_complex = ';'.join(filters)
@@ -693,8 +799,17 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         current_video = speed_output
     print(f"  ✓ 加速10%")
     
-    # 5.4 复制到输出
-    shutil.copy(current_video, output_path)
+    # 5.4 输出：竖屏则裁成 498x1080 直出，否则直接复制
+    if vertical:
+        r = subprocess.run([
+            'ffmpeg', '-y', '-i', current_video,
+            '-vf', CROP_VF, '-c:a', 'copy', output_path
+        ], capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"  ❌ 竖屏裁剪失败: {r.stderr[:200]}", file=sys.stderr)
+            shutil.copy(current_video, output_path)
+    else:
+        shutil.copy(current_video, output_path)
     
     if os.path.exists(output_path):
         size_mb = os.path.getsize(output_path) / (1024 * 1024)
@@ -709,7 +824,9 @@ def main():
     parser.add_argument("--clips", "-c", help="切片目录")
     parser.add_argument("--highlights", "-l", help="highlights.json 路径")
     parser.add_argument("--transcript", "-t", help="transcript.srt 路径")
-    parser.add_argument("--output", "-o", help="输出目录")
+    parser.add_argument("--output", "-o", help="输出目录（成片时填 成片 文件夹路径）")
+    parser.add_argument("--vertical", action="store_true", help="成片直出竖屏 498x1080，与封面+字幕一起输出到 -o 目录")
+    parser.add_argument("--title-only", action="store_true", help="输出文件名为纯标题（无序号、无_enhanced），与 --vertical 搭配用于成片")
     parser.add_argument("--skip-subs", action="store_true", help="跳过字幕烧录（原片已有字幕时用）")
     parser.add_argument("--force-burn-subs", action="store_true", help="强制烧录字幕（忽略检测）")
     args = parser.parse_args()
@@ -729,12 +846,14 @@ def main():
         print(f"❌ transcript 不存在: {transcript_path}")
         return
     
+    vertical = getattr(args, 'vertical', False)
+    title_only = getattr(args, 'title_only', False)
     print("="*60)
-    print("🎬 Soul切片增强处理（Pillow，无需 drawtext）")
+    print("🎬 Soul切片增强" + ("（成片竖屏直出）" if vertical else ""))
     print("="*60)
-    print(f"功能: 封面+字幕+加速10%+去语气词")
+    print(f"功能: 封面+字幕+加速10%+去语气词" + ("+竖屏498x1080" if vertical else ""))
     print(f"输入: {clips_dir}")
-    print(f"输出: {output_dir}")
+    print(f"输出: {output_dir}" + ("（成片，文件名=标题）" if title_only else ""))
     print("="*60)
     
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -754,13 +873,19 @@ def main():
         clip_num = _parse_clip_index(clip_path.name) or (i + 1)
         highlight_info = highlights[clip_num - 1] if 0 < clip_num <= len(highlights) else {}
         
-        output_path = output_dir / clip_path.name.replace('.mp4', '_enhanced.mp4')
+        if getattr(args, 'title_only', False):
+            title = (highlight_info.get('title') or highlight_info.get('hook_3sec') or clip_path.stem)
+            name = sanitize_filename(title) + '.mp4'
+            output_path = output_dir / name
+        else:
+            output_path = output_dir / clip_path.name.replace('.mp4', '_enhanced.mp4')
         
         temp_dir = tempfile.mkdtemp(prefix='enhance_')
         try:
             if enhance_clip(str(clip_path), str(output_path), highlight_info, temp_dir, str(transcript_path),
                            force_burn_subs=getattr(args, 'force_burn_subs', False),
-                           skip_subs=getattr(args, 'skip_subs', False)):
+                           skip_subs=getattr(args, 'skip_subs', False),
+                           vertical=getattr(args, 'vertical', False)):
                 success_count += 1
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -773,12 +898,12 @@ def main():
     generate_index(highlights, output_dir)
 
 def generate_index(highlights, output_dir):
-    """生成目录索引（标题/Hook/CTA 统一简体中文）"""
-    index_path = output_dir.parent / "目录索引_enhanced.md"
+    """生成目录索引（标题/Hook/CTA 统一简体中文），索引写在输出目录内"""
+    index_path = output_dir / "目录索引.md"
     
     with open(index_path, 'w', encoding='utf-8') as f:
-        f.write("# Soul派对 - 增强版切片目录\n\n")
-        f.write(f"**优化**: 封面+字幕+加速10%+去语气词\n\n")
+        f.write("# Soul派对 - 成片目录\n\n")
+        f.write("**优化**: 封面+字幕+加速10%+去语气词（成片含竖屏时已裁为498×1080）\n\n")
         f.write("## 切片列表\n\n")
         f.write("| 序号 | 标题 | Hook | CTA |\n")
         f.write("|------|------|------|-----|\n")

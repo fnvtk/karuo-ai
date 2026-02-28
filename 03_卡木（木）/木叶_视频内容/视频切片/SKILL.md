@@ -19,10 +19,16 @@ updated: "2026-02-17"
 ## ⭐ Soul派对切片流程（默认）
 
 ```
-原始视频 → MLX转录 → 字幕转简体 → 高光识别(Ollama→规则) → 批量切片 → soul_enhance → 输出成片
+原始视频 → MLX转录 → 字幕转简体 → 高光识别(当前模型/AI) → 批量切片 → soul_enhance → 输出成片
                      ↑                        ↓
             提取后立即繁转简+修正错误    封面+字幕(已简体)+加速10%+去语气词
 ```
+
+**切片时长**：每段为**完整的一个片段**，时长 **30 秒～300 秒**，由该完整片段起止时间决定。**标题**用一句**刺激性观点**（见 `Soul竖屏切片_SKILL.md`）。
+
+**提问→回答 结构**：若片段内有人提问，前3秒优先展示**提问问题**，再播回答；高光识别填 `question` 且 `hook_3sec` 与之一致，成片整条去语助词。详见 `参考资料/视频结构_提问回答与高光.md`、`参考资料/高光识别提示词.md`。
+
+**Soul 竖屏专用**：抖音/首页用竖屏成片、完整参数与流程见 → **`Soul竖屏切片_SKILL.md`**（竖屏 498×1080、crop 参数、批量命令）。
 
 ### 一键命令（Soul派对专用）
 
@@ -56,6 +62,46 @@ python3 batch_clip.py -i 视频.mp4 -l highlights.json -o clips/ -p soul
 # 4. 增强处理（封面+字幕+加速，soul_enhance）
 python3 soul_enhance.py -c clips/ -l highlights.json -t transcript.srt -o clips_enhanced/
 ```
+
+#### 按章节主题提取（推荐：第9章单场成片）
+
+以**章节 .md 正文**为来源提取核心主题，再在转录稿中匹配时间，不限于 5 分钟、片段数与章节结构一致。详见 `参考资料/主题片段提取规则.md`。
+
+```bash
+# 从章节生成 highlights，再走 batch_clip + soul_enhance
+python3 chapter_themes_to_highlights.py -c "第112场.md" -t transcript.srt -o highlights_from_chapter.json
+python3 batch_clip.py -i 视频.mp4 -l highlights_from_chapter.json -o clips/ -p soul112
+python3 soul_enhance.py -c clips/ -l highlights_from_chapter.json -t transcript.srt -o clips_enhanced/
+```
+
+- **主题来源**：章节 .md 按 `---` 分块，每块一个主题；文件名由 batch_clip 按 `前缀_序号_标题` 生成（标题仅保留中文与安全字符）。
+
+### Soul 竖屏成片（横版源 → 竖屏中段去白边）
+
+**约定**：以后剪辑 Soul 视频，成片统一做「竖屏中段」裁剪：横版 1920×1080 只保留中间竖条并去掉左右白边，输出 498×1080 竖屏。
+
+| 步骤 | 说明 |
+|------|------|
+| 源 | 横版 1920×1080（soul_enhance 输出） |
+| 1 | 取竖条 608×1080，起点 **x=483**（相对画面左） |
+| 2 | 裁掉左侧白边 60px、右侧白边 50px → 内容区宽 498 |
+| 输出 | **498×1080** 竖屏，仅内容窗口 |
+
+**FFmpeg 一条命令（固定参数）：**
+
+```bash
+# 单文件。输入为 1920×1080 的 enhanced 成片
+ffmpeg -y -i "输入_enhanced.mp4" -vf "crop=608:1080:483:0,crop=498:1080:60:0" -c:a copy "输出_竖屏中段.mp4"
+```
+
+**批量对某目录下所有 \*_enhanced.mp4 做竖屏中段：**
+
+```bash
+# 脚本目录下执行，或直接调用
+python3 脚本/soul_vertical_crop.py --dir "/path/to/clips_enhanced" --suffix "_竖屏中段"
+```
+
+参数说明见：`参考资料/竖屏中段裁剪参数说明.md`。
 
 ### 增强功能说明
 
@@ -213,6 +259,8 @@ python3 scripts/burn_subtitles_clean.py -i enhanced.mp4 -s clean.srt -o 成片.m
 |------|------|---------|
 | **soul_slice_pipeline.py** | Soul 切片一体化流水线 | ⭐⭐⭐ 最常用 |
 | **soul_enhance.py** | 封面+字幕(简体)+加速+去语气词 | ⭐⭐⭐ |
+| **soul_vertical_crop.py** | Soul 竖屏中段批量裁剪（横版→498×1080 去白边） | ⭐⭐⭐ |
+| chapter_themes_to_highlights.py | 按章节 .md 主题提取片段（本地模型→highlights.json） | ⭐⭐⭐ |
 | identify_highlights.py | 高光识别（Ollama→规则） | ⭐⭐ |
 | batch_clip.py | 批量切片 | ⭐⭐ |
 | one_video.py | 单视频一键成片 | ⭐⭐ |
