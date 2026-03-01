@@ -21,7 +21,7 @@
 | OpenAI 官方 | `https://api.openai.com/v1` | GPT 系列 | 规则/账号索引中的 OpenAI API Key |
 | OpenRouter（多模型聚合） | `https://openrouter.ai/api/v1` | 可调 Claude/GPT 等，统一入口 | 需在 OpenRouter 申请 Key |
 | 通义千问（DashScope） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | 阿里百炼，OpenAI 兼容 | 账号索引·阿里云 / DASHSCOPE_API_KEY |
-| v0（Claude） | `https://api.v0.dev/v1` | v0 接口，模型 claude-opus | 账号索引·v0.dev（URL/Secret/模型） |
+| v0（Claude） | `https://api.v0.dev/v1` | v0 Model API，模型选 v0-1.5-md / v0-1.5-lg / v0-1.0-md | 账号索引·v0.dev（URL/Secret） |
 | 智增增 | `https://api.zhizengzeng.com/v1` | OpenAI 兼容 | 官网 API 清单已登记 |
 
 ---
@@ -39,6 +39,7 @@
 - 打开 **卡若AI 官网 → 控制台 → API 网关**，可见与主仓库一致的平台列表（本机网关、OpenAI、OpenRouter、通义、v0、智增增）；可新增、编辑、删除，以及「设为主用」选择当前主用网关。
 - **参与轮询 / 未参与轮询**：页面分两块——「参与轮询」（已填 API Key）、「未参与轮询」（未填 Key）。每个网关填写 Base URL 与 API Key（**明文显示**，便于与《00_账号与API索引》对照）；填好保存后即参与轮询。
 - 网关级：名称、Base URL、API Key、优先级、重试、超时。Key 可从卡若AI 工作台《账号与API索引》复制；控制台内明文显示便于核对，不掩码。
+- **模型（请求时使用）**：每个网关的「模型」下拉为**该站点实际可选的 model id**，非通用名。例如 v0 仅显示 v0-1.5-lg / v0-1.5-md / v0-1.0-md；OpenAI 显示 gpt-4o、gpt-4o-mini 等；OpenRouter 显示 openai/gpt-4o、anthropic/claude-3.5-sonnet 等；通义为 qwen-turbo、qwen-plus、qwen-max 等。按 Base URL 或网关 id 自动匹配，保证可选即可用、与各站文档一致。
 
 ---
 
