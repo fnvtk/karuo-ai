@@ -31,7 +31,8 @@ CONFIG = {
     'TOKEN_FILE': os.path.join(os.path.dirname(__file__), '.feishu_tokens.json')
 }
 
-AUTH_URL = f"https://open.feishu.cn/open-apis/authen/v1/authorize?app_id={CONFIG['APP_ID']}&redirect_uri=http%3A//localhost%3A{CONFIG['SERVICE_PORT']}/api/auth/callback&scope=wiki:wiki+docx:document+drive:drive"
+# 授权 scope：wiki/docx/drive 用于日志与文档；bitable:app、base:app:create 用于创建多维表格（上传 JSON 按类型创建）
+AUTH_URL = f"https://open.feishu.cn/open-apis/authen/v1/authorize?app_id={CONFIG['APP_ID']}&redirect_uri=http%3A//localhost%3A{CONFIG['SERVICE_PORT']}/api/auth/callback&scope=wiki:wiki+docx:document+drive:drive+bitable:app+base:app:create"
 WIKI_URL = f"https://cunkebao.feishu.cn/wiki/{CONFIG['WIKI_TOKEN']}"
 
 # ============ Token管理（静默） ============

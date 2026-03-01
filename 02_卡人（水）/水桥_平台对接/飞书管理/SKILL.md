@@ -368,7 +368,7 @@ python3 脚本/upload_json_to_feishu_doc.py /path/to/xxx.json --parent <wiki_nod
 
 - **判定为多维表格时**：仅调用 bitable 创建接口，产出多维表格链接，不建文档。
 - **判定为文档时**：block_type 2/3/4/6 等 → 对应正文/标题块；block_type 43 → 新建多维表格并嵌入该文档。
-- 创建多维表格需应用具备权限并完成用户授权：**bitable:app**、**base:app:create**（飞书开放平台 → 权限配置 → 勾选并让用户重新授权）。
+- 创建多维表格需开通**用户身份权限**（非应用身份）：**bitable:app**、**base:app:create**，发布版本后**用户重新授权**。操作说明见 `参考资料/飞书多维表格权限开通说明_给卡罗维亚.md`（可找卡罗维亚开通权限）。
 
 ---
 

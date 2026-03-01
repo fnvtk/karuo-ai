@@ -252,7 +252,8 @@ def main():
                 pass
         else:
             print(f"❌ 多维表格创建失败：{err or '未知错误'}")
-            print("   请检查应用是否具备「创建多维表格」权限（飞书开放平台 → 权限配置）")
+            print("   需开通「用户身份权限」下的 bitable:app、base:app:create，并让用户重新授权。")
+            print("   详见：02_卡人（水）/水桥_平台对接/飞书管理/参考资料/飞书多维表格权限开通说明_给卡罗维亚.md")
             sys.exit(1)
         print("=" * 50)
         return

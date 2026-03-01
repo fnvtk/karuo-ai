@@ -179,12 +179,16 @@ def health():
         'timestamp': datetime.now().isoformat()
     })
 
+# 用户授权 scope：含 wiki/docx/drive 与 多维表格 bitable:app、base:app:create（上传 JSON 创建多维表格用）
+AUTH_SCOPE = "wiki:wiki+docx:document+drive:drive+bitable:app+base:app:create"
+
 @app.route('/api/auth/url')
 def auth_url():
     redirect_uri = request.args.get('redirect_uri', 'http://localhost:5050/api/auth/callback')
+    url = f"https://open.feishu.cn/open-apis/authen/v1/index?redirect_uri={urllib.parse.quote(redirect_uri)}&app_id={CONFIG['APP_ID']}&scope={urllib.parse.quote(AUTH_SCOPE)}"
     return jsonify({
         'status': 'ok',
-        'auth_url': f"https://open.feishu.cn/open-apis/authen/v1/index?redirect_uri={urllib.parse.quote(redirect_uri)}&app_id={CONFIG['APP_ID']}"
+        'auth_url': url
     })
 
 @app.route('/api/auth/callback')
