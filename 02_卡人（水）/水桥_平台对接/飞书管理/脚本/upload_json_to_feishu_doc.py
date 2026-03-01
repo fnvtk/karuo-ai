@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
-将飞书导出的 JSON 文件（含 content + blocks）上传为飞书 Wiki 子文档。
-用法: python3 upload_json_to_feishu_doc.py /path/to/水流程规划.json
+将飞书导出的 JSON 文件（含 content + blocks）按**原有格式**上传为飞书 Wiki 子文档。
+- 文档→文档，多维表格→多维表格（block_type 43 会新建多维表格并嵌入），问卷/思维笔记等按类型还原。
+用法: python3 upload_json_to_feishu_doc.py /path/to/xxx.json
 可选: --parent <wiki_node_token>  --title "文档标题"
 """
 import json
 import sys
+import time
 import argparse
+import requests
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -18,37 +21,65 @@ from feishu_wiki_create_doc import create_wiki_doc, get_token, CONFIG
 DEFAULT_PARENT = "KNf7wA8Rki1NSdkkSIqcdFtTnWb"
 
 
-def _text_block(content: str):
-    return {
-        "block_type": 2,
-        "text": {
-            "elements": [{"text_run": {"content": content, "text_element_style": {}}}],
-            "style": {},
-        },
-    }
+def _to_api_block(b: dict) -> dict | None:
+    """将导出块转为 API 可用的块（去掉 block_id、parent_id，保留 block_type 与类型字段）。"""
+    bt = b.get("block_type")
+    out = {"block_type": bt}
+    if bt == 2 and b.get("text"):
+        out["text"] = b["text"]
+    elif bt == 3 and b.get("heading1"):
+        out["heading1"] = b["heading1"]
+    elif bt == 4 and b.get("heading2"):
+        out["heading2"] = b["heading2"]
+    elif bt == 6 and b.get("heading4"):
+        out["heading4"] = b["heading4"]
+    elif bt == 17 and b.get("todo"):
+        out["todo"] = b["todo"]
+    elif bt == 19 and b.get("callout"):
+        out["callout"] = b["callout"]
+    elif bt == 43:
+        # 多维表格：导出为 board.token，API 为 bitable.token；占位，后续用新建的 app_token 替换
+        token = (b.get("board") or b.get("bitable") or {}).get("token", "")
+        out["_bitable_placeholder"] = True
+        out["_bitable_token"] = token  # 可能为原文档 token（同租户可尝试直接嵌）
+        out["bitable"] = {"token": token or "PLACEHOLDER"}
+    else:
+        # 其他类型尽量透传类型字段
+        for key in ("page", "board", "bitable", "sheet", "mindnote", "poll"):
+            if key in b and not key.startswith("_"):
+                out[key] = b[key]
+                break
+        if "_bitable_placeholder" not in out and "bitable" not in out and "board" in b:
+            out["_bitable_placeholder"] = True
+            out["bitable"] = {"token": (b.get("board") or {}).get("token", "PLACEHOLDER")}
+    return out
 
 
-def _heading1_block(content: str):
-    return {
-        "block_type": 3,
-        "heading1": {
-            "elements": [{"text_run": {"content": content, "text_element_style": {}}}],
-            "style": {},
-        },
-    }
+def create_bitable_app(access_token: str, name: str, folder_token: str | None = None) -> str | None:
+    """在飞书云空间创建多维表格，返回 app_token。"""
+    url = "https://open.feishu.cn/open-apis/bitable/v1/apps"
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+    payload = {"name": name or "多维表格"}
+    if folder_token:
+        payload["folder_token"] = folder_token
+    r = requests.post(url, headers=headers, json=payload, timeout=30)
+    data = r.json()
+    if data.get("code") == 0:
+        return data.get("data", {}).get("app_token")
+    return None
 
 
 def blocks_from_export_json(data: dict) -> tuple[str, list]:
     """
     从飞书导出格式（content + blocks）解析出标题和可写入的 children 列表。
+    多维表格（block_type 43/board）会产出占位块，需在获得 token 后调用 resolve_bitable_placeholders 替换。
     返回 (title, children)。
     """
     blocks = data.get("blocks") or []
     if not blocks:
         title = (data.get("content") or "未命名").split("\n")[0].strip() or "未命名"
-        return title, [_heading1_block(title)]
+        return title, [{"block_type": 3, "heading1": {"elements": [{"text_run": {"content": title, "text_element_style": {}}}], "style": {}}}]
 
-    # 找根块（block_type 1 page 或 parent_id 为空）
     root = None
     by_id = {}
     for b in blocks:
@@ -58,9 +89,8 @@ def blocks_from_export_json(data: dict) -> tuple[str, list]:
 
     if not root:
         title = (data.get("content") or "未命名").split("\n")[0].strip() or "未命名"
-        return title, [_heading1_block(title)]
+        return title, [{"block_type": 3, "heading1": {"elements": [{"text_run": {"content": title, "text_element_style": {}}}], "style": {}}}]
 
-    # 标题：从 page 或 content 第一行取
     title = "未命名"
     if root.get("page") and root["page"].get("elements"):
         for el in root["page"]["elements"]:
@@ -73,7 +103,7 @@ def blocks_from_export_json(data: dict) -> tuple[str, list]:
 
     child_ids = root.get("children") or []
     children = []
-    children.append(_heading1_block(title))
+    children.append({"block_type": 3, "heading1": {"elements": [{"text_run": {"content": title, "text_element_style": {}}}], "style": {}}})
 
     for bid in child_ids:
         b = by_id.get(bid)
@@ -82,24 +112,44 @@ def blocks_from_export_json(data: dict) -> tuple[str, list]:
         bt = b.get("block_type")
         if bt == 2 and b.get("text"):
             els = b["text"].get("elements") or []
-            content = ""
-            for el in els:
-                content += el.get("text_run", {}).get("content", "")
-            content = content.strip()
-            if content:
-                children.append(_text_block(content))
-            # 空段落可跳过，也可保留一行空
-        elif bt == 43 and b.get("board"):
-            # 多维表格/看板：API 可能不支持直接插入，用说明占位
-            token = b["board"].get("token", "")
-            children.append(_text_block("（原文档含多维表格/看板，可在原链接中查看）"))
-        # 其他类型可后续扩展
+            content = "".join(el.get("text_run", {}).get("content", "") for el in els).strip()
+            if not content:
+                continue
+            style = b["text"].get("style", {})
+            el_style = (b["text"].get("elements") or [{}])[0].get("text_element_style", {})
+            children.append({"block_type": 2, "text": {"elements": [{"text_run": {"content": content, "text_element_style": el_style}}], "style": style}})
+        elif bt == 43 and (b.get("board") or b.get("bitable")):
+            token = (b.get("board") or b.get("bitable") or {}).get("token", "")
+            children.append({"_bitable_placeholder": True, "block_type": 43, "bitable": {"token": token}, "name": "流量来源"})
+        elif bt not in (2, 43):
+            api_block = _to_api_block(b)
+            if api_block and not api_block.get("_bitable_placeholder"):
+                children.append(api_block)
 
     return title, children
 
 
+def resolve_bitable_placeholders(children: list, access_token: str, default_name: str = "多维表格") -> list:
+    """将 children 中的 _bitable_placeholder 替换为新建的多维表格块（block_type 43 + bitable.token）。"""
+    out = []
+    for i, c in enumerate(children):
+        if isinstance(c, dict) and c.get("_bitable_placeholder") and c.get("block_type") == 43:
+            name = c.get("name") or default_name
+            app_token = create_bitable_app(access_token, name)
+            if app_token:
+                out.append({"block_type": 43, "bitable": {"token": app_token}})
+                time.sleep(0.4)
+            else:
+                out.append({"block_type": 2, "text": {"elements": [{"text_run": {"content": "（多维表格创建失败，请手动插入）", "text_element_style": {}}}], "style": {}}})
+        else:
+            c_copy = {k: v for k, v in (c or {}).items() if not k.startswith("_")}
+            if c_copy:
+                out.append(c_copy)
+    return out
+
+
 def main():
-    ap = argparse.ArgumentParser(description="将飞书导出 JSON 上传为飞书 Wiki 文档")
+    ap = argparse.ArgumentParser(description="将飞书导出 JSON 按原格式上传为飞书 Wiki 文档")
     ap.add_argument("json_path", help="JSON 文件路径（含 content + blocks）")
     ap.add_argument("--parent", default=DEFAULT_PARENT, help="Wiki 父节点 token")
     ap.add_argument("--title", default=None, help="覆盖文档标题（默认从 JSON 解析）")
@@ -117,8 +167,15 @@ def main():
     if args.title:
         title = args.title
 
+    token = get_token(args.parent)
+    if not token:
+        print("❌ 无法获取飞书 Token")
+        sys.exit(1)
+
+    children = resolve_bitable_placeholders(children, token, default_name="流量来源")
+
     print("=" * 50)
-    print(f"📤 上传为飞书文档：{title}")
+    print(f"📤 上传为飞书文档（按原格式）：{title}")
     print(f"   父节点: {args.parent}")
     print(f"   块数: {len(children)}")
     print("=" * 50)

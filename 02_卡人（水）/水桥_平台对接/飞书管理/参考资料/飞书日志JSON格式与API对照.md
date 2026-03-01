@@ -32,6 +32,7 @@
 | 18 | 画廊 | `gallery` | `gallery.imageList[].fileToken`，单图也可用 |
 | 19 | 高亮块 | `callout` | `callout.background_color`、`border_color`、`emoji_id`（如 sunrise） |
 | 27 | 图片（导出） | `image` | 导出用；**写入用 12 file**，先 `drive/v1/medias/upload_all` 上传 |
+| 43 | 多维表格 | `board`/`bitable` | 导出为 `board.token`；写入用 `bitable.token`。按原格式上传时由 `upload_json_to_feishu_doc.py` 新建多维表格并嵌入 |
 
 ---
 
