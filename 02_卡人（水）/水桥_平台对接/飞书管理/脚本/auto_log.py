@@ -149,8 +149,9 @@ def get_token_silent():
     return None
 
 # ============ 日志写入 ============
+# 写日志前应先读 运营中枢/工作台/2026年整体目标.md，使百分比与总目标一致、上下文相关
 def get_today_tasks():
-    """获取今天的任务（可自定义修改）"""
+    """获取今天的任务（可自定义修改）；目标百分比以总目标为核心，见 2026年整体目标.md"""
     today = datetime.now()
     date_str = f"{today.month}月{today.day}日"
     

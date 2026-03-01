@@ -2,7 +2,7 @@
 """
 写入 3月1日 飞书日志到 3月 文档（继承 2 月结构，不含 2 月内容），并插入指定图片。
 - 使用 3 月文档 token：CONFIG['MONTH_WIKI_TOKENS'][3] 或环境变量 FEISHU_MARCH_WIKI_TOKEN
-- 若未配置 3 月 token，会尝试在 2 月文档同父节点下创建「2026年3月 （突破执行）」；失败则提示在飞书复制 2 月文档后设置 token
+- 仅使用已配置的 3 月文档 token，不自动新建（每月只保持一个文档）；未配置时提示在飞书使用已有 3 月文档并设置 FEISHU_MARCH_WIKI_TOKEN
 - 图片插入在 3月1日 标题+高亮块之后
 
 用法：
@@ -34,41 +34,13 @@ DATE_0301 = "3月1日"
 
 
 def _get_march_wiki_token():
-    """获取 3 月文档 wiki token；若为空则尝试创建或提示用户。"""
+    """获取 3 月文档 wiki token。仅使用已配置的 token，不新建文档（每月只保持一个文档）。"""
     raw = (CONFIG.get("MONTH_WIKI_TOKENS") or {}).get(3) or os.environ.get("FEISHU_MARCH_WIKI_TOKEN") or ""
-    token = (raw or "").strip()
-    if token:
-        return token
-    # 尝试在 2 月同父下创建 3 月文档
-    feb_token = (CONFIG.get("MONTH_WIKI_TOKENS") or {}).get(2)
-    if not feb_token:
-        return None
-    try:
-        from feishu_publish_blocks_with_images import create_node
-        token = get_token_silent()
-        if not token:
-            return None
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-        r = requests.get(
-            f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={feb_token}",
-            headers=headers, timeout=30,
-        )
-        j = r.json()
-        if j.get("code") != 0:
-            return None
-        node = j.get("data", {}).get("node", {})
-        parent = node.get("parent_node_token")
-        if not parent:
-            return None
-        doc_token, node_token = create_node(parent, "2026年3月 （突破执行）", headers)
-        # 新建文档用 node_token 作为 wiki 入口
-        return node_token
-    except Exception:
-        return None
+    return (raw or "").strip() or None
 
 
 def build_tasks_0301():
-    """3月1日任务：继承 2 月 TNTWF 结构，内容为 3 月首日（昨日=2月28日，本月未完成并入 3 月）。"""
+    """3月1日任务：继承 2 月 TNTWF 结构，内容为 3 月首日；目标%以 运营中枢/工作台/2026年整体目标.md 为基准。"""
     return [
         {
             "person": "卡若",
@@ -157,6 +129,7 @@ def main():
     parser = argparse.ArgumentParser(description="写入3月1日飞书日志并插入图片")
     parser.add_argument("--image", type=Path, default=DEFAULT_IMAGE, help="要插入的图片路径")
     parser.add_argument("--overwrite", action="store_true", help="覆盖已有3月1日日志")
+    parser.add_argument("--image-only", action="store_true", help="仅插入图片到3月1日段落，不写入/覆盖日志")
     args = parser.parse_args()
 
     token = get_token_silent()
@@ -166,20 +139,24 @@ def main():
 
     march_token = _get_march_wiki_token()
     if not march_token:
-        print("❌ 未配置 3 月文档。请先在飞书复制「2026年2月 突破执行」为「2026年3月 （突破执行）」")
-        print("   在浏览器地址栏复制 wiki/ 后面的 node token，然后执行：")
+        print("❌ 未配置 3 月文档。请使用飞书里已有的 3 月文档（每月只保持一个），在地址栏复制 wiki/ 后的 node token，执行：")
         print("   export FEISHU_MARCH_WIKI_TOKEN=复制的token")
+        print("   （不自动新建文档，避免多份 3 月文档）")
         sys.exit(1)
 
-    print("=" * 50)
-    print(f"📝 写入 {DATE_0301} 飞书日志（3月文档）" + (" [覆盖]" if args.overwrite else ""))
-    print("=" * 50)
-
-    tasks = build_tasks_0301()
-    ok = write_log(token, DATE_0301, tasks, march_token, overwrite=args.overwrite)
-    if not ok:
-        print("❌ 写入失败")
-        sys.exit(1)
+    if not args.image_only:
+        print("=" * 50)
+        print(f"📝 写入 {DATE_0301} 飞书日志（3月文档）" + (" [覆盖]" if args.overwrite else ""))
+        print("=" * 50)
+        tasks = build_tasks_0301()
+        ok = write_log(token, DATE_0301, tasks, march_token, overwrite=args.overwrite)
+        if not ok:
+            print("❌ 写入失败")
+            sys.exit(1)
+    else:
+        print("=" * 50)
+        print(f"📎 仅插入图片到 {DATE_0301} 段落（3月文档）")
+        print("=" * 50)
 
     # 获取 doc_id（obj_token）用于上传图片与插入
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -211,22 +188,24 @@ def main():
 
     idx = None
     for i, b in enumerate(root):
-        if DATE_0301 in text_of(b):
+        t = text_of(b)
+        if DATE_0301 in t or "3月1号" in t:
             idx = i
             break
-    if idx is not None:
-        image_index = idx + 2
-        img_path = args.image if args.image.exists() else FALLBACK_IMAGE
-        if img_path.exists():
-            file_token = upload_image_to_feishu(token, doc_token, img_path)
-            if file_token and insert_image_block(token, doc_token, file_token, img_path.name, image_index):
-                print("✅ 图片已插入到 3月1日 日志中")
-            else:
-                print("⚠️ 图片未插入，可手动拖入飞书文档")
-        else:
-            print(f"⚠️ 未找到图片（已试 {args.image} 与 {FALLBACK_IMAGE}），跳过插入")
+    # 未找到 3月1日 标题时，插在文档开头（index=1，通常为标题后第一段），用户可再拖到 3月1日 处
+    if idx is None:
+        image_index = 1 if len(root) > 1 else 0
     else:
-        print("⚠️ 未找到 3月1日 块，跳过图片插入")
+        image_index = idx + 2  # 标题 + 高亮块之后
+    img_path = args.image if args.image.exists() else FALLBACK_IMAGE
+    if img_path.exists():
+        file_token = upload_image_to_feishu(token, doc_token, img_path)
+        if file_token and insert_image_block(token, doc_token, file_token, img_path.name, image_index):
+            print("✅ 图片已插入到 3月 文档" + ("（3月1日 段落后）" if idx is not None else "（文档前部，可拖至 3月1日 处）"))
+        else:
+            print("⚠️ 图片未插入，可手动拖入飞书文档")
+    else:
+        print(f"⚠️ 未找到图片（已试 {args.image} 与 {FALLBACK_IMAGE}），跳过插入")
 
     open_result(march_token)
     print(f"✅ {DATE_0301} 飞书日志已写入（3月文档）")

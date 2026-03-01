@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 今日飞书日志：从聊天记录+今日文档统一整理，与本月/最终目标百分比，今日核心一条
+- 写前必读：运营中枢/工作台/2026年整体目标.md，百分比以总目标为核心、保持上下文相关
 - 今日核心目标：每天20条Soul视频 + 20:00发1条朋友圈
 """
 import os
@@ -15,7 +16,7 @@ from auto_log import get_token_silent, write_log, open_result, resolve_wiki_toke
 
 
 def build_tasks_today():
-    """今日任务：昨日完成度+本月未完成并入+本月/最终目标%+今日核心（20条Soul+8点朋友圈）"""
+    """今日任务：昨日完成度+本月未完成并入+本月/最终目标%+今日核心；目标%以 2026年整体目标.md 为基准"""
     today = datetime.now()
     date_str = f"{today.month}月{today.day}日"
     # 昨日2月27日完成度（与 write_today_0227 / 本月其他日对齐）
