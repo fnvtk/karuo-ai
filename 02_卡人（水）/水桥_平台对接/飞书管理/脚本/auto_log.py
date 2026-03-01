@@ -25,6 +25,7 @@ CONFIG = {
     'MONTH_WIKI_TOKENS': {
         1: 'JZiiwxEjHiRxouk8hSPcqBn6nrd',  # 2026年1月 运营团队启动
         2: 'Jn2EwXP2OiTujNkAbNCcDcM7nRA',  # 2026年2月 （突破执行）
+        3: os.environ.get('FEISHU_MARCH_WIKI_TOKEN') or '',  # 2026年3月（突破执行），需在飞书复制2月文档后填 token
     },
     'SERVICE_PORT': 5050,
     'TOKEN_FILE': os.path.join(os.path.dirname(__file__), '.feishu_tokens.json')
@@ -346,13 +347,14 @@ def write_log(token, date_str=None, tasks=None, wiki_token=None, overwrite=False
         print(f"✅ {date_str} 日志已存在，无需重复写入（可用 --overwrite 覆盖）")
         return True
     
-    # 找插入位置（倒序：插入到"本月最重要的任务"标题后）
-    insert_index = 1
-    for i, block in enumerate(blocks):
-        if block.get('parent_id') == doc_id and 'heading2' in block:
+    # 找插入位置：有「本月最重要的任务」则插在其后，否则插在文档开头(index=0)，避免新/空文档 index=1 报 invalid param
+    root_blocks = [b for b in blocks if b.get('parent_id') == doc_id]
+    insert_index = 0
+    for i, block in enumerate(root_blocks):
+        if 'heading2' in block:
             for el in block['heading2'].get('elements', []):
                 if 'text_run' in el and '本月最重要的任务' in el['text_run'].get('content', ''):
-                    insert_index = i + 1  # 插入到标题后
+                    insert_index = i + 1
                     break
     
     # 写入（倒序：新日期在上）
