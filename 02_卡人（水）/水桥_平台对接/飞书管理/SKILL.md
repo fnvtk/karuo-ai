@@ -383,6 +383,9 @@ python3 脚本/batch_upload_json_to_feishu_wiki.py /path/to/本地目录 --wiki-
 ```
 
 - 目录结构会原样还原为 Wiki 子节点；多维表格仍依赖用户身份权限，失败项会列在最终汇总中。
+- **内容保证**：文档写入若遇「invalid param / block not support」，会自动用「标题 + 全文」回退建文档，保证每个 JSON 都有对应文档；非多维表格类失败会再试一次回退。iframe/思维笔记等不支持块会转为正文或链接。
+- **多维表格权限与重新授权**：后台开通「用户身份权限」bitable:app、base:app:create 后，**必须重新授权**才能拿到带新权限的 Token。操作：运行 `python3 脚本/feishu_force_reauth.py`（会删除旧 Token 并打开授权页）；在浏览器完成飞书扫码授权。若本机未启动回调服务，先运行 `python3 脚本/feishu_api.py` 或 `bash start.sh`，再完成授权。授权后再执行批量上传即可。
+- **上传后校验**：脚本结束会打印「成功 X/总数 Y」；可打开 Wiki 链接逐层核对子目录与文档数量是否与本地一致。
 
 ---
 
@@ -463,6 +466,7 @@ python3 script.py --arg value
     ├── feishu_wiki_create_doc.py       # Wiki 子文档创建（日记/研究）
     ├── upload_json_to_feishu_doc.py    # 飞书导出 JSON 按原格式上传（文档/多维表格/问卷等）
     ├── batch_upload_json_to_feishu_wiki.py  # 目录下全部 JSON 按目录结构批量上传到指定 Wiki 节点
+    ├── feishu_force_reauth.py    # 强制重新授权（删旧 Token、打开带多维表格权限的授权页）
     └── .feishu_tokens.json       # Token 存储
 ```
 

@@ -10,6 +10,7 @@ import json
 import sys
 import time
 import argparse
+import urllib.parse
 import requests
 from pathlib import Path
 
@@ -83,8 +84,31 @@ def detect_export_type(data: dict) -> tuple[str, str]:
     return "docx", name_from_page or "未命名"
 
 
+def _extract_text_or_url_from_block(b: dict) -> str:
+    """从任意块中提取可展示的文本或 URL，用于不支持类型的回退。"""
+    if b.get("text") and b["text"].get("elements"):
+        return "".join(el.get("text_run", {}).get("content", "") for el in b["text"]["elements"]).strip()
+    for key in ("heading1", "heading2", "heading3", "heading4"):
+        if b.get(key) and b[key].get("elements"):
+            return "".join(el.get("text_run", {}).get("content", "") for el in b[key]["elements"]).strip()
+    if b.get("iframe") and b["iframe"].get("component"):
+        url = b["iframe"]["component"].get("url", "")
+        if url:
+            return urllib.parse.unquote(url)
+    if b.get("mindnote") and b["mindnote"].get("token"):
+        return f"[思维笔记] token: {b['mindnote']['token']}"
+    if b.get("board") or b.get("bitable"):
+        return "[多维表格]"
+    return ""
+
+
+def _text_block(content: str) -> dict:
+    """构造一个正文块。"""
+    return {"block_type": 2, "text": {"elements": [{"text_run": {"content": content or " ", "text_element_style": {}}}], "style": {}}}
+
+
 def _to_api_block(b: dict) -> dict | None:
-    """将导出块转为 API 可用的块（去掉 block_id、parent_id，保留 block_type 与类型字段）。"""
+    """将导出块转为 API 可用的块（去掉 block_id、parent_id）。不支持的类型返回 None，由调用方用 _extract + _text_block 回退。"""
     bt = b.get("block_type")
     out = {"block_type": bt}
     if bt == 2 and b.get("text"):
@@ -93,6 +117,10 @@ def _to_api_block(b: dict) -> dict | None:
         out["heading1"] = b["heading1"]
     elif bt == 4 and b.get("heading2"):
         out["heading2"] = b["heading2"]
+    elif bt == 5 and (b.get("heading2") or b.get("heading3")):
+        # 三级标题：API 部分环境不支持 block_type 5，用 heading2(4) + 相同结构
+        out["block_type"] = 4
+        out["heading2"] = b.get("heading2") or b["heading3"]
     elif bt == 6 and b.get("heading4"):
         out["heading4"] = b["heading4"]
     elif bt == 17 and b.get("todo"):
@@ -100,20 +128,19 @@ def _to_api_block(b: dict) -> dict | None:
     elif bt == 19 and b.get("callout"):
         out["callout"] = b["callout"]
     elif bt == 43:
-        # 多维表格：导出为 board.token，API 为 bitable.token；占位，后续用新建的 app_token 替换
         token = (b.get("board") or b.get("bitable") or {}).get("token", "")
         out["_bitable_placeholder"] = True
-        out["_bitable_token"] = token  # 可能为原文档 token（同租户可尝试直接嵌）
         out["bitable"] = {"token": token or "PLACEHOLDER"}
+    elif bt in (26, 29) or (bt not in (1,) and not any(b.get(k) for k in ("text", "heading1", "heading2", "heading3", "heading4", "todo", "callout", "board", "bitable"))):
+        # iframe(26)、mindnote(29) 等 API 不支持：不在此返回，由上层转为正文
+        return None
     else:
-        # 其他类型尽量透传类型字段
-        for key in ("page", "board", "bitable", "sheet", "mindnote", "poll"):
-            if key in b and not key.startswith("_"):
-                out[key] = b[key]
-                break
-        if "_bitable_placeholder" not in out and "bitable" not in out and "board" in b:
-            out["_bitable_placeholder"] = True
-            out["bitable"] = {"token": (b.get("board") or {}).get("token", "PLACEHOLDER")}
+        for key in ("board", "bitable"):
+            if key in b:
+                out["_bitable_placeholder"] = True
+                out["bitable"] = {"token": (b.get("board") or b.get("bitable") or {}).get("token", "PLACEHOLDER")}
+                return out
+        return None
     return out
 
 
@@ -184,11 +211,14 @@ def blocks_from_export_json(data: dict) -> tuple[str, list]:
         elif bt == 43 and (b.get("board") or b.get("bitable")):
             token = (b.get("board") or b.get("bitable") or {}).get("token", "")
             children.append({"_bitable_placeholder": True, "block_type": 43, "bitable": {"token": token}, "name": "流量来源"})
-        elif bt not in (2, 43):
+        else:
             api_block = _to_api_block(b)
-            if api_block and not api_block.get("_bitable_placeholder"):
+            if api_block:
                 children.append(api_block)
-
+            else:
+                fallback = _extract_text_or_url_from_block(b)
+                if fallback or bt in (26, 29):
+                    children.append(_text_block(fallback or "[嵌入内容]"))
     return title, children
 
 

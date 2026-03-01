@@ -78,17 +78,30 @@ def upload_one_json(
     json_path: Path,
     parent_token: str,
     access_token: str,
+    fallback_only: bool = False,
 ) -> tuple[bool, str]:
-    """上传单个 JSON 到指定父节点下。返回 (成功, url或信息)。"""
+    """上传单个 JSON 到指定父节点下。fallback_only=True 时仅用「标题+全文」建文档。返回 (成功, url或信息)。"""
     with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     export_type, name = detect_export_type(data)
+    title = (data.get("content") or name or "未命名").split("\n")[0].strip() or name or "未命名"
+
+    def fallback_doc():
+        raw = (data.get("content") or "").strip() or title
+        return [
+            {"block_type": 3, "heading1": {"elements": [{"text_run": {"content": title, "text_element_style": {}}}], "style": {}}},
+            {"block_type": 2, "text": {"elements": [{"text_run": {"content": raw[:50000], "text_element_style": {}}}], "style": {}}},
+        ]
+
+    if fallback_only:
+        ok, result = create_wiki_doc(parent_token, title, fallback_doc())
+        return ok, result
+
     if export_type == "bitable":
         app_token, err = create_bitable_app(access_token, name)
         if not app_token:
             return False, f"多维表格创建失败：{err}"
         url = f"{FEISHU_BASE_URL}/{app_token}"
-        # 在 Wiki 下建一篇文档，标题 + 链接到多维表格
         blocks = [
             {"block_type": 3, "heading1": {"elements": [{"text_run": {"content": name, "text_element_style": {}}}], "style": {}}},
             {"block_type": 2, "text": {"elements": [{"text_run": {"content": f"多维表格链接：{url}", "text_element_style": {}}}], "style": {}}},
@@ -98,6 +111,12 @@ def upload_one_json(
     title, children = blocks_from_export_json(data)
     children = resolve_bitable_placeholders(children, access_token, default_name=name or "多维表格")
     ok, result = create_wiki_doc(parent_token, title, children)
+    if ok:
+        return ok, result
+    # 失败时回退：用「标题 + 全文」建一篇文档，保证内容不丢
+    if "invalid param" in result or "block not support" in result.lower():
+        ok2, result2 = create_wiki_doc(parent_token, title, fallback_doc())
+        return ok2, result2
     return ok, result
 
 
@@ -151,9 +170,27 @@ def main():
             failed.append((rel, result))
         time.sleep(0.4)
 
+    # 对非「多维表格权限」的失败项用「标题+全文」再试一次，尽量保证每文件都有文档
+    retried = []
+    for rel, msg in failed[:]:
+        if "多维表格创建失败" in msg:
+            continue
+        parent_rel = str(Path(rel).parent) if Path(rel).parent != Path(".") else ""
+        parent_token = token_map.get(parent_rel, args.wiki_parent)
+        path = root_dir / rel
+        ok, result = upload_one_json(path, parent_token, token, fallback_only=True)
+        if ok:
+            retried.append(rel)
+            failed.remove((rel, msg))
+        time.sleep(0.3)
+    if retried:
+        print(f"🔄 回退上传成功 {len(retried)} 个：{retried[:5]}{'...' if len(retried) > 5 else ''}")
+
     print("=" * 60)
+    success_count = len(files) - len(failed)
+    print(f"📊 合计：成功 {success_count}/{len(files)}，失败 {len(failed)}")
     if failed:
-        print(f"⚠️ 失败 {len(failed)} 个：")
+        print(f"⚠️ 仍失败 {len(failed)} 个（多为多维表格需用户身份权限）：")
         for rel, msg in failed:
             print(f"   {rel}: {msg}")
     else:
