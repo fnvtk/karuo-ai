@@ -120,7 +120,7 @@ def _draw_speed_lines(draw, W, H, n=40, color=(255, 220, 230, 80)):
 
 def _draw_vignette(img, strength=0.4):
     """四角暗角"""
-    from PIL import ImageDraw
+    from PIL import Image, ImageDraw
     W, H = img.size
     overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
@@ -133,7 +133,6 @@ def _draw_vignette(img, strength=0.4):
                 draw.point((x, y), fill=(0, 0, 0, a))
     out = Image.new("RGB", (W, H))
     out.paste(img, (0, 0))
-    from PIL import Image
     out.paste(overlay, (0, 0), overlay)
     return out
 
@@ -200,7 +199,8 @@ def generate_with_pil():
         for r in range(350, 100, -15):
             alpha = 25 if r > 200 else 15
             gdraw.ellipse([cx - r, cy - r, cx + r, cy + r], outline=(255, 245, 255, alpha), width=4)
-        img.paste(glow, (0, 0), glow)
+        img_rgba = img.convert("RGBA")
+        img = Image.alpha_composite(img_rgba, glow).convert("RGB")
 
         draw = ImageDraw.Draw(img)
         s = sc["silhouette"]
