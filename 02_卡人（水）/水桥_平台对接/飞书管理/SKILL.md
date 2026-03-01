@@ -370,6 +370,20 @@ python3 脚本/upload_json_to_feishu_doc.py /path/to/xxx.json --parent <wiki_nod
 - **判定为文档时**：block_type 2/3/4/6 等 → 对应正文/标题块；block_type 43 → 新建多维表格并嵌入该文档。
 - 创建多维表格需开通**用户身份权限**（非应用身份）：**bitable:app**、**base:app:create**，发布版本后**用户重新授权**。操作说明见 `参考资料/飞书多维表格权限开通说明_给卡罗维亚.md`（可找卡罗维亚开通权限）。
 
+### 批量按目录结构上传到指定 Wiki
+
+将**本地目录下全部 JSON** 按**子目录/子文件**结构上传到指定 Wiki 节点下：先创建与本地一致的子目录节点，再在每个目录下按格式上传 JSON（文档→文档，多维表格→多维表格并在该目录下建一篇带链接的文档）。
+
+```bash
+# 指定本地根目录与 Wiki 父节点（链接 wiki/ 后面的 token）
+python3 脚本/batch_upload_json_to_feishu_wiki.py /path/to/本地目录 --wiki-parent G6rVwQO22imFzmk7nXCckCsmnRh
+
+# 仅列出将创建的目录和文件，不执行
+python3 脚本/batch_upload_json_to_feishu_wiki.py /path/to/本地目录 --wiki-parent <token> --dry-run
+```
+
+- 目录结构会原样还原为 Wiki 子节点；多维表格仍依赖用户身份权限，失败项会列在最终汇总中。
+
 ---
 
 ## 统一文章上传（强制入口）
@@ -448,6 +462,7 @@ python3 script.py --arg value
     ├── wanzhi_feishu_project_sync.py    # 玩值电竞→飞书项目同步
     ├── feishu_wiki_create_doc.py       # Wiki 子文档创建（日记/研究）
     ├── upload_json_to_feishu_doc.py    # 飞书导出 JSON 按原格式上传（文档/多维表格/问卷等）
+    ├── batch_upload_json_to_feishu_wiki.py  # 目录下全部 JSON 按目录结构批量上传到指定 Wiki 节点
     └── .feishu_tokens.json       # Token 存储
 ```
 

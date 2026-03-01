@@ -90,6 +90,56 @@ def get_token(parent_token):
     return None
 
 
+def create_wiki_node(parent_token: str, title: str) -> tuple[bool, str]:
+    """
+    在指定 wiki 父节点下仅创建子节点（作为目录占位），写入一个标题块。
+    返回 (成功, node_token 或错误信息)。用于批量上传时先建目录结构。
+    """
+    token = get_token(parent_token)
+    if not token:
+        return False, "Token 无效"
+    headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+    r = requests.get(
+        f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={parent_token}",
+        headers=headers, timeout=30)
+    if r.json().get('code') != 0:
+        return False, r.json().get('msg', 'get_node 失败')
+    node = r.json()['data']['node']
+    space_id = node.get('space_id') or (node.get('space') or {}).get('space_id') or node.get('origin_space_id')
+    if not space_id:
+        return False, "无法获取 space_id"
+    create_r = requests.post(
+        f"https://open.feishu.cn/open-apis/wiki/v2/spaces/{space_id}/nodes",
+        headers=headers,
+        json={
+            "parent_node_token": parent_token,
+            "obj_type": "docx",
+            "node_type": "origin",
+            "title": title,
+        },
+        timeout=30)
+    create_data = create_r.json()
+    if create_r.status_code != 200 or create_data.get('code') != 0:
+        return False, create_data.get('msg', str(create_data))
+    new_node = create_data.get('data', {}).get('node', {})
+    node_token = new_node.get('node_token')
+    doc_token = new_node.get('obj_token') or node_token
+    if not doc_token:
+        nr = requests.get(
+            f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={node_token}",
+            headers=headers, timeout=30)
+        if nr.json().get('code') == 0:
+            doc_token = nr.json()['data']['node'].get('obj_token') or node_token
+    # 写入一个标题块，避免空文档
+    block = [{"block_type": 3, "heading1": {"elements": [{"text_run": {"content": title, "text_element_style": {}}}], "style": {}}}]
+    wr = requests.post(
+        f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_token}/blocks/{doc_token}/children",
+        headers=headers, json={'children': block, 'index': 0}, timeout=30)
+    if wr.json().get('code') != 0:
+        return False, wr.json().get('msg', '写入块失败')
+    return True, node_token
+
+
 def create_wiki_doc(parent_token: str, title: str, blocks: list) -> tuple[bool, str]:
     """
     在指定 wiki 父节点下创建子文档并写入 blocks。
