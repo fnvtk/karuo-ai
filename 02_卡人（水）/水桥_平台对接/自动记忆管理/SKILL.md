@@ -19,7 +19,7 @@ updated: "2026-02-16"
 ## 🎯 核心功能
 
 ### 1. 自动读取记忆
-- 每次对话开始时，自动读取 `/Users/karuo/Documents/个人/记忆.md`
+- 每次对话开始时，自动读取 `/Users/karuo/Documents/个人/1、卡若：本人/记忆.md`
 - 读取分类记忆目录下的所有文档
 - 将记忆内容作为上下文，指导AI行为
 
@@ -38,13 +38,13 @@ updated: "2026-02-16"
 
 | 分类 | 存储位置 | 格式 |
 |:---|:---|:---|
-| **项目** | `/Users/karuo/Documents/个人/记忆.md` | `- [时间] [项目] 内容` |
-| **技术** | `/Users/karuo/Documents/个人/记忆.md` | `- [时间] [技术] 内容` |
-| **商业** | `/Users/karuo/Documents/个人/记忆.md` | `- [时间] [商业] 内容` |
-| **学习** | `/Users/karuo/Documents/个人/记忆.md` | `- [时间] [学习] 内容` |
-| **偏好** | `/Users/karuo/Documents/个人/记忆.md` | `- [时间] [偏好] 内容` |
-| **人脉** | `/Users/karuo/Documents/个人/记忆/人脉.md` | 按人分类记录 |
-| **原则** | `/Users/karuo/Documents/个人/记忆/原则.md` | 按原则分类记录 |
+| **项目** | `/Users/karuo/Documents/个人/1、卡若：本人/记忆.md` | `- [时间] [项目] 内容` |
+| **技术** | `/Users/karuo/Documents/个人/1、卡若：本人/记忆.md` | `- [时间] [技术] 内容` |
+| **商业** | `/Users/karuo/Documents/个人/1、卡若：本人/记忆.md` | `- [时间] [商业] 内容` |
+| **学习** | `/Users/karuo/Documents/个人/1、卡若：本人/记忆.md` | `- [时间] [学习] 内容` |
+| **偏好** | `/Users/karuo/Documents/个人/1、卡若：本人/记忆.md` | `- [时间] [偏好] 内容` |
+| **人脉** | `/Users/karuo/Documents/个人/1、卡若：本人/记忆/人脉.md` | 按人分类记录 |
+| **原则** | `/Users/karuo/Documents/个人/1、卡若：本人/记忆/原则.md` | 按原则分类记录 |
 
 ---
 
@@ -178,12 +178,12 @@ memories = mm.read_all_memories()
 ```
 
 #### 读取内容
-1. **主记忆文档**：`/Users/karuo/Documents/个人/记忆.md`
+1. **主记忆文档**：`/Users/karuo/Documents/个人/1、卡若：本人/记忆.md`
    - 固定偏好（输出风格、技术栈、沟通方式）
    - 长期规则（运行命令前解释、安装前检查等）
    - 日期记录（按日期记录的项目、技术、商业等内容）
 
-2. **分类记忆文档**：`/Users/karuo/Documents/个人/记忆/`
+2. **分类记忆文档**：`/Users/karuo/Documents/个人/1、卡若：本人/记忆/`
    - `人脉.md` - 人脉关系记录
    - `原则.md` - 决策原则记录
    - `方法论.md` - SOP和方法论
@@ -240,13 +240,13 @@ if not mm.check_duplicate(content):
 
 | 分类 | 存储位置 | 格式 |
 |:---|:---|:---|
-| 项目 | `/Users/karuo/Documents/个人/记忆.md` | `- [时间] [项目] 内容` |
-| 技术 | `/Users/karuo/Documents/个人/记忆.md` | `- [时间] [技术] 内容` |
-| 商业 | `/Users/karuo/Documents/个人/记忆.md` | `- [时间] [商业] 内容` |
-| 学习 | `/Users/karuo/Documents/个人/记忆.md` | `- [时间] [学习] 内容` |
-| 偏好 | `/Users/karuo/Documents/个人/记忆.md` | `- [时间] [偏好] 内容` |
-| 人脉 | `/Users/karuo/Documents/个人/记忆/人脉.md` | 按人分类记录 |
-| 原则 | `/Users/karuo/Documents/个人/记忆/原则.md` | 按原则分类记录 |
+| 项目 | `/Users/karuo/Documents/个人/1、卡若：本人/记忆.md` | `- [时间] [项目] 内容` |
+| 技术 | `/Users/karuo/Documents/个人/1、卡若：本人/记忆.md` | `- [时间] [技术] 内容` |
+| 商业 | `/Users/karuo/Documents/个人/1、卡若：本人/记忆.md` | `- [时间] [商业] 内容` |
+| 学习 | `/Users/karuo/Documents/个人/1、卡若：本人/记忆.md` | `- [时间] [学习] 内容` |
+| 偏好 | `/Users/karuo/Documents/个人/1、卡若：本人/记忆.md` | `- [时间] [偏好] 内容` |
+| 人脉 | `/Users/karuo/Documents/个人/1、卡若：本人/记忆/人脉.md` | 按人分类记录 |
+| 原则 | `/Users/karuo/Documents/个人/1、卡若：本人/记忆/原则.md` | 按原则分类记录 |
 
 ### 3. 分类机制
 
