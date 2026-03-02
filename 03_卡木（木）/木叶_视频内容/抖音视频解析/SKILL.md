@@ -41,18 +41,25 @@ updated: "2026-02-22"
 4. **提取视频 URL**：从 `<source src="...">` 或 JSON 中获取 CDN/Play 链接
 5. **下载视频**：requests 流式下载，优先无水印链接（`playwm`→`play`）
 
-### 一键命令
+### 一键命令（命令行粘贴链接即提取）
 
 ```bash
+# 推荐：仅要页面文案，不下载视频（粘贴链接→终端输出文案+保存 .txt）
 cd /Users/karuo/Documents/个人/卡若AI/03_卡木（木）/木叶_视频内容/抖音视频解析/脚本
-python3 douyin_parse.py "https://v.douyin.com/SpVK8mlOUUo/"
+./douyin_caption_only.sh "https://v.douyin.com/xxx"
 
-# 仅解析不下载
+# 或用 Python 直接调
 python3 douyin_parse.py "https://v.douyin.com/xxx" --no-download
+
+# 解析并下载视频
+python3 douyin_parse.py "https://v.douyin.com/xxx"
 
 # 指定输出目录
 python3 douyin_parse.py "https://v.douyin.com/xxx" -o /path/to/output
 ```
+
+- **仅文案**：`douyin_caption_only.sh` 或 `--no-download`，不下载视频。
+- **视频内语音转文字**：用 `01_卡资（金）/金盾_数据安全/存客宝副本管理/douyin_video_to_text.sh`（需下载后 Whisper 转写）。
 
 ---
 

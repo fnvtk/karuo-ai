@@ -227,12 +227,27 @@ def main():
         print(f"解析失败: {info['error']}", file=sys.stderr)
         sys.exit(1)
 
-    # 3. 输出文案 JSON
+    # 3. 输出文案 JSON 与 纯文本 .txt（便于命令行一键提取）
     args.output.mkdir(parents=True, exist_ok=True)
     caption_path = args.output / f"{aweme_id}_文案.json"
     with open(caption_path, "w", encoding="utf-8") as f:
         json.dump(info, f, ensure_ascii=False, indent=2)
     print(f"✅ 文案已保存: {caption_path}")
+
+    txt_path = args.output / f"{aweme_id}_文案.txt"
+    txt_lines = [
+        (info.get("title") or "").strip(),
+        "",
+        (info.get("desc") or "").strip(),
+        "",
+        "话题: " + " ".join(f"#{t}" for t in (info.get("hashtags") or [])),
+        "",
+        f"aweme_id: {aweme_id}",
+        f"链接: https://www.douyin.com/video/{aweme_id}",
+    ]
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(txt_lines))
+    print(f"✅ 文案文本: {txt_path}")
 
     # 4. 下载视频
     if not args.no_download:
