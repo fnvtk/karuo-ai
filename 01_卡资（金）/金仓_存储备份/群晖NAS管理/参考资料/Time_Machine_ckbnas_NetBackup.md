@@ -1,0 +1,78 @@
+# 时间机器 → ckbnas NetBackup
+
+**目标**：Mac 时间机器备份到 **ckbnas**（192.168.1.201）的 **NetBackup** 共享目录。
+
+若出现「所选网络备份磁盘不支持所需功能」，说明 **NAS 端尚未为该共享启用 Time Machine**，按下列步骤操作。
+
+---
+
+## 一、ckbnas DSM 必做（先做）
+
+在浏览器打开 **http://192.168.1.201:5000** 登录 DSM（用户 fnvtk），依次完成：
+
+1. **控制面板** → **文件服务** → **高级**（或 **Time Machine**）
+   - 勾选 **「启用 Time Machine 备份」**
+   - 将 **NetBackup** 选为 Time Machine 使用的共享文件夹
+   - 保存
+
+2. **控制面板** → **文件服务** → **SMB** → **高级**
+   - 最大 SMB 协议：**SMB3**
+   - 勾选：**启用 SMB2 租约**、**启用 SMB durable handle**（持久句柄）
+   - 保存，必要时重启 SMB 服务
+
+3. 确认 **NetBackup** 共享对用户 **fnvtk** 有读写权限；建议关闭该共享的**回收站**，避免与稀疏包冲突。
+
+---
+
+## 二、Mac 命令行操作
+
+### 1. 挂载 NetBackup（若未挂载）
+
+```bash
+open "smb://fnvtk@192.168.1.201/NetBackup"
+```
+
+按提示输入 fnvtk 密码，连接成功后会在 `/Volumes/NetBackup` 看到该卷。
+
+### 2. 赋予「完全磁盘访问」权限（仅首次）
+
+- **系统设置** → **隐私与安全性** → **完全磁盘访问**
+- 添加 **终端**（或 **Cursor**，若在 Cursor 终端里执行）
+
+### 3. 设置时间机器目标并验证
+
+在终端执行：
+
+```bash
+sudo tmutil setdestination /Volumes/NetBackup
+tmutil destinationinfo
+tmutil startbackup --block
+```
+
+- `setdestination`：将备份目标设为已挂载的 NetBackup。
+- `destinationinfo`：确认当前备份目标。
+- `startbackup --block`：立即开始一次备份（阻塞直到结束，可选）。
+
+---
+
+## 三、一键脚本
+
+可运行本目录同级脚本（会做网络检测、挂载提示并输出上述命令）：
+
+```bash
+bash "01_卡资（金）/金仓_存储备份/群晖NAS管理/scripts/time_machine_ckbnas_netbackup.sh"
+```
+
+---
+
+## 四、快速检查清单
+
+| 项 | 说明 |
+|----|------|
+| DSM 启用 Time Machine | 文件服务 → 高级，并选择 NetBackup |
+| SMB 高级 | SMB3、SMB2 租约、持久句柄已开 |
+| 共享权限 | fnvtk 对 NetBackup 可读写 |
+| Mac 完全磁盘访问 | 终端已加入完全磁盘访问列表 |
+| 挂载 | `/Volumes/NetBackup` 存在后再执行 tmutil |
+
+完成「一」后，再在 Mac 执行「二」即可正常备份。

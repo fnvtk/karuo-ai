@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 import time
@@ -87,14 +88,33 @@ def export_via_playwright_page(object_token: str, title: str = "", wait_sec: int
             time.sleep(wait_sec)
             js = f"""
             async () => {{
-                const r = await fetch('{EXPORT_URL}?object_token={object_token}&add_speaker=true&add_timestamp=false&format=2', {{method:'POST', credentials:'include'}});
+                const r = await fetch('{EXPORT_URL}', {{
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {{ 'Content-Type': 'application/x-www-form-urlencoded' }},
+                    body: 'object_token={object_token}&add_speaker=true&add_timestamp=false&format=2'
+                }});
                 return await r.text();
             }}
             """
-            text = pg.evaluate(js)
-            ctx.close()
-            if text and len(str(text)) > 400 and "please log in" not in str(text).lower():
-                result[0] = str(text).strip()
+            print("   正在页面内请求导出接口，请勿关闭窗口…")
+            raw = pg.evaluate(js)
+            text = (raw or "").strip()
+            if not text or "please log in" in text.lower():
+                pass
+            elif text.startswith("{"):
+                try:
+                    j = json.loads(text)
+                    data = j.get("data")
+                    if isinstance(data, str) and len(data) > 100:
+                        result[0] = data
+                    elif isinstance(data, dict):
+                        result[0] = (data.get("content") or data.get("text") or data.get("transcript") or "")
+                except Exception:
+                    if len(text) > 400:
+                        result[0] = text
+            elif len(text) > 400:
+                result[0] = text
     except Exception as e:
         print(f"   Playwright 失败: {e}", file=sys.stderr)
     finally:
@@ -110,6 +130,7 @@ def main() -> int:
     ap.add_argument("-o", "--output-dir", default=str(OUT_DIR), help="输出目录")
     ap.add_argument("--title", help="保存文件名中的标题")
     ap.add_argument("--playwright-wait", type=int, default=30, help="Playwright 打开页后等待秒数")
+    ap.add_argument("--cookie-only", "--no-browser", action="store_true", dest="cookie_only", help="仅用 Cookie/命令行，不弹浏览器；失败时提示配置 cookie_minutes.txt")
     args = ap.parse_args()
     token = args.token or (extract_token(args.url_or_token or "") or args.url_or_token)
     if not token or len(token) < 20:
@@ -125,7 +146,7 @@ def main() -> int:
             title = f"妙记_{token[:12]}"
 
     print(f"📌 object_token: {token}  title: {title[:50]}…")
-    print("   1) 尝试 Cookie 导出…")
+    print("   1) 尝试 Cookie 导出（cookie_minutes.txt 或本机浏览器已存 Cookie）…")
     text = export_via_cookie(token)
     if text:
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -134,6 +155,9 @@ def main() -> int:
         path.write_text(f"标题: {title}\nobject_token: {token}\n\n文字记录:\n\n{text}", encoding="utf-8")
         print(f"   ✅ Cookie 导出成功 -> {path}")
         return 0
+    if args.cookie_only:
+        print("   ❌ Cookie 导出失败。请将妙记 list 请求的 Cookie 写入脚本同目录 cookie_minutes.txt 第一行后重试。", file=sys.stderr)
+        return 1
     print("   2) Cookie 失败，改用 Playwright 页面内导出…")
     text = export_via_playwright_page(token, title=title, wait_sec=args.playwright_wait)
     if text:
