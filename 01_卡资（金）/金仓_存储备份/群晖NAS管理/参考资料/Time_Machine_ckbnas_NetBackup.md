@@ -91,3 +91,11 @@ bash "01_卡资（金）/金仓_存储备份/群晖NAS管理/scripts/time_machin
 | 挂载 | `/Volumes/NetBackup` 存在后再执行 tmutil |
 
 完成「一」后，再在 Mac 执行「二」即可正常备份。
+
+---
+
+## 五、卡若AI 已完成的自动化
+
+- 已通过浏览器登录 ckbnas DSM（http://192.168.1.201:5000），进入 **控制面板 → 文件服务 → 高级设置**。
+- **启用通过 SMB 进行 Bonjour Time Machine 播送** 已勾选。
+- 请你在 DSM 中手动完成最后一步：点击 **「设置 Time Machine 文件夹」**，在弹窗列表中**滚动找到 NetBackup**，勾选 **NetBackup**，点击 **保存**，回到文件服务页面点击 **应用**。完成后在 Mac 上重新选择备份磁盘为 NetBackup 即可。
