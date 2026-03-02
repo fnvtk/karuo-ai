@@ -6,9 +6,24 @@
 
 ---
 
-## 一、ckbnas DSM 必做（先做）
+## 一、ckbnas 启用 Time Machine（二选一）
 
-在浏览器打开 **http://192.168.1.201:5000** 登录 DSM（用户 fnvtk），依次完成：
+### 方式 A：全自动脚本（已部署到 NAS，需执行一次 sudo）
+
+脚本已放在 ckbnas 上：`/volume1/NetBackup/scripts/enable_tm.sh`。**只需在 NAS 上以 root 执行一次**：
+
+```bash
+ssh fnvtk@192.168.1.201
+sudo bash /volume1/NetBackup/scripts/enable_tm.sh
+```
+
+按提示输入 fnvtk 的 sudo 密码（与 DSM 登录密码一致；若未配置 sudo 则需用 admin 登录 DSM 在「控制面板 → 用户 → fnvtk → 编辑」中勾选「允许使用 sudo」）。执行成功后即可在 Mac 上选择 NetBackup 作为时间机器目标。
+
+**从本机一键配置**（若 fnvtk 已配置 sudo 且已知密码）：在本机执行 `export CKB_NAS_SUDO_PASS='你的DSM密码'` 后运行 `bash 01_卡资（金）/金仓_存储备份/群晖NAS管理/scripts/ckbnas_enable_timemachine_netbackup.sh`，即可远程为 NetBackup 启用 Time Machine 并重启 SMB。
+
+### 方式 B：DSM 图形界面
+
+在浏览器打开 **http://192.168.1.201:5000** 登录 DSM（用户 fnvtk 或 admin），依次完成：
 
 1. **控制面板** → **文件服务** → **高级**（或 **Time Machine**）
    - 勾选 **「启用 Time Machine 备份」**

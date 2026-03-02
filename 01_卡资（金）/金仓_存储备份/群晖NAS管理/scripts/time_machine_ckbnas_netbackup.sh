@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================
 # 时间机器 → ckbnas (192.168.1.201) NetBackup 目录
-# 用法：先确保 DSM 已为 NetBackup 启用 Time Machine，再运行本脚本或按下方命令操作
+# 用法：先确保 NAS 已启用 NetBackup 的 Time Machine（见参考资料 Time_Machine_ckbnas_NetBackup.md 或执行一次 ssh fnvtk@192.168.1.201 'sudo bash /volume1/NetBackup/scripts/enable_tm.sh'），再运行本脚本或按下方命令操作
 # ============================================
 
 CKB_IP="192.168.1.201"
