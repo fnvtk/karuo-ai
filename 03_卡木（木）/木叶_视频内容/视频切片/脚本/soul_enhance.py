@@ -89,6 +89,13 @@ FILLER_WORDS = [
     '怎么说呢', '你知道吗', '我跟你说', '好', '对', 'OK', 'ok',
 ]
 
+# 不烧录的无关/模板句（仅整句完全匹配或极短规则说明，避免误杀正片对白）
+SKIP_SUBTITLE_PHRASES = (
+    "回复1", "回复 1", "排序分享", "上麦后按格式介绍自己", "进资源泡泡群", "做矩阵切片",
+    "合作私聊", "群主必", "时间5~10分钟", "我能帮到大家什么", "我需要什么帮助",
+    "廿四先生", "进来陪你聊天", "建房领开工红包",
+)
+
 # 关键词高亮（重点突出，按长度排序避免短词覆盖长词）
 KEYWORDS = [
     '100万', '50万', '30万', '10万', '5万', '1万',
@@ -118,6 +125,8 @@ SOUL_GREEN_DARK = (0, 160, 80)
 VERTICAL_COVER_TOP = (12, 32, 24)    # 深墨绿
 VERTICAL_COVER_BOTTOM = (8, 48, 36)  # 略亮绿
 VERTICAL_COVER_PADDING = 44  # 左右留白，保证文字不贴边、不超出
+# 成片封面半透明质感：背景层 alpha，便于透出底层画面
+VERTICAL_COVER_ALPHA = 165  # 0~255，越大越不透明
 
 # 样式配置
 STYLE = {
@@ -243,6 +252,53 @@ def parse_srt_for_clip(srt_path, start_sec, end_sec):
     
     return subtitles
 
+
+def _filter_relevant_subtitles(subtitles):
+    """只过滤整句为规则/模板的条目，保留所有对白与重复句以便字幕连续"""
+    out = []
+    for sub in subtitles:
+        text = (sub.get("text") or "").strip()
+        if len(text) < 2:
+            continue
+        if text in SKIP_SUBTITLE_PHRASES:
+            continue
+        out.append(sub)
+    return out
+
+
+def _sec_to_srt_time(sec):
+    """秒数转为 SRT 时间格式 HH:MM:SS,mmm"""
+    h = int(sec) // 3600
+    m = (int(sec) % 3600) // 60
+    s = int(sec) % 60
+    ms = int((sec - int(sec)) * 1000)
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def write_clip_srt(srt_path, subtitles, cover_duration):
+    """写出用于烧录的 SRT（仅保留封面结束后的字幕，时间已相对片段）"""
+    lines = []
+    idx = 1
+    for sub in subtitles:
+        start, end = sub['start'], sub['end']
+        if end <= cover_duration:
+            continue
+        start = max(start, cover_duration)
+        text = (sub.get('text') or '').strip().replace('\n', ' ')
+        if not text:
+            continue
+        lines.append(str(idx))
+        lines.append(f"{_sec_to_srt_time(start)} --> {_sec_to_srt_time(end)}")
+        lines.append(text)
+        lines.append("")
+        idx += 1
+    if not lines:
+        return None
+    with open(srt_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(lines))
+    return srt_path
+
+
 def _is_mostly_chinese(text):
     if not text or not isinstance(text, str):
         return False
@@ -350,14 +406,14 @@ def get_cover_font(size):
     return ImageFont.load_default()
 
 
-def _draw_vertical_gradient(draw, width, height, top_rgb, bottom_rgb):
-    """绘制竖屏封面用深色渐变背景，高级感"""
+def _draw_vertical_gradient(draw, width, height, top_rgb, bottom_rgb, alpha=255):
+    """绘制竖屏封面用深色渐变背景；alpha<255 时为半透明质感"""
     for y in range(height):
         t = y / max(height - 1, 1)
         r = int(top_rgb[0] + (bottom_rgb[0] - top_rgb[0]) * t)
         g = int(top_rgb[1] + (bottom_rgb[1] - top_rgb[1]) * t)
         b = int(top_rgb[2] + (bottom_rgb[2] - top_rgb[2]) * t)
-        draw.rectangle([0, y, width, y + 1], fill=(r, g, b))
+        draw.rectangle([0, y, width, y + 1], fill=(r, g, b, alpha))
 
 
 def create_cover_image(hook_text, width, height, output_path, video_path=None):
@@ -370,13 +426,12 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
     is_vertical = (width, height) == (VERTICAL_W, VERTICAL_H)
     
     if is_vertical:
-        # 竖屏成片：高级深色渐变背景，不依赖视频帧，保证不超出界面
-        img = Image.new('RGB', (width, height), VERTICAL_COVER_TOP)
+        # 竖屏成片：半透明质感封面，渐变背景带 alpha，透出底层画面
+        img = Image.new('RGBA', (width, height), (*VERTICAL_COVER_TOP, VERTICAL_COVER_ALPHA))
         draw = ImageDraw.Draw(img)
-        _draw_vertical_gradient(draw, width, height, VERTICAL_COVER_TOP, VERTICAL_COVER_BOTTOM)
-        # 轻微半透明暗角，让文字更突出
-        overlay = Image.new('RGBA', (width, height), (0, 0, 0, 100))
-        img = img.convert('RGBA')
+        _draw_vertical_gradient(draw, width, height, VERTICAL_COVER_TOP, VERTICAL_COVER_BOTTOM, alpha=VERTICAL_COVER_ALPHA)
+        # 轻微半透明暗角，不盖死
+        overlay = Image.new('RGBA', (width, height), (0, 0, 0, 60))
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
     else:
@@ -687,7 +742,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     create_cover_image(hook_text, out_w, out_h, cover_img, clip_path)
     print(f"  ✓ 封面生成")
     
-    # 2. 字幕逻辑：有字幕/图片则跳过，无则烧录中文
+    # 2. 字幕逻辑：有字幕则烧录（图像 overlay：每张图 -loop 1 才能按时间 enable 显示）
     sub_images = []
     do_burn_subs = not skip_subs and (force_burn_subs or not detect_burned_subs(clip_path))
     if skip_subs:
@@ -709,8 +764,10 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         for sub in subtitles:
             if not _is_mostly_chinese(sub['text']):
                 sub['text'] = _translate_to_chinese(sub['text']) or sub['text']
-        print(f"  ✓ 字幕解析 ({len(subtitles)}条)，已转中文")
-        for i, sub in enumerate(subtitles[:50]):
+        # 仅过滤整句为规则/模板的条目，保留所有对白（含重复句，保证字幕连续）
+        subtitles = _filter_relevant_subtitles(subtitles)
+        print(f"  ✓ 字幕解析 ({len(subtitles)}条)")
+        for i, sub in enumerate(subtitles):
             img_path = os.path.join(temp_dir, f'sub_{i:04d}.png')
             create_subtitle_image(sub['text'], out_w, out_h, img_path)
             sub_images.append({'path': img_path, 'start': sub['start'], 'end': sub['end']})
@@ -740,22 +797,19 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         current_video = cover_output
     print(f"  ✓ 封面烧录")
     
-    # 5.2 分批烧录字幕（封面结束后才显示，不盖住封面）
+    # 5.2 烧录字幕（图像 overlay；每张图 -loop 1 才能按 enable=between(t,a,b) 显示）
     if sub_images:
-        batch_size = 8
+        batch_size = 5
         for batch_idx in range(0, len(sub_images), batch_size):
             batch = sub_images[batch_idx:batch_idx + batch_size]
-            
             inputs = ['-i', current_video]
             for img in batch:
-                inputs.extend(['-i', img['path']])
-            
+                inputs.extend(['-loop', '1', '-i', img['path']])
             filters = []
             last_output = '0:v'
             for i, img in enumerate(batch):
                 input_idx = i + 1
                 output_name = f'v{i}'
-                # 封面结束后才显示字幕，不盖住封面
                 sub_start = max(img['start'], cover_duration)
                 if sub_start < img['end']:
                     enable = f"between(t,{sub_start:.3f},{img['end']:.3f})"
@@ -763,22 +817,20 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                 else:
                     filters.append(f"[{last_output}]copy[{output_name}]")
                 last_output = output_name
-            
             filter_complex = ';'.join(filters)
             batch_output = os.path.join(temp_dir, f'sub_batch_{batch_idx}.mp4')
-            
             cmd = [
                 'ffmpeg', '-y', *inputs,
                 '-filter_complex', filter_complex,
                 '-map', f'[{last_output}]', '-map', '0:a',
                 '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
-                '-c:a', 'copy', batch_output
+                '-c:a', 'copy', '-shortest', batch_output
             ]
-            
-            result = subprocess.run(cmd, capture_output=True)
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"  ⚠ 字幕批次 {batch_idx} 报错: {(result.stderr or '')[-500:]}", file=sys.stderr)
             if result.returncode == 0 and os.path.exists(batch_output):
                 current_video = batch_output
-        
         print(f"  ✓ 字幕烧录")
     
     # 5.3 加速10% + 音频同步

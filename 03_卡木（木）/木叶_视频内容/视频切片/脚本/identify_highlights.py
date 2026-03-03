@@ -159,7 +159,7 @@ def _build_prompt(transcript: str, clip_count: int) -> str:
     txt = transcript[:5000] if len(transcript) > 5000 else transcript
     return f"""识别视频文字稿中的 {clip_count} 个高光片段，直接输出 JSON 数组，第一个字符必须是 [。
 
-重要：若某片段里有人提问（观众/连麦者问的问题），必须提取提问内容填 question，且 hook_3sec 用该提问。成片前3秒先展示提问，再播回答。
+重要：每个话题均优先提问→回答。若某片段里有人提问（观众/连麦者问的问题），必须提取提问内容填 question，且 hook_3sec 用该提问；成片前3秒先展示提问，再播回答。
 
 示例（有提问）：
 [{{"title":"普通人怎么敢跟ZF搞","start_time":"01:12:30","end_time":"01:15:30","question":"普通人怎么敢跟ZF搞？","hook_3sec":"普通人怎么敢跟ZF搞？","cta_ending":"{DEFAULT_CTA}","transcript_excerpt":"维权起头跑通就成生意","reason":"提问+回答完整"}}]

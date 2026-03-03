@@ -71,18 +71,37 @@ def export_via_cookie(object_token: str) -> str | None:
 
 
 def export_via_playwright_page(object_token: str, title: str = "", wait_sec: int = 30) -> str | None:
-    """Playwright 打开妙记页，在页面内 fetch 导出接口（带 credentials），无感拿正文。"""
+    """Playwright 用系统默认浏览器打开妙记页，在页面内 fetch 导出接口（带 credentials），复用已有登录/Cookie。"""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
         return None
-    import tempfile
-    ud = tempfile.mkdtemp(prefix="feishu_one_")
+    sys.path.insert(0, str(SCRIPT_DIR))
+    try:
+        from playwright_default_browser import launch_playwright_with_default_browser
+    except ImportError:
+        launch_playwright_with_default_browser = None
     result = [None]
+    cleanup = lambda: None
+
     try:
         with sync_playwright() as p:
-            ctx = p.chromium.launch_persistent_context(ud, headless=False, timeout=15000)
-            pg = ctx.pages[0] if ctx.pages else ctx.new_page()
+            if launch_playwright_with_default_browser:
+                ctx, get_page, cleanup = launch_playwright_with_default_browser(p, headless=False, timeout=15000)
+                pg = get_page()
+            else:
+                import tempfile
+                ud = tempfile.mkdtemp(prefix="feishu_one_")
+                ctx = p.chromium.launch_persistent_context(ud, headless=False, timeout=15000)
+                pg = ctx.pages[0] if ctx.pages else ctx.new_page()
+
+                def cleanup():
+                    try:
+                        ctx.close()
+                    except Exception:
+                        pass
+                    import shutil
+                    shutil.rmtree(ud, ignore_errors=True)
             pg.goto(f"https://cunkebao.feishu.cn/minutes/{object_token}", wait_until="domcontentloaded", timeout=25000)
             print(f"   页面已打开，等待 {wait_sec} 秒（若未登录请先登录）…")
             time.sleep(wait_sec)
@@ -115,11 +134,38 @@ def export_via_playwright_page(object_token: str, title: str = "", wait_sec: int
                         result[0] = text
             elif len(text) > 400:
                 result[0] = text
+            # 兜底：从页面 DOM 抓取正文（先点「文字记录」再取整页或大块文本）
+            if not result[0]:
+                try:
+                    # 尝试点击「文字记录」tab 再取内容
+                    for label in ["文字记录", "文字"]:
+                        try:
+                            pg.get_by_text(label, exact=False).first.click(timeout=3000)
+                            time.sleep(1.5)
+                            break
+                        except Exception:
+                            pass
+                    dom_text = pg.evaluate("""() => {
+                        let out = '';
+                        const candidates = document.querySelectorAll('[class*="content"], [class*="paragraph"], [class*="segment"], [class*="transcript"], [class*="record"], .ne-doc-body, [role="main"]');
+                        for (const el of candidates) {
+                            const t = (el.innerText || el.textContent || '').trim();
+                            if (t.length > 800 && (t.includes('：') || t.includes(':') || /\\d{1,2}:\\d{2}:\\d{2}/.test(t))) { out = t; break; }
+                        }
+                        if (!out) out = document.body.innerText || document.body.textContent || '';
+                        return out;
+                    }""")
+                    if dom_text and len(dom_text.strip()) > 300:
+                        result[0] = dom_text.strip()
+                except Exception:
+                    pass
     except Exception as e:
         print(f"   Playwright 失败: {e}", file=sys.stderr)
     finally:
-        import shutil
-        shutil.rmtree(ud, ignore_errors=True)
+        try:
+            cleanup()
+        except Exception:
+            pass
     return result[0]
 
 

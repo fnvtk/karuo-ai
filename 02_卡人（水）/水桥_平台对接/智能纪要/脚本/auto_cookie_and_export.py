@@ -86,7 +86,7 @@ OUT_DIR = Path("/Users/karuo/Documents/聊天记录/soul")
 
 
 def run_playwright_page_export(from_num: int, to_num: int) -> int:
-    """在 Playwright 页面内直接请求导出，绕过 Cookie，保证成功。"""
+    """在 Playwright 用系统默认浏览器打开，页面内直接请求导出，复用已有登录/Cookie。"""
     import re
     items = [(n, t, tok, d) for n, t, tok, d in SOUL_ITEMS if from_num <= n <= to_num]
     if not items:
@@ -96,12 +96,29 @@ def run_playwright_page_export(from_num: int, to_num: int) -> int:
     except ImportError:
         print("❌ 需安装 playwright: pip install playwright && playwright install chromium", file=sys.stderr)
         return 1
-    import tempfile
-    ud = tempfile.mkdtemp(prefix="feishu_export_")
+    sys.path.insert(0, str(SCRIPT_DIR))
+    try:
+        from playwright_default_browser import launch_playwright_with_default_browser
+    except ImportError:
+        launch_playwright_with_default_browser = None
     try:
         with sync_playwright() as p:
-            ctx = p.chromium.launch_persistent_context(ud, headless=False, timeout=15000)
-            pg = ctx.pages[0] if ctx.pages else ctx.new_page()
+            if launch_playwright_with_default_browser:
+                ctx, get_page, cleanup = launch_playwright_with_default_browser(p, headless=False, timeout=15000)
+                pg = get_page()
+            else:
+                import tempfile
+                ud = tempfile.mkdtemp(prefix="feishu_export_")
+                ctx = p.chromium.launch_persistent_context(ud, headless=False, timeout=15000)
+                pg = ctx.pages[0] if ctx.pages else ctx.new_page()
+
+                def cleanup():
+                    try:
+                        ctx.close()
+                    except Exception:
+                        pass
+                    import shutil
+                    shutil.rmtree(ud, ignore_errors=True)
             pg.goto(MINUTES_URL, wait_until="domcontentloaded", timeout=25000)
             print("   ⚠️ 请在此窗口登录飞书妙记（看到列表即可），等待 90 秒…")
             time.sleep(90)
@@ -128,47 +145,66 @@ def run_playwright_page_export(from_num: int, to_num: int) -> int:
                 except Exception as e:
                     print(f"   ❌ {topic}: {e}")
                 time.sleep(1)
-            ctx.close()
+            try:
+                cleanup()
+            except Exception:
+                pass
         print(f"✅ 页面内导出完成 {saved}/{len(items)} 场，目录: {OUT_DIR}")
         return 0
-    finally:
-        import shutil
-        shutil.rmtree(ud, ignore_errors=True)
+    except Exception as e:
+        print(f"❌ Playwright 导出异常: {e}", file=sys.stderr)
+        return 1
 
 
 def collect_cookie_via_playwright_standalone() -> str:
-    """Playwright 启动独立 Chromium，用户登录后抓 Cookie。"""
+    """Playwright 用系统默认浏览器打开，用户登录后抓 Cookie，复用已有登录态。"""
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:
         return ""
-    import tempfile
-    ud = tempfile.mkdtemp(prefix="feishu_cookie_")
+    sys.path.insert(0, str(SCRIPT_DIR))
+    try:
+        from playwright_default_browser import launch_playwright_with_default_browser
+    except ImportError:
+        launch_playwright_with_default_browser = None
     cookie_str = ""
     try:
         with sync_playwright() as p:
-            ctx = p.chromium.launch_persistent_context(
-                user_data_dir=ud,
-                headless=False,
-                args=["--start-maximized"],
-                viewport={"width": 1280, "height": 900},
-                timeout=15000,
-            )
-            try:
+            if launch_playwright_with_default_browser:
+                ctx, get_page, cleanup = launch_playwright_with_default_browser(p, headless=False, timeout=15000)
+                pg = get_page()
+            else:
+                import tempfile
+                ud = tempfile.mkdtemp(prefix="feishu_cookie_")
+                ctx = p.chromium.launch_persistent_context(
+                    user_data_dir=ud,
+                    headless=False,
+                    args=["--start-maximized"],
+                    viewport={"width": 1280, "height": 900},
+                    timeout=15000,
+                )
                 pg = ctx.pages[0] if ctx.pages else ctx.new_page()
+
+                def cleanup():
+                    try:
+                        ctx.close()
+                    except Exception:
+                        pass
+                    import shutil
+                    shutil.rmtree(ud, ignore_errors=True)
+            try:
                 pg.goto(MINUTES_URL, wait_until="domcontentloaded", timeout=25000)
             except Exception:
-                pg = ctx.new_page() if not ctx.pages else ctx.pages[0]
-                try:
-                    pg.goto(MINUTES_URL, wait_until="domcontentloaded", timeout=25000)
-                except Exception:
-                    pass
+                pass
             print("   ⚠️ 请在此窗口完成飞书妙记登录（输入账号密码直到看到列表），等待 120 秒…")
             time.sleep(120)
             cookies = ctx.cookies("https://cunkebao.feishu.cn")
             if not cookies:
                 cookies = ctx.cookies()
-            ctx.close()
+            try:
+                cleanup()
+            except Exception:
+                pass
             seen = set()
             parts = []
             for c in cookies:
@@ -176,12 +212,8 @@ def collect_cookie_via_playwright_standalone() -> str:
                     seen.add(c["name"])
                     parts.append(f"{c['name']}={c.get('value','')}")
             cookie_str = "; ".join(parts)
-    finally:
-        import shutil
-        try:
-            shutil.rmtree(ud, ignore_errors=True)
-        except Exception:
-            pass
+    except Exception as e:
+        print(f"   Playwright 取 Cookie 失败: {e}", file=sys.stderr)
     return cookie_str if len(cookie_str) > 200 else ""
 
 

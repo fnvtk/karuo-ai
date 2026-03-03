@@ -122,7 +122,7 @@ def main() -> int:
         try:
             from feishu_minutes_one_url import export_via_playwright_page
             print("   Cookie 导出 401，改用 Playwright 页面内获取…")
-            text = export_via_playwright_page(token, title=title, wait_sec=45)
+            text = export_via_playwright_page(token, title=title, wait_sec=60)
         except Exception as e:
             print("   Playwright 兜底失败:", e, file=sys.stderr)
     if text:

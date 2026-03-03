@@ -347,6 +347,14 @@ python3 scripts/feishu_wiki_create_doc.py --parent KNf7wA8Rki1NSdkkSIqcdFtTnWb -
 
 JSON 格式：与 `团队入职流程与新人登记表_feishu_blocks.json` 相同，含 `children` 数组（飞书 docx blocks）。
 
+### 读书笔记发飞书（链接与子目录）
+
+- **原则**：读书笔记写完后同步发到飞书知识库，发到**指定链接（父节点）下的对应子目录**。
+- **链接分析**：飞书知识库链接格式为 `https://cunkebao.feishu.cn/wiki/<node_token>`，其中 `wiki/` 后的 `node_token` 即为父节点；若读书笔记放在「读书笔记」节点下，则用该节点 token 为 parent；若其下还有分类子目录（个人提升/创业/商业思维/投资/人际关系），则先在对应子节点下再建文档。
+- **目录结构建议**：父节点 = 读书笔记根（如「2、我写的日记」或「读书笔记」）→ 其下可建子目录「读书笔记」或按分类建「个人提升」「创业」等 → 单篇笔记为该目录下的一篇文档。
+- **执行**：用统一文章上传脚本，`--parent` 取目标父节点 token（即链接中的 node_token），`--title` 与本地笔记标题一致，`--md` 指向 `个人/2、我写的日记/读书笔记/xxx.md`。若需按分类落子目录，需先有该分类子节点 token，再以该 token 为 parent 创建文档。
+- **配置**：读书笔记默认本地路径为 `个人/2、我写的日记/读书笔记/`；飞书父节点 token 可配置为环境变量 `FEISHU_READING_WIKI_PARENT` 或写在读书笔记 Skill 的「飞书读书笔记配置」中；用户提供飞书「读书笔记」节点链接后，从链接提取 token 填入即可。
+
 ---
 
 ## 飞书导出 JSON 按原格式上传
