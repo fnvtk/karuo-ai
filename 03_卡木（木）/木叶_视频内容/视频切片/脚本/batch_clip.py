@@ -7,6 +7,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -59,9 +60,20 @@ def _is_mostly_chinese(text: str) -> bool:
     return chinese / max(1, len(text.strip())) > 0.3
 
 
+def _title_no_slash(s: str) -> str:
+    """标题去杠：：｜、—、/ 等替换为空格，与 soul_enhance 一致"""
+    if not s:
+        return s
+    s = str(s).strip()
+    for c in "：:｜|—－-/、":
+        s = s.replace(c, " ")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
 def sanitize_filename(name: str, max_length: int = 50, chinese_only: bool = True) -> str:
-    """清理文件名，统一简体中文；若含英文则仅保留中文部分"""
-    name = _to_simplified(str(name))
+    """清理文件名，先标题去杠，再仅保留中文、空格、_-"""
+    name = _title_no_slash(name) or _to_simplified(str(name))
     safe_chars = []
     for c in name:
         if c in " _-" or "\u4e00" <= c <= "\u9fff":

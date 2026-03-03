@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 高光识别 - AI 分析视频文字稿，输出高光片段 JSON
-级联：Ollama(卡若AI本地) → 规则备用
-只用已有能力，不依赖 Gemini/Groq
+级联：API 优先（当前可用最佳模型）→ Ollama 本地 → 规则备用
+API 使用 OPENAI_API_BASE/KEY/MODEL 或 OPENAI_API_BASES/KEYS/MODELS（逗号分隔）故障切换。
 """
 import argparse
 import json
@@ -17,6 +17,8 @@ DEFAULT_CTA = "关注我，每天学一招私域干货"
 CLIP_COUNT = 15
 MIN_DURATION = 60   # 最少 1 分钟
 MAX_DURATION = 300  # 最多 5 分钟
+# API 默认模型：优先用当前可用最佳（可被 OPENAI_MODEL / OPENAI_MODELS 覆盖）
+DEFAULT_API_MODEL = "gpt-4o"
 
 
 def parse_srt_segments(srt_path: str) -> list:
@@ -250,6 +252,62 @@ def _ensure_chinese_highlights(data: list) -> list:
 OLLAMA_MODELS = ["qwen2.5:3b", "qwen2.5:1.5b"]  # 优先 3b，能力更强
 
 
+def _split_csv(s: str) -> list:
+    return [x.strip() for x in (s or "").split(",") if x.strip()]
+
+
+def _build_api_provider_queue() -> list:
+    """
+    构建 API 接口队列：OPENAI_API_BASES/KEYS/MODELS 或单接口 OPENAI_API_BASE/KEY/MODEL。
+    返回 [{"base_url", "api_key", "model"}, ...]，无配置时返回空列表。
+    """
+    bases = _split_csv(os.environ.get("OPENAI_API_BASES", ""))
+    keys = _split_csv(os.environ.get("OPENAI_API_KEYS", ""))
+    models = _split_csv(os.environ.get("OPENAI_MODELS", ""))
+    single_base = (os.environ.get("OPENAI_API_BASE") or "https://api.openai.com/v1").strip()
+    single_key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    single_model = (os.environ.get("OPENAI_MODEL") or DEFAULT_API_MODEL).strip() or DEFAULT_API_MODEL
+    queue = []
+    if bases:
+        for i, b in enumerate(bases):
+            key = keys[i] if i < len(keys) and keys[i] else single_key
+            model = models[i] if i < len(models) and models[i] else single_model
+            if b and key:
+                queue.append({"base_url": b.rstrip("/"), "api_key": key, "model": model})
+    elif single_key:
+        queue.append({"base_url": single_base.rstrip("/"), "api_key": single_key, "model": single_model})
+    return queue
+
+
+def call_openai_api(transcript: str, clip_count: int, provider: dict) -> str:
+    """调用 OpenAI 兼容 API（Chat Completion），使用指定 base_url / api_key / model。"""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        raise RuntimeError("未安装 openai 库，请执行: pip install openai")
+    prompt = _build_prompt(transcript, clip_count)
+    system = (
+        "你是短视频策划师。用户会提供视频文字稿，你只输出一个 JSON 数组。"
+        "若某片段内有人提问（观众/连麦者问的问题），必须提取提问原文填 question，且 hook_3sec 用该提问（前3秒先展示提问再回答）；无提问则 hook_3sec 用金句/悬念。"
+        "格式含 title, start_time, end_time, hook_3sec, cta_ending, transcript_excerpt, reason；有提问时加 question。"
+        "禁止输出任何非 JSON 内容。"
+    )
+    client = OpenAI(api_key=provider["api_key"], base_url=provider["base_url"])
+    resp = client.chat.completions.create(
+        model=provider["model"],
+        messages=[
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.2,
+        max_tokens=8192,
+    )
+    content = (resp.choices[0].message.content or "").strip()
+    if not content:
+        raise RuntimeError("API 返回空内容")
+    return content
+
+
 def call_ollama(transcript: str, clip_count: int = CLIP_COUNT, model: str = "qwen2.5:3b") -> str:
     """调用卡若AI本地模型（Ollama），使用 chat 接口避免对话式误判"""
     import requests
@@ -301,23 +359,47 @@ def main():
     if len(text) < 100:
         print("❌ 文字稿过短，请检查 SRT 格式", file=sys.stderr)
         sys.exit(1)
-    # 级联：Ollama 3b → 1.5b → 规则备用（--require-ai 时不用规则）
+    # 级联：API 优先（当前可用最佳模型）→ Ollama → 规则备用（--require-ai 时不用规则）
     data = None
     raw = ""
-    for model in OLLAMA_MODELS:
+    api_queue = _build_api_provider_queue()
+    for provider in api_queue:
         try:
-            print(f"正在调用 Ollama {model} 分析高光片段...")
-            raw = call_ollama(text, args.clips, model)
+            print(f"正在调用 API {provider.get('model', '?')} 分析高光片段...")
+            raw = call_openai_api(text, args.clips, provider)
             if not raw:
-                raise ValueError("模型返回空")
+                raise ValueError("API 返回空")
             data = _parse_ai_json(raw)
             if data and isinstance(data, list) and len(data) > 0:
-                print(f"  ✓ {model} 成功，识别 {len(data)} 段")
+                print(f"  ✓ API ({provider.get('model', '?')}) 成功，识别 {len(data)} 段")
                 break
         except Exception as e:
-            print(f"  {model} 失败: {e}", file=sys.stderr)
+            print(f"  API ({provider.get('model', '?')}) 失败: {e}", file=sys.stderr)
             if raw:
                 print(f"  返回预览: {str(raw)[:400]}...", file=sys.stderr)
+            data = None
+    if (not data or not isinstance(data, list)) and not api_queue:
+        pass  # 未配置 API，继续尝试 Ollama
+    elif data and isinstance(data, list) and len(data) > 0:
+        pass  # API 已成功，保持 data
+    else:
+        data = None
+    if not data or not isinstance(data, list):
+        for model in OLLAMA_MODELS:
+            try:
+                print(f"正在调用 Ollama {model} 分析高光片段...")
+                raw = call_ollama(text, args.clips, model)
+                if not raw:
+                    raise ValueError("模型返回空")
+                data = _parse_ai_json(raw)
+                if data and isinstance(data, list) and len(data) > 0:
+                    print(f"  ✓ {model} 成功，识别 {len(data)} 段")
+                    break
+            except Exception as e:
+                print(f"  {model} 失败: {e}", file=sys.stderr)
+                if raw:
+                    print(f"  返回预览: {str(raw)[:400]}...", file=sys.stderr)
+                data = None
     if not data or not isinstance(data, list):
         if getattr(args, "require_ai", False):
             print("❌ 必须用 AI 识别，当前无可用模型或解析失败", file=sys.stderr)

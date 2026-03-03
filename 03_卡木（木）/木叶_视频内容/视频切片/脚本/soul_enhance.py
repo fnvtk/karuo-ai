@@ -183,14 +183,26 @@ def draw_text_with_outline(draw, pos, text, font, color, outline_color, outline_
     # 主体
     draw.text((x, y), text, font=font, fill=color)
 
+def _normalize_title_for_display(title: str) -> str:
+    """标题去杠、更清晰：将 ：｜、—、/ 等替换为空格"""
+    if not title:
+        return ""
+    s = _to_simplified(str(title).strip())
+    for char in "：:｜|—－-/、":
+        s = s.replace(char, " ")
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
 def sanitize_filename(name: str, max_length: int = 50) -> str:
-    """成片文件名：仅保留中文、空格、_-，与 batch_clip 一致"""
-    name = _to_simplified(str(name))
+    """成片文件名：先标题去杠，再仅保留中文、空格、_-"""
+    name = _normalize_title_for_display(name) or _to_simplified(str(name))
     safe = []
     for c in name:
         if c in " _-" or "\u4e00" <= c <= "\u9fff":
             safe.append(c)
     result = "".join(safe).strip()
+    result = re.sub(r"\s+", " ", result).strip()
     if len(result) > max_length:
         result = result[:max_length]
     return result.strip(" _-") or "片段"
@@ -416,9 +428,19 @@ def _draw_vertical_gradient(draw, width, height, top_rgb, bottom_rgb, alpha=255)
         draw.rectangle([0, y, width, y + 1], fill=(r, g, b, alpha))
 
 
+def _strip_cover_number_prefix(text):
+    """封面标题不显示序号：去掉开头的 1. 2. 01、切片1、123 等"""
+    if not text:
+        return text
+    text = re.sub(r'^\s*切片\s*\d+\s*[\.\s、：:]*\s*', '', text)
+    text = re.sub(r'^\s*\d+[\.\s、：:]*\s*', '', text)
+    return text.strip()
+
+
 def create_cover_image(hook_text, width, height, output_path, video_path=None):
-    """创建封面贴片。竖屏 498x1080 时：高级渐变背景、文字严格在界面内居中不超出、左上角 Soul logo。"""
+    """创建封面贴片。竖屏 498x1080 时：高级渐变背景、文字严格在界面内居中不超出、左上角 Soul logo；封面不显示 123 等序号。"""
     hook_text = _to_simplified(str(hook_text or "").strip())
+    hook_text = _strip_cover_number_prefix(hook_text)
     if not hook_text:
         hook_text = "精彩切片"
     style = STYLE['cover']
@@ -725,12 +747,13 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     
     print(f"  分辨率: {width}x{height}, 时长: {duration:.1f}秒")
     
-    # 前3秒优先用「提问问题」：有 question 则封面/前贴先展示提问，再播回答
-    hook_text = highlight_info.get('question') or highlight_info.get('hook_3sec') or highlight_info.get('title') or ''
-    if not hook_text and clip_path:
+    # 封面与成片文件名统一：都用主题 title（去杠），名字与标题一致、无杠更清晰
+    raw_title = highlight_info.get('title') or highlight_info.get('hook_3sec') or ''
+    if not raw_title and clip_path:
         m = re.search(r'\d+[_\s]+(.+?)(?:_enhanced)?\.mp4$', os.path.basename(clip_path))
         if m:
-            hook_text = m.group(1).strip()
+            raw_title = m.group(1).strip()
+    hook_text = _normalize_title_for_display(raw_title) or raw_title or '精彩切片'
     cover_duration = STYLE['cover']['duration']
     
     # 竖屏成片：封面/字幕按 498x1080 做，叠在裁切区域，文字与字幕在竖屏上完整且居中

@@ -19,7 +19,7 @@ updated: "2026-03-03"
 ## ⭐ Soul派对切片流程（默认）
 
 ```
-原始视频 → MLX转录 → 字幕转简体 → 高光识别(当前模型/AI) → 批量切片 → soul_enhance → 输出成片
+原始视频 → MLX转录 → 字幕转简体 → 高光识别(API 优先/最佳模型，失败则 Ollama→规则) → 批量切片 → soul_enhance → 输出成片
                      ↑                        ↓
             提取后立即繁转简+修正错误    封面+字幕(已简体)+加速10%+去语气词
 ```
@@ -53,8 +53,9 @@ eval "$(~/miniforge3/bin/conda shell.zsh hook)"
 conda activate mlx-whisper
 mlx_whisper audio.wav --model mlx-community/whisper-small-mlx --language zh --output-format all
 
-# 2. 高光识别（Ollama → 规则；流水线会在读取 transcript 前自动转简体）
+# 2. 高光识别（API 优先，未配置则 Ollama → 规则；流水线会在读取 transcript 前自动转简体）
 python3 identify_highlights.py -t transcript.srt -o highlights.json -n 6
+# 需配置 OPENAI_API_KEY 或 OPENAI_API_BASES/KEYS/MODELS，默认模型 gpt-4o
 
 # 3. 切片
 python3 batch_clip.py -i 视频.mp4 -l highlights.json -o clips/ -p soul
@@ -262,7 +263,7 @@ python3 scripts/burn_subtitles_clean.py -i enhanced.mp4 -s clean.srt -o 成片.m
 | **soul_vertical_crop.py** | Soul 竖屏中段批量裁剪（横版→498×1080 去白边） | ⭐⭐⭐ |
 | **scene_detect_to_highlights.py** | 镜头/场景检测 → highlights.json（PySceneDetect，可接 batch_clip） | ⭐⭐ |
 | chapter_themes_to_highlights.py | 按章节 .md 主题提取片段（本地模型→highlights.json） | ⭐⭐⭐ |
-| identify_highlights.py | 高光识别（Ollama→规则） | ⭐⭐ |
+| identify_highlights.py | 高光识别（API 优先→Ollama→规则，默认 gpt-4o） | ⭐⭐ |
 | batch_clip.py | 批量切片 | ⭐⭐ |
 | one_video.py | 单视频一键成片 | ⭐⭐ |
 | burn_subtitles_clean.py | 字幕烧录（无阴影） | ⭐ |
@@ -291,6 +292,14 @@ conda activate mlx-whisper
 mlx_whisper audio.wav --model mlx-community/whisper-small-mlx --language zh --output-format all
 ```
 
+### 高光识别模型（API 优先）
+
+高光识别默认使用**当前可用最佳模型**：优先走 **OpenAI 兼容 API**（见下），未配置或失败时再用本地 Ollama，最后规则兜底。
+
+- **单接口**：`OPENAI_API_BASE`、`OPENAI_API_KEY`、`OPENAI_MODEL`（默认 `gpt-4o`）。
+- **多接口故障切换**：`OPENAI_API_BASES`、`OPENAI_API_KEYS`、`OPENAI_MODELS`（逗号分隔，按顺序尝试）。
+- 不写死密钥，从环境变量读取；详见 `运营中枢/参考资料/卡若AI异常处理与红线.md` 与 API 稳定性规则。
+
 ### 依赖检查
 
 ```bash
@@ -303,7 +312,7 @@ conda activate mlx-whisper
 python -c "import mlx_whisper; print('OK')"
 
 # Python库
-pip3 list | grep -E "moviepy|Pillow|opencc"
+pip3 list | grep -E "moviepy|Pillow|opencc|openai"
 ```
 
 ### 安装依赖

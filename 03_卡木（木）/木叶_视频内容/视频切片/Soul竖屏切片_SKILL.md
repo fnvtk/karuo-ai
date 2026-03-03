@@ -34,7 +34,7 @@
 ```
 
 - **batch_clip**：输出到 `clips/`
-- **soul_enhance -o 成片/ --vertical --title-only**：封面（优先用 question 作前3秒）+ 字幕 + **完整去语助词** + 竖屏裁剪，直接输出到 `成片/`，文件名为标题
+- **soul_enhance -o 成片/ --vertical --title-only**：**文件名 = 封面标题 = highlights 的 title**（去杠：`：｜、—、/` 等替换为空格），名字与标题一致、无序号无杠；字幕烧录（随语音走动）；完整去语助词；竖屏裁剪直出到 `成片/`
 
 ---
 
@@ -52,7 +52,7 @@
 
 ## 五、成片：封面 + 字幕 + 竖屏
 
-- **封面**：竖屏 498×1080 内**不超出界面**；**半透明质感**（背景 alpha=165，透出底层画面）；深色渐变（墨绿→绿）、左上角 Soul logo、标题文字**严格居中**且左右留白 44px，多行自动换行不裁切。透明度在 `soul_enhance.py` 中由 `VERTICAL_COVER_ALPHA` 调节（0～255）。
+- **封面**：竖屏 498×1080 内**不超出界面**；**半透明质感**（背景 alpha=165）；深色渐变、左上角 Soul logo；**封面显示标题 = 成片文件名 = highlights.title**（去杠后一致，无 `：｜—/`、无序号）；标题文字严格居中、多行自动换行。透明度由 `VERTICAL_COVER_ALPHA` 调节。
 - **字幕**：封面结束后才显示，**居中**在竖屏内；烧录用**图像 overlay**（每张字幕图 `-loop 1` + `enable=between(t,a,b)`），若系统 FFmpeg 带 libass 可改用 SRT+subtitles 滤镜；语助词由 soul_enhance 统一清理。重新加字幕时加 `--force-burn-subs`。
 - **竖屏**：498×1080，crop 参数与 `参考资料/竖屏中段裁剪参数说明.md` 一致
 
