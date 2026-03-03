@@ -8,7 +8,8 @@ cd "$SCRIPT_DIR"
 TOKEN_FILE="$SCRIPT_DIR/.feishu_tokens.json"
 NOTE_DIR="/Users/karuo/Documents/个人/2、我写的日记/读书笔记"
 JSON_DIR="/Users/karuo/Documents/卡若Ai的文件夹/导出/读书笔记_feishu_json"
-PARENT="KNf7wA8Rki1NSdkkSIqcdFtTnWb"
+# 读书笔记目录链接为快捷方式(KY7ewL21Ki5YRqkuDbecQuCTnTc)，需在其父节点下创建
+PARENT="QPyPwwUmtiweUOk6aTmcZLBxnIg"
 PUBLISH="python3 $SCRIPT_DIR/feishu_article_unified_publish.py"
 
 # 若本地无 token，尝试从本地 API 拉取
@@ -53,4 +54,4 @@ $PUBLISH --parent "$PARENT" --title "卡若读书笔记：曾仕强《易经》"
 $PUBLISH --parent "$PARENT" --title "卡若读书笔记：5000天后的世界 - 凯文凯利" --md "$NOTE_DIR/卡若读书笔记：5000天后的世界 - 凯文凯利.md" --json "$JSON_DIR/凯文凯利.json" && echo "  ✅ 凯文凯利"
 $PUBLISH --parent "$PARENT" --title "卡若读书笔记：盐铁之辩与AI之道" --md "$NOTE_DIR/卡若读书笔记：盐铁之辩与AI之道.md" --json "$JSON_DIR/盐铁之辩.json" && echo "  ✅ 盐铁之辩"
 
-echo "📌 全部上传完成。飞书节点: https://cunkebao.feishu.cn/wiki/$PARENT"
+echo "📌 全部上传完成。读书笔记目录（你给的链接）: https://cunkebao.feishu.cn/wiki/KY7ewL21Ki5YRqkuDbecQuCTnTc"

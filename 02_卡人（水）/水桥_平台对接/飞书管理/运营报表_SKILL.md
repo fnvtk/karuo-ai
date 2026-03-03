@@ -150,10 +150,11 @@ MINIPROGRAM_EXTRA = {
 '107': ['主题关键词 ≤12字', 140, 35000, 400, 8, 90, 3, 25, 10, 45],
 ```
 
-在 `SESSION_DATE_COLUMN` 中添加日期映射：
+在 `SESSION_DATE_COLUMN` 和 `SESSION_MONTH` 中添加映射（**按月份选工作表标签**，3 月填 3 月表）：
 
 ```python
-SESSION_DATE_COLUMN = {'105': '20', '106': '21', '107': '22'}
+SESSION_DATE_COLUMN = {'105': '20', '106': '21', '107': '23', '113': '2'}
+SESSION_MONTH = {'105': 2, '106': 2, '107': 2, '113': 3}  # 113场=3月→选「3月」标签
 ```
 
 #### Step 3：执行写入 + 校验
@@ -324,9 +325,12 @@ export FEISHU_APP_SECRET=dhjU0qWd5AzicGWTf4cTqhCWJOrnuCk4
 # 2. SESSION_DATE_COLUMN 加日期映射
 SESSION_DATE_COLUMN = {..., 'NEW': '日期号'}
 
-# 3. _maybe_send_group 内 date_label 和 src_date 可选加映射（可选，不加则不发群）
+# 3. SESSION_MONTH 加月份（跨月时必填：3 月场次填 3，写入「3月」标签而非 2 月）
+SESSION_MONTH = {..., 'NEW': 3}
 
-# 4. 若当日有小程序数据，在 MINIPROGRAM_EXTRA 中加：
+# 4. _maybe_send_group 内 date_label 和 src_date 可选加映射（可选，不加则不发群）
+
+# 5. 若当日有小程序数据，在 MINIPROGRAM_EXTRA 中加：
 #    MINIPROGRAM_EXTRA = {..., '23': {'访问次数': 55, '访客': 55, '交易金额': 0}}
 ```
 

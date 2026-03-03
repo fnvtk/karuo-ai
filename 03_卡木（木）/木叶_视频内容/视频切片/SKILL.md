@@ -1,11 +1,11 @@
 ---
 name: 视频切片
-description: Soul派对视频切片 + 切片动效包装（片头/片尾/程序化）。触发词含视频剪辑、切片发布、切片动效包装、程序化包装、片头片尾。
+description: Soul派对视频切片 + 切片动效包装（片头/片尾/程序化）+ 剪映思路借鉴（智能剪口播/镜头分割）。触发词含视频剪辑、切片发布、切片动效包装、程序化包装、片头片尾。
 group: 木
-triggers: 视频剪辑、切片发布、字幕烧录、**切片动效包装、程序化包装、片头片尾、批量封面、视频包装**
+triggers: 视频剪辑、切片发布、字幕烧录、**切片动效包装、程序化包装、片头片尾、批量封面、视频包装**、镜头切分、场景检测
 owner: 木叶
-version: "1.2"
-updated: "2026-02-17"
+version: "1.3"
+updated: "2026-03-03"
 ---
 
 # 视频切片
@@ -260,6 +260,7 @@ python3 scripts/burn_subtitles_clean.py -i enhanced.mp4 -s clean.srt -o 成片.m
 | **soul_slice_pipeline.py** | Soul 切片一体化流水线 | ⭐⭐⭐ 最常用 |
 | **soul_enhance.py** | 封面+字幕(简体)+加速+去语气词 | ⭐⭐⭐ |
 | **soul_vertical_crop.py** | Soul 竖屏中段批量裁剪（横版→498×1080 去白边） | ⭐⭐⭐ |
+| **scene_detect_to_highlights.py** | 镜头/场景检测 → highlights.json（PySceneDetect，可接 batch_clip） | ⭐⭐ |
 | chapter_themes_to_highlights.py | 按章节 .md 主题提取片段（本地模型→highlights.json） | ⭐⭐⭐ |
 | identify_highlights.py | 高光识别（Ollama→规则） | ⭐⭐ |
 | batch_clip.py | 批量切片 | ⭐⭐ |
@@ -309,6 +310,9 @@ pip3 list | grep -E "moviepy|Pillow|opencc"
 
 ```bash
 pip3 install --break-system-packages moviepy Pillow opencc-python-reimplemented
+
+# 镜头切分（可选）：PySceneDetect
+pip3 install 'scenedetect[opencv]'
 ```
 
 ---
@@ -385,6 +389,66 @@ ffmpeg 合成：片头 + 切片 + 片尾
 
 ---
 
+## 🎞 剪映思路借鉴与自实现（可选能力）
+
+> 参考 **剪映专业版**（`/Applications/VideoFusion-macOS.app`）内可读配置与流程，用开源方案自实现「智能剪口播」与「智能镜头分割」，不依赖剪映二进制。详见：`参考资料/剪映_智能剪口播与智能片段分割_逆向分析.md`。
+
+### 智能剪口播（口播稿 → 按文案/时间轴切片段）
+
+| 剪映逻辑 | 本技能对应实现 |
+|----------|----------------|
+| 语音→文字 + 时间戳 | **MLX Whisper** 转录 → `transcript.srt` |
+| 按文案智能剪、口播稿↔时间轴对齐 | **高光识别**（`identify_highlights` / `chapter_themes_to_highlights`）→ `highlights.json` → `batch_clip` |
+| 前端配置键 | `script_ai_cut_config`、`transcript_options`（仅作对照，不读写剪映） |
+
+**结论**：现有流程「转录 → 字幕转简 → 高光识别 → 批量切片 → soul_enhance」已覆盖「智能剪口播」能力；按句/按段细切可与 `transcript.srt` 时间戳结合，在 `highlights.json` 中按句生成条目即可。
+
+### 智能镜头分割（按镜头/场景切分）
+
+剪映 **SceneEditDetection** 思路（仅借鉴思路与参数，算法用开源实现）：
+
+- **输入**：帧序列；剪映内部为 96×96 小图 + 数组缓冲。
+- **算法思路**：图像特征 + 滑动窗口 + 后处理阈值 → 输出镜头边界。
+- **剪映可读参数**（`SceneEditDetection/config.json`）：  
+  `sliding_window_size: 7`、`img_feat_dims: 128`、`post_process_threshold: 0.35`、backbone/predhead 模型名（内部用，不引用）。
+
+**自实现方案**：使用 **PySceneDetect**（ContentDetector/AdaptiveDetector），按阈值与最小场景长度得到切点，再转为与 `batch_clip` 兼容的 `highlights.json`。
+
+**一键：镜头检测 → highlights → 批量切片 → 增强**
+
+```bash
+cd 03_卡木（木）/木叶_视频内容/视频切片/脚本
+pip install 'scenedetect[opencv]'   # 仅首次
+
+# 镜头检测 → 生成 highlights.json
+python3 scene_detect_to_highlights.py -i "原视频.mp4" -o "输出目录/highlights_from_scenes.json" -t 27 --min-scene-len 15
+
+# 用生成的 highlights 做切片 + 增强（与现有流水线一致）
+python3 batch_clip.py -i "原视频.mp4" -l "输出目录/highlights_from_scenes.json" -o "输出目录/clips/" -p scene
+python3 soul_enhance.py -c "输出目录/clips/" -l "输出目录/highlights_from_scenes.json" -t "输出目录/transcript.srt" -o "输出目录/clips_enhanced/"
+```
+
+**参数速查**：
+
+| 参数 | 说明 | 建议 |
+|------|------|------|
+| `--threshold` / `-t` | 内容变化阈值，越大切点越少 | 27（可试 20～35） |
+| `--min-scene-len` | 最小场景长度（帧） | 15 |
+| `--min-duration` | 过滤短于 N 秒的片段 | 按需 |
+| `--max-clips` / `-n` | 最多保留片段数 | 0=不限制 |
+
+**与「高光切片」二选一**：  
+- **高光切片**：按话题/金句/提问（需转录 + 高光识别），适合口播、访谈。  
+- **镜头切片**：按画面切换切分，适合多机位、快剪、无稿素材；可先跑 `scene_detect_to_highlights` 再走同一套 `batch_clip` + `soul_enhance`。
+
+### 参考资料（剪映与流程）
+
+- **剪映逆向分析**：`03_卡木（木）/木叶_视频内容/视频切片/参考资料/剪映_智能剪口播与智能片段分割_逆向分析.md`  
+  - 智能剪口播 H5 路径、智能片段分割 config 与参数、自实现建议与合规说明。
+- **热点切片标准流程**：`参考资料/热点切片_标准流程.md`（五步、两目录、命令速查）。
+
+---
+
 ## 📊 输出示例
 
 ```
@@ -403,13 +467,18 @@ ffmpeg 合成：片头 + 切片 + 片尾
 
 ```
 03_卡木（木）/木叶_视频内容/视频切片/
-├── scripts/
-│   ├── soul_slice_pipeline.py   # ⭐ Soul 一体化
-│   ├── soul_enhance.py          # ⭐ 封面+字幕+加速
-│   ├── one_video.py             # 单视频成片
+├── 脚本/
+│   ├── soul_slice_pipeline.py      # ⭐ Soul 一体化
+│   ├── soul_enhance.py             # ⭐ 封面+字幕+加速
+│   ├── scene_detect_to_highlights.py  # 镜头检测→highlights（剪映思路自实现）
+│   ├── one_video.py                # 单视频成片
 │   └── ...
-├── 切片动效包装/                # 联动能力：片头/片尾/程序化
-│   ├── 10秒视频/                # React 程序化模板
+├── 参考资料/
+│   ├── 剪映_智能剪口播与智能片段分割_逆向分析.md  # 剪映思路与参数参考
+│   ├── 热点切片_标准流程.md
+│   └── 竖屏中段裁剪参数说明.md
+├── 切片动效包装/                  # 联动能力：片头/片尾/程序化
+│   ├── 10秒视频/                  # React 程序化模板
 │   └── 参考资料/切片动效包装速查.md
 ├── fonts/
 └── SKILL.md

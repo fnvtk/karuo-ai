@@ -96,6 +96,9 @@ def main():
     parser.add_argument("--skip-subs", action="store_true", help="跳过字幕烧录（原片已有字幕时用）")
     parser.add_argument("--force-burn-subs", action="store_true", help="强制烧录字幕（忽略检测）")
     parser.add_argument("--force-transcribe", action="store_true", help="强制重新转录（删除旧 transcript 并重跑）")
+    parser.add_argument("--two-folders", action="store_true", help="仅用两文件夹：切片、成片（默认 clips、clips_enhanced）")
+    parser.add_argument("--slices-only", action="store_true", help="只做到切片（MLX 转录→高光→批量切片），不跑成片增强")
+    parser.add_argument("--prefix", default="", help="切片文件名前缀，如 soul112")
     args = parser.parse_args()
 
     video_path = Path(args.video).resolve()
@@ -109,11 +112,15 @@ def main():
         base_dir = video_path.parent / (video_path.stem + "_output")
     base_dir.mkdir(parents=True, exist_ok=True)
 
+    use_two_folders = getattr(args, "two_folders", False)
+    clips_dir_name = "切片" if use_two_folders else "clips"
+    enhanced_dir_name = "成片" if use_two_folders else "clips_enhanced"
+
     audio_path = base_dir / "audio.wav"
     transcript_path = base_dir / "transcript.srt"
     highlights_path = base_dir / "highlights.json"
-    clips_dir = base_dir / "clips"
-    enhanced_dir = base_dir / "clips_enhanced"
+    clips_dir = base_dir / clips_dir_name
+    enhanced_dir = base_dir / enhanced_dir_name
 
     print("=" * 60)
     print("🎬 Soul 切片流水线：视频制作 + 视频切片")
@@ -202,6 +209,7 @@ def main():
 
     # 3. 批量切片
     clips_dir.mkdir(parents=True, exist_ok=True)
+    clip_prefix = getattr(args, "prefix", None) or "soul"
     if not args.skip_clips:
         run(
             [
@@ -210,14 +218,24 @@ def main():
                 "--input", str(video_path),
                 "--highlights", str(highlights_path),
                 "--output", str(clips_dir),
-                "--prefix", "soul",
+                "--prefix", clip_prefix,
             ],
             "批量切片",
             timeout=300,
         )
     elif not list(clips_dir.glob("*.mp4")):
-        print("❌ clips/ 为空，请去掉 --skip-clips 或先完成切片")
+        print(f"❌ {clips_dir_name}/ 为空，请去掉 --skip-clips 或先完成切片")
         sys.exit(1)
+
+    if getattr(args, "slices_only", False):
+        print()
+        print("=" * 60)
+        print("✅ 切片阶段完成（--slices-only）")
+        print("=" * 60)
+        print(f"  切片: {clips_dir}")
+        print(f"  转录: {transcript_path}")
+        print(f"  高光: {highlights_path}")
+        return
 
     # 4. 增强（封面+字幕+加速）：soul_enhance（Pillow，无需 drawtext）
     enhanced_dir.mkdir(parents=True, exist_ok=True)
@@ -238,7 +256,7 @@ def main():
     import shutil
     enhanced_count = len(list(enhanced_dir.glob("*.mp4")))
     if enhanced_count == 0 and clips_list:
-        print("  （soul_enhance 失败，复制原始切片到 clips_enhanced）")
+        print(f"  （soul_enhance 失败，复制原始切片到 {enhanced_dir_name}/）")
         for f in sorted(clips_dir.glob("*.mp4")):
             shutil.copy(f, enhanced_dir / f.name)
 
@@ -247,7 +265,7 @@ def main():
     print("✅ 流水线完成")
     print("=" * 60)
     print(f"  切片: {clips_dir}")
-    print(f"  增强: {enhanced_dir}")
+    print(f"  成片: {enhanced_dir}")
     print(f"  清单: {base_dir / 'clips_manifest.json'}")
 
 

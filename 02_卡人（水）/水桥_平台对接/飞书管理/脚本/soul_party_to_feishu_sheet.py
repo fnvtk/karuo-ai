@@ -15,7 +15,9 @@ from urllib.parse import quote
 FEISHU_SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 TOKEN_FILE = os.path.join(FEISHU_SCRIPT_DIR, '.feishu_tokens.json')
 WIKI_NODE_OR_SPREADSHEET_TOKEN = os.environ.get('FEISHU_SPREADSHEET_TOKEN', 'wikcnIgAGSNHo0t36idHJ668Gfd')
-SHEET_ID = os.environ.get('FEISHU_SHEET_ID', '7A3Cy9')
+SHEET_ID = os.environ.get('FEISHU_SHEET_ID', '7A3Cy9')  # 2月默认 sheet
+# 月份 → 工作表 sheetId（2月=7A3Cy9；3月=bJR5sA，与飞书「3月」标签一致）
+SHEET_ID_BY_MONTH = {2: '7A3Cy9', 3: 'bJR5sA'}
 # 飞书群机器人 webhook（推送运营报表链接与场次数据）
 FEISHU_GROUP_WEBHOOK = os.environ.get('FEISHU_GROUP_WEBHOOK', 'https://open.feishu.cn/open-apis/bot/v2/hook/34b762fc-5b9b-4abb-a05a-96c8fb9599f1')
 OPERATION_REPORT_LINK = 'https://cunkebao.feishu.cn/wiki/wikcnIgAGSNHo0t36idHJ668Gfd?sheet=7A3Cy9'
@@ -39,9 +41,13 @@ ROWS = {
     '106': [ '退伍军人低空经济 贴息8800', 135, 33312, 395, 7, 88, 3, 24, 9, 42 ],
     # 107场 2026-02-23：关闭页 137min/398进房/60最高/36关注/2礼物/16灵魂力/33820曝光，小助手 10人均/85互动/34关注
     '107': [ '职场情绪价值 核心团队管理', 137, 33820, 398, 10, 85, 2, 16, 36, 60 ],
+    # 113场 2026-03-02：关闭页 163min/445成员/54最高/19新增粉丝/1礼物/29灵魂力/42360曝光，小助手 8人均/139互动/16关注
+    '113': [ '钱一月Ai创业私域', 163, 42360, 445, 8, 139, 1, 29, 19, 54 ],
 }
 # 场次→按日期列填写时的日期（表头为当月日期 1~31）
-SESSION_DATE_COLUMN = {'105': '20', '106': '21', '107': '23'}
+SESSION_DATE_COLUMN = {'105': '20', '106': '21', '107': '23', '113': '2'}
+# 场次→月份（用于选择 2月/3月 等工作表标签，避免写入错月）
+SESSION_MONTH = {'105': 2, '106': 2, '107': 2, '113': 3}
 
 # 小程序当日运营数据：日期号 → {访问次数, 访客, 交易金额}，填表时自动写入对应日期列
 # 数据来源：微信公众平台 → 小程序 → 统计 → 实时访问/概况
@@ -154,6 +160,32 @@ def get_sheet_meta(access_token, spreadsheet_token):
     return sheets[0].get('sheetId') or sheets[0].get('title') or SHEET_ID
 
 
+def get_sheet_id_by_month(access_token, spreadsheet_token, month):
+    """按月份选工作表标签：标题含「X月」的 sheet（如 3月）→ 返回其 sheetId，避免写入错月。"""
+    if month in SHEET_ID_BY_MONTH:
+        return SHEET_ID_BY_MONTH[month]
+    url = f'https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{spreadsheet_token}/metainfo'
+    r = requests.get(
+        url,
+        headers={'Authorization': f'Bearer {access_token}'},
+        timeout=15,
+    )
+    if r.status_code != 200:
+        return SHEET_ID
+    body = r.json()
+    if body.get('code') != 0:
+        return SHEET_ID
+    sheets = (body.get('data') or {}).get('sheets') or []
+    month_label = f'{month}月'
+    for s in sheets:
+        title = (s.get('title') or '').strip()
+        if month_label in title:
+            sid = s.get('sheetId') or s.get('title')
+            if sid:
+                return sid
+    return SHEET_ID
+
+
 def read_sheet_range(access_token, spreadsheet_token, range_str):
     """读取表格范围，返回 values 或 None"""
     url = f'https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{spreadsheet_token}/values/{quote(range_str, safe="")}'
@@ -258,7 +290,7 @@ def main():
     session = (sys.argv[1] if len(sys.argv) > 1 else '104').strip()
     row = ROWS.get(session)
     if not row:
-        print('❌ 未知场次，可用: 96, 97, 98, 99, 100, 103, 104, 105, 106')
+        print('❌ 未知场次，可用: 96, 97, 98, 99, 100, 103, 104, 105, 106, 107, 113')
         sys.exit(1)
     token = load_token() or refresh_and_load_token()
     if not token:
@@ -267,7 +299,10 @@ def main():
     raw = (row + [None] * EFFECT_COLS)[:EFFECT_COLS]
     values = [_to_cell_value(raw[0])] + [_to_cell_value(raw[i]) for i in range(1, EFFECT_COLS)]
     spreadsheet_token = WIKI_NODE_OR_SPREADSHEET_TOKEN
-    sheet_id = SHEET_ID
+    month = SESSION_MONTH.get(session, 2)
+    sheet_id = get_sheet_id_by_month(token, spreadsheet_token, month)
+    if month != 2:
+        print(f'✅ 已选 {month}月 工作表（sheet_id={sheet_id}）')
     range_read = f"{sheet_id}!A1:AG35"
     vals, read_code, read_body = read_sheet_range(token, spreadsheet_token, range_read)
     # 401 时刷新 token 并重试读取，确保能定位到日期列
@@ -300,19 +335,20 @@ def main():
     LABELS_GROUP = ['主题', '时长（分钟）', 'Soul推流人数', '进房人数', '人均时长（分钟）', '互动数量', '礼物', '灵魂力', '增加关注', '最高在线']
 
     def _maybe_send_group(sess, raw_vals):
-        if sess not in ('105', '106', '107'):
+        if sess not in ('105', '106', '107', '113'):
             return
-        date_label = {'105': '2月20日', '106': '2月21日', '107': '2月23日'}.get(sess, sess + '场')
+        date_label = {'105': '2月20日', '106': '2月21日', '107': '2月23日', '113': '3月2日'}.get(sess, sess + '场')
+        report_link = OPERATION_REPORT_LINK if sheet_id == SHEET_ID else f'https://cunkebao.feishu.cn/wiki/wikcnIgAGSNHo0t36idHJ668Gfd?sheet={sheet_id}'
         lines = [
             '【Soul 派对运营报表】',
-            f'链接：{OPERATION_REPORT_LINK}',
+            f'链接：{report_link}',
             '',
             f'{sess}场（{date_label}）已登记：',
         ]
         for i, label in enumerate(LABELS_GROUP):
             val = raw_vals[i] if i < len(raw_vals) else ''
             lines.append(f'{label}：{val}')
-        src_date = {'105': '20260220', '106': '20260221', '107': '20260223'}.get(sess, '20260220')
+        src_date = {'105': '20260220', '106': '20260221', '107': '20260223', '113': '20260302'}.get(sess, '20260220')
         lines.append(f'数据来源：soul 派对 {sess}场 {src_date}.txt')
         msg = '\n'.join(lines)
         ok, _ = send_feishu_group_message(FEISHU_GROUP_WEBHOOK, msg)
