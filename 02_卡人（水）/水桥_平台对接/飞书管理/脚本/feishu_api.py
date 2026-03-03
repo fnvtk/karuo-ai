@@ -239,6 +239,24 @@ def token_status():
         'auth_time': USER_TOKENS.get('auth_time', '')
     })
 
+
+@app.route('/api/token/sync', methods=['POST', 'GET'])
+def token_sync():
+    """将当前内存中的 Token 写入 .feishu_tokens.json，供 feishu_wiki_create_doc 等脚本使用"""
+    if not USER_TOKENS.get('access_token') and not USER_TOKENS.get('refresh_token'):
+        return jsonify({'status': 'fail', 'msg': '无可用 Token，请先完成授权'}), 400
+    save_tokens()
+    return jsonify({'status': 'ok', 'msg': '已同步到 .feishu_tokens.json'})
+
+
+@app.route('/api/token/export')
+def token_export():
+    """供本地脚本使用：导出当前 Token 到同一目录 .feishu_tokens.json（仅 localhost）"""
+    if not USER_TOKENS.get('access_token') and not USER_TOKENS.get('refresh_token'):
+        return jsonify({'status': 'fail', 'msg': '无可用 Token'}), 404
+    save_tokens()
+    return jsonify({k: v for k, v in USER_TOKENS.items() if k in ('access_token', 'refresh_token', 'name', 'auth_time')})
+
 # ============== 云盘 ==============
 
 @app.route('/api/drive/files')

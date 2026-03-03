@@ -77,8 +77,26 @@ def check_token_valid(token, parent_token):
         return False
 
 
+def _fetch_token_from_local_api():
+    """当本地无 Token 文件时，尝试从已运行的 feishu_api (localhost:5050) 拉取并落盘"""
+    try:
+        r = requests.get("http://127.0.0.1:5050/api/token/export", timeout=2)
+        if r.status_code != 200:
+            return {}
+        data = r.json()
+        if not data.get("access_token") and not data.get("refresh_token"):
+            return {}
+        with open(CONFIG['TOKEN_FILE'], 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        return data
+    except Exception:
+        return {}
+
+
 def get_token(parent_token):
     tokens = load_tokens()
+    if not tokens and os.path.exists(CONFIG['TOKEN_FILE']) is False:
+        tokens = _fetch_token_from_local_api()
     if tokens.get('access_token') and check_token_valid(tokens['access_token'], parent_token):
         return tokens['access_token']
     print("🔄 静默刷新 Token...")
