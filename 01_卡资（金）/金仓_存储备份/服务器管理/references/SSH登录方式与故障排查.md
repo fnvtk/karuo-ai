@@ -3,6 +3,34 @@
 > 当一种方式失败时，依次尝试其他方式。终极备选：**宝塔面板 → 终端**（无需 SSH）。
 > **存客宝 SSH 修复**：在存客宝宝塔终端执行 `scripts/存客宝_SSH修复_宝塔终端执行.sh` 内容。
 
+## 启动 SSH 并保证连接成功（kr宝塔 43.139.27.93）
+
+按顺序执行即可：
+
+**① 安全组放行 22、22022**（在卡若AI 项目根目录执行）：
+
+```bash
+cd "/Users/karuo/Documents/个人/卡若AI"
+.venv_tencent/bin/python3 "01_卡资（金）/金仓_存储备份/服务器管理/scripts/腾讯云_kr宝塔安全组放行SSH.py"
+```
+
+**② 在服务器上启动 sshd**（二选一）：
+
+- **能连上 SSH 时**：`ssh -p 22022 root@43.139.27.93` 登录后执行  
+  `systemctl enable sshd && systemctl start sshd && systemctl status sshd`
+- **连不上时**：用 **宝塔面板终端**：打开 https://43.139.27.93:9988 → 登录 → 终端 → 执行上述三条命令。
+
+**③ 测试连接**：
+
+```bash
+ssh -p 22022 -o StrictHostKeyChecking=no root@43.139.27.93
+# 密码：Zhiqun1984（首字母大写 Z）
+```
+
+若仍失败，见下方「Connection closed 原因与处理」和「终极备选：宝塔面板终端」。
+
+---
+
 ## 零、SSH IP 被封禁防护（2026-02-23 已配置）
 
 **问题**：sshpass/密钥连接被 `Connection closed by remote host`，原因是外部暴力破解（19,690 次错误尝试）占满 sshd 连接池。

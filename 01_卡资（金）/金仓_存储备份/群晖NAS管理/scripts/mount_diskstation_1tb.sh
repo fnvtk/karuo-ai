@@ -1,18 +1,18 @@
 #!/bin/bash
 # ============================================
-# 家里 DiskStation 1TB 共享 - 外网挂载到 Finder 侧栏「位置」
-# 挂载后可直接存文件，Finder 拷贝时会显示速率
-# 外网通过 frp 端口 4452 访问 SMB（需先在 NAS 添加 frpc 配置）
+# 家里 DiskStation 约 1TB 备份盘 - Mac 挂载成像真实硬盘
+# 内网优先（192.168.110.29），外网用 opennas2:4452
+# 挂载后可用于：时间机器、Finder 侧栏当硬盘用、拷贝看速率
 # ============================================
 
-NAS_HOST="opennas2.quwanzhi.com"
-NAS_PORT="4452"
 NAS_USER="admin"
-# 密码：与 DSM 登录一致
 NAS_PASS="zhiqun1984"
-# 共享名：DSM 中的共享文件夹名，常见为 共享、homes
-SHARE="共享"
+# 共享名：DSM 里新建的备份盘可用 MacBackup，已有共享可用 共享
+SHARE_RAW="${MACBACKUP_SHARE:-共享}"
 MOUNT_POINT="$HOME/DiskStation-1TB"
+
+# 中文共享名需 URL 编码，否则 mount_smbfs 会报 URL parsing failed
+SHARE=$(python3 -c "import urllib.parse; print(urllib.parse.quote('$SHARE_RAW'))" 2>/dev/null || echo "$SHARE_RAW")
 
 # 已挂载则先卸载
 if mount | grep -q "DiskStation-1TB"; then
@@ -22,15 +22,27 @@ if mount | grep -q "DiskStation-1TB"; then
 fi
 
 mkdir -p "$MOUNT_POINT"
-echo "正在挂载家里 DiskStation (${NAS_HOST}:${NAS_PORT})..."
-mount_smbfs "//${NAS_USER}:${NAS_PASS}@${NAS_HOST}:${NAS_PORT}/${SHARE}" "$MOUNT_POINT" 2>&1
+
+# 内网优先：能 ping 通 192.168.110.29 则用内网（SMB 默认 445）
+if ping -c 1 -W 2 192.168.110.29 >/dev/null 2>&1; then
+  echo "使用内网 192.168.110.29 挂载..."
+  SMB_URL="//${NAS_USER}:${NAS_PASS}@192.168.110.29/${SHARE}"
+else
+  echo "使用外网 opennas2.quwanzhi.com:4452 挂载..."
+  SMB_URL="//${NAS_USER}:${NAS_PASS}@opennas2.quwanzhi.com:4452/${SHARE}"
+fi
+
+mount_smbfs "$SMB_URL" "$MOUNT_POINT" 2>&1
 
 if mount | grep -q "DiskStation-1TB"; then
   echo "挂载成功: $MOUNT_POINT"
-  echo "添加到 Finder 侧栏：在 Finder 中把「DiskStation-1TB」拖到侧栏「位置」下即可"
-  echo "直接往里拷贝文件，Finder 会显示传输速率"
+  echo "→ 时间机器：系统设置 → 时间机器 → 选择该磁盘"
+  echo "→ 侧栏固定：在 Finder 中把「DiskStation-1TB」拖到「位置」"
   open "$MOUNT_POINT"
 else
-  echo "挂载失败。请确认：1) 家里 NAS frpc 已添加 SMB 4452 端口 2) NAS_PASS 正确 3) 共享名为 ${SHARE}"
+  echo "挂载失败。请确认："
+  echo "  1) NAS 上已建共享文件夹（如 ${SHARE_RAW}），SMB 已开"
+  echo "  2) 外网时 frpc 已添加 SMB 4452"
+  echo "  3) 密码正确（可改本脚本 NAS_PASS）"
   exit 1
 fi

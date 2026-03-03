@@ -278,6 +278,21 @@ def _filter_relevant_subtitles(subtitles):
     return out
 
 
+def _is_bad_transcript(subtitles, min_lines=15, max_repeat_ratio=0.85):
+    """检测是否为异常转录（如整篇同一句话）：若大量重复则视为无效，不烧录错误字幕"""
+    if not subtitles or len(subtitles) < min_lines:
+        return False
+    from collections import Counter
+    texts = [ (s.get("text") or "").strip() for s in subtitles ]
+    most_common = Counter(texts).most_common(1)
+    if not most_common:
+        return False
+    _, count = most_common[0]
+    if count >= len(texts) * max_repeat_ratio:
+        return True
+    return False
+
+
 def _sec_to_srt_time(sec):
     """秒数转为 SRT 时间格式 HH:MM:SS,mmm"""
     h = int(sec) // 3600
@@ -739,7 +754,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                  force_burn_subs=False, skip_subs=False, vertical=False):
     """增强单个切片。vertical=True 时最后裁成竖屏 498x1080 直出成片。"""
     
-    print(f"\n处理: {os.path.basename(clip_path)}")
+    print(f"  输入: {os.path.basename(clip_path)}", flush=True)
     
     video_info = get_video_info(clip_path)
     width, height = video_info['width'], video_info['height']
@@ -761,9 +776,10 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     overlay_pos = f"{OVERLAY_X}:0" if vertical else "0:0"
     
     # 1. 生成封面
+    print(f"  [1/5] 封面生成中…", flush=True)
     cover_img = os.path.join(temp_dir, 'cover.png')
     create_cover_image(hook_text, out_w, out_h, cover_img, clip_path)
-    print(f"  ✓ 封面生成")
+    print(f"  ✓ 封面生成", flush=True)
     
     # 2. 字幕逻辑：有字幕则烧录（图像 overlay：每张图 -loop 1 才能按时间 enable 显示）
     sub_images = []
@@ -789,13 +805,19 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                 sub['text'] = _translate_to_chinese(sub['text']) or sub['text']
         # 仅过滤整句为规则/模板的条目，保留所有对白（含重复句，保证字幕连续）
         subtitles = _filter_relevant_subtitles(subtitles)
-        print(f"  ✓ 字幕解析 ({len(subtitles)}条)")
+        # 异常转录检测：若整篇几乎同一句话，不烧录错误字幕，避免成片出现“像图片”的无效字
+        if _is_bad_transcript(subtitles):
+            print(f"  ⚠ 转录稿异常（大量重复同一句），已跳过字幕烧录；请用 MLX Whisper 对该视频重新生成 transcript.srt 后再跑成片", flush=True)
+            sys.stdout.flush()
+            subtitles = []
+        else:
+            print(f"  ✓ 字幕解析 ({len(subtitles)}条)，将烧录为随语音走动的字幕", flush=True)
         for i, sub in enumerate(subtitles):
             img_path = os.path.join(temp_dir, f'sub_{i:04d}.png')
             create_subtitle_image(sub['text'], out_w, out_h, img_path)
             sub_images.append({'path': img_path, 'start': sub['start'], 'end': sub['end']})
     if sub_images:
-        print(f"  ✓ 字幕图片 ({len(sub_images)}张)")
+        print(f"  ✓ 字幕图片 ({len(sub_images)}张)", flush=True)
     
     # 4. 检测静音
     silences = detect_silence(clip_path, SILENCE_THRESHOLD, SILENCE_MIN_DURATION)
@@ -804,13 +826,14 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     # 5. 构建FFmpeg命令
     current_video = clip_path
     
-    # 5.1 添加封面（竖屏时叠在 x=543，与最终裁切区域对齐）
+    # 5.1 添加封面（封面图 -loop 1 保证前 3 秒完整显示；竖屏时叠在 x=543）
+    print(f"  [2/5] 封面烧录中…", flush=True)
     cover_output = os.path.join(temp_dir, 'with_cover.mp4')
     cmd = [
-        'ffmpeg', '-y',
-        '-i', current_video, '-i', cover_img,
+        'ffmpeg', '-y', '-i', current_video,
+        '-loop', '1', '-i', cover_img,
         '-filter_complex', f"[0:v][1:v]overlay={overlay_pos}:enable='lt(t,{cover_duration})'[v]",
-        '-map', '[v]', '-map', '0:a',
+        '-map', '[v]', '-map', '0:a', '-shortest',
         '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
         '-c:a', 'copy', cover_output
     ]
@@ -818,11 +841,13 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     
     if os.path.exists(cover_output):
         current_video = cover_output
-    print(f"  ✓ 封面烧录")
+    print(f"  ✓ 封面烧录", flush=True)
     
-    # 5.2 烧录字幕（图像 overlay；每张图 -loop 1 才能按 enable=between(t,a,b) 显示）
+    # 5.2 烧录字幕（图像 overlay；每张图 -loop 1 才能按 enable=between(t,a,b) 显示，随语音走动）
     if sub_images:
+        print(f"  [3/5] 字幕烧录中（{len(sub_images)} 条，随语音时间轴显示）…", flush=True)
         batch_size = 5
+        total_batches = (len(sub_images) + batch_size - 1) // batch_size
         for batch_idx in range(0, len(sub_images), batch_size):
             batch = sub_images[batch_idx:batch_idx + batch_size]
             inputs = ['-i', current_video]
@@ -854,9 +879,18 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                 print(f"  ⚠ 字幕批次 {batch_idx} 报错: {(result.stderr or '')[-500:]}", file=sys.stderr)
             if result.returncode == 0 and os.path.exists(batch_output):
                 current_video = batch_output
-        print(f"  ✓ 字幕烧录")
+            cur_batch = batch_idx // batch_size + 1
+            if total_batches > 1 and cur_batch <= total_batches:
+                print(f"      字幕批次 {cur_batch}/{total_batches} 完成", flush=True)
+        if sub_images:
+            print(f"  ✓ 字幕烧录完成 ({len(sub_images)} 条)", flush=True)
+    else:
+        if do_burn_subs and os.path.exists(transcript_path):
+            print(f"  ⚠ 未烧录字幕：解析后无有效字幕（请用 MLX Whisper 重新生成 transcript.srt）", flush=True)
+        print(f"  [3/5] 字幕跳过", flush=True)
     
-    # 5.3 加速10% + 音频同步
+    # 5.3 加速10% + 音频同步（成片必做）
+    print(f"  [4/5] 加速 10% + 去语助词（已在上步字幕解析中清理）…", flush=True)
     speed_output = os.path.join(temp_dir, 'speed.mp4')
     atempo = 1.0 / SPEED_FACTOR  # 音频需要反向调整
     
@@ -869,22 +903,31 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         speed_output
     ]
     
-    result = subprocess.run(cmd, capture_output=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode == 0 and os.path.exists(speed_output):
         current_video = speed_output
-    print(f"  ✓ 加速10%")
+        print(f"  ✓ 加速 10% 完成", flush=True)
+    else:
+        print(f"  ⚠ 加速步骤失败，沿用当前视频继续", file=sys.stderr)
+        if result.stderr:
+            print(f"     {str(result.stderr)[:300]}", file=sys.stderr)
     
-    # 5.4 输出：竖屏则裁成 498x1080 直出，否则直接复制
+    # 5.4 输出：竖屏则裁成 498x1080 直出（高光区域裁剪，成片必做）
+    print(f"  [5/5] 竖屏裁剪中（498×1080）…", flush=True)
     if vertical:
         r = subprocess.run([
             'ffmpeg', '-y', '-i', current_video,
             '-vf', CROP_VF, '-c:a', 'copy', output_path
         ], capture_output=True, text=True)
-        if r.returncode != 0:
-            print(f"  ❌ 竖屏裁剪失败: {r.stderr[:200]}", file=sys.stderr)
+        if r.returncode == 0 and os.path.exists(output_path):
+            print(f"  ✓ 竖屏裁剪完成", flush=True)
+        else:
+            print(f"  ❌ 竖屏裁剪失败: {(r.stderr or '')[:300]}", file=sys.stderr)
             shutil.copy(current_video, output_path)
+            print(f"  ⚠ 已回退为未裁剪版本，请检查 FFmpeg", flush=True)
     else:
         shutil.copy(current_video, output_path)
+        print(f"  ✓ 横版输出", flush=True)
     
     if os.path.exists(output_path):
         size_mb = os.path.getsize(output_path) / (1024 * 1024)
@@ -941,12 +984,17 @@ def main():
     highlights = highlights if isinstance(highlights, list) else []
     
     clips = sorted(clips_dir.glob('*.mp4'))
-    print(f"\n找到 {len(clips)} 个切片")
+    total = len(clips)
+    print(f"\n找到 {total} 个切片，开始成片（封面+字幕+加速10%+竖屏裁剪）\n", flush=True)
     
     success_count = 0
     for i, clip_path in enumerate(clips):
         clip_num = _parse_clip_index(clip_path.name) or (i + 1)
         highlight_info = highlights[clip_num - 1] if 0 < clip_num <= len(highlights) else {}
+        title_display = (highlight_info.get('title') or clip_path.stem)[:36]
+        print("=" * 60, flush=True)
+        print(f"【成片进度】 {i+1}/{total}  {title_display}", flush=True)
+        print("=" * 60, flush=True)
         
         if getattr(args, 'title_only', False):
             title = (highlight_info.get('title') or highlight_info.get('hook_3sec') or clip_path.stem)

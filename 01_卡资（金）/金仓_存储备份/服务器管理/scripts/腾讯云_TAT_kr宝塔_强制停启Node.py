@@ -28,7 +28,7 @@ def ports(it):
     p=[int(cfg['port'])] if cfg.get('port') else []
     p.extend(int(m) for m in re.findall(r'-p\s*(\d+)',str(cfg.get('project_script',''))))
     return sorted(set(p))
-FB={'玩值大屏':['/www/wwwroot/self/wanzhi/玩值大屏','/www/wwwroot/self/wanzhi/玩值'],'tongzhi':['/www/wwwroot/self/wanzhi/tongzhi','/www/wwwroot/self/wanzhi/tong'],'神射手':['/www/wwwroot/self/kr/kr-use','/www/wwwroot/self/kr/kr-users'],'AITOUFA':['/www/wwwroot/ext/tools/AITOUFA','/www/wwwroot/ext/tools/AITOL']}
+FB={'玩值大屏':['/www/wwwroot/self/wanzhi/玩值大屏','/www/wwwroot/self/wanzhi/玩值'],'tongzhi':['/www/wwwroot/self/wanzhi/tongzhi','/www/wwwroot/self/wanzhi/tong'],'神射手':['/www/wwwroot/self/kr/kr-use','/www/wwwroot/self/kr/kr-users'],'AITOUFA':['/www/wwwroot/ext/tools/AITOUFA','/www/wwwroot/ext/tools/AITOL'],'wzdj':['/www/wwwroot/wzdj']}
 db='/www/server/panel/data/db/site.db'
 if os.path.isfile(db):
     c=sqlite3.connect(db); cur=c.cursor(); cur.execute(\"SELECT id,name,path,project_config FROM sites WHERE project_type='Node'\")

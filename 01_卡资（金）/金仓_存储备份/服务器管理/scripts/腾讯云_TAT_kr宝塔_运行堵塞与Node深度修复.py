@@ -78,6 +78,7 @@ PATH_FALLBACK = {
     "tongzhi": ["/www/wwwroot/self/wanzhi/tongzhi", "/www/wwwroot/self/wanzhi/tong"],
     "神射手": ["/www/wwwroot/self/kr/kr-use", "/www/wwwroot/self/kr/kr-users"],
     "AITOUFA": ["/www/wwwroot/ext/tools/AITOUFA", "/www/wwwroot/ext/tools/AITOL"],
+    "wzdj": ["/www/wwwroot/wzdj"],
 }
 
 # 【1】停止全部 Node

@@ -688,6 +688,18 @@ ssh nas "netstat -tlnp | grep 27017"
 | DSM | http://192.168.110.29:5000 |
 | 账号 | admin（密码见上，小写） |
 
+### 家里 NAS：开辟约 1TB 备份盘 · Mac 当硬盘用 + 时间机器
+
+**需求**：在群晖（家里 DiskStation）上开辟约 1000GB 空间，在 Mac 上挂载成**像真实硬盘**，可用于时间机器 + 日常读写。
+
+- **操作指南**：`参考资料/群晖1TB备份盘_Mac挂载与时间机器.md`（NAS 新建共享 → 开 Time Machine → Mac 挂载 → 时间机器选盘 → 可选开机自动挂载）
+- **一键挂载**（内网优先，外网走 frp 4452）：
+  ```bash
+  /Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/群晖NAS管理/scripts/mount_diskstation_1tb.sh
+  ```
+- 挂载点：`~/DiskStation-1TB`；新建共享名若为 `MacBackup`，可执行：`MACBACKUP_SHARE=MacBackup ./scripts/mount_diskstation_1tb.sh`
+- **开机自动挂载**：复制 `scripts/com.karuo.mount_diskstation_1tb.plist` 到 `~/Library/LaunchAgents/` 后 `launchctl load`，详见操作指南。
+
 ---
 
 ## 运维规范
@@ -718,6 +730,7 @@ ssh nas "netstat -tlnp | grep 27017"
 | 脚本 | 功能 | 位置 | 快速运行 |
 |------|------|------|----------|
 | `time_machine_diskstation_auto.sh` | Time Machine → 家里 DiskStation 检测/验证，输出材料路径供按参考资料处理 | `./scripts/` | `./scripts/time_machine_diskstation_auto.sh` |
+| `mount_diskstation_1tb.sh` | 家里 NAS 约 1TB 备份盘挂载到 Mac（内网优先），当硬盘用 + 时间机器 | `./scripts/` | `./scripts/mount_diskstation_1tb.sh` |
 | `export_macos_vm_to_downloads.sh` | CKB NAS 上 macOS VM 打包下载到本机「下载」文件夹，实时显示大小与用时，并生成使用说明 | `./scripts/` | 见下方「macOS VM 导出到本机」 |
 | `optimize_macos_vm_compose.sh` | 本机→NAS：macOS VM 流畅度优化 | `./scripts/` | 需本机与 NAS 同网 |
 | `optimize_macos_vm_on_nas.sh` | **NAS 上直接执行**：macOS VM 流畅度优化（外网推荐） | `./scripts/` | SSH 登录 NAS 后运行 |
