@@ -19,10 +19,11 @@ from pathlib import Path
 # 脚本目录
 SCRIPT_DIR = Path(__file__).parent
 TEMPLATE_DIR = SCRIPT_DIR.parent / "templates"
-OUTPUT_DIR = SCRIPT_DIR.parent / "output"
+# 导出到外部：卡若Ai的文件夹/报告/（不在 Skill 内）
+OUTPUT_DIR = Path("/Users/karuo/Documents/卡若Ai的文件夹/报告")
 
 # 确保输出目录存在
-OUTPUT_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # 颜色映射
 COLOR_EMOJIS = {
@@ -33,6 +34,8 @@ COLOR_EMOJIS = {
     "red": "❤️",
     "yellow": "💛",
     "pink": "💗",
+    "teal": "🩵",
+    "indigo": "💜",
 }
 
 BORDER_COLORS = {
@@ -43,6 +46,8 @@ BORDER_COLORS = {
     "red": "#fca5a5",
     "yellow": "#fde047",
     "pink": "#f9a8d4",
+    "teal": "#5eead4",
+    "indigo": "#a5b4fc",
 }
 
 

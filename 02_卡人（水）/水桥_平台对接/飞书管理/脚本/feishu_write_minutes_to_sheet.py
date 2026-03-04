@@ -4,11 +4,13 @@
 - 内部会议纪要：写在「内部会议纪要」这一行，按纪要上的日期（如 2月20日）填到该日期列。
 - 派对今日总结：写在「今日总结」这一行，按派对日期（如 2月19日）填到该日期列。
 不发飞书群。
-用法：python3 feishu_write_minutes_to_sheet.py [内部会议图片路径] [派对总结图片路径]
-  默认：内部会议 20260220-094434.jpg → 2月20日列，派对总结 20260220-094442.png → 2月19日列
+用法：
+  python3 feishu_write_minutes_to_sheet.py [内部会议图片路径] [派对总结图片路径]
+  python3 feishu_write_minutes_to_sheet.py --party-image <图片路径> --sheet-id bJR5sA --date-col 4   # 3月115场
 """
 import os
 import sys
+import argparse
 import json
 import requests
 from urllib.parse import quote
@@ -138,8 +140,61 @@ def write_image_to_cell(token, range_str, image_path, name=None):
 
 
 def main():
-    image_internal = (sys.argv[1] if len(sys.argv) > 1 else DEFAULT_IMAGE_INTERNAL).strip()
-    image_party = (sys.argv[2] if len(sys.argv) > 2 else DEFAULT_IMAGE_PARTY).strip()
+    parser = argparse.ArgumentParser(description='上传会议/派对纪要图片到飞书运营报表')
+    parser.add_argument('image_internal', nargs='?', default=DEFAULT_IMAGE_INTERNAL, help='内部会议图片路径')
+    parser.add_argument('image_party', nargs='?', default=DEFAULT_IMAGE_PARTY, help='派对总结图片路径')
+    parser.add_argument('--party-image', dest='party_image_override', type=str, help='派对纪要图片路径（单独指定时用）')
+    parser.add_argument('--sheet-id', dest='sheet_id_override', type=str, help='工作表 ID，如 3 月用 bJR5sA')
+    parser.add_argument('--date-col', dest='date_col_override', type=str, help='日期列号（表头单元格值），如 115 场用 4')
+    args = parser.parse_args()
+
+    image_internal = (args.image_internal or '').strip()
+    image_party = (args.image_party or '').strip()
+    sheet_id = args.sheet_id_override or SHEET_ID
+    date_col = args.date_col_override
+    party_image_override = (args.party_image_override or '').strip()
+
+    if party_image_override and sheet_id and date_col:
+        # 单次上传：派对图片 → 指定 sheet 的「今日总结」行、指定日期列
+        token = load_token() or refresh_token()
+        if not token:
+            print('❌ 无法获取飞书 Token')
+            sys.exit(1)
+        if not os.path.exists(party_image_override):
+            print('❌ 图片不存在:', party_image_override)
+            sys.exit(1)
+        vals = read_range(token, f'{sheet_id}!A1:AG50')
+        if not vals or len(vals) < 2:
+            print('❌ 读取表格失败')
+            sys.exit(1)
+        header = vals[0]
+        col_idx = None
+        for idx, cell in enumerate(header):
+            if str(cell).strip() == str(date_col).strip():
+                col_idx = idx
+                break
+        row_party = None
+        for ri, row in enumerate(vals):
+            a1 = (row[0] if row and len(row) > 0 else '')
+            a1 = str(a1 or '').strip()
+            if '今日总结' in a1:
+                row_party = ri + 1
+                break
+        if col_idx is None or row_party is None:
+            print('❌ 未找到日期列', date_col, '或「今日总结」行')
+            sys.exit(1)
+        range_cell = f'{sheet_id}!{_col_letter(col_idx)}{row_party}:{_col_letter(col_idx)}{row_party}'
+        code, body = write_image_to_cell(token, range_cell, party_image_override, name=os.path.basename(party_image_override))
+        if code == 401 or body.get('code') in (99991677, 99991663):
+            token = refresh_token()
+            if token:
+                code, body = write_image_to_cell(token, range_cell, party_image_override, name=os.path.basename(party_image_override))
+        if code == 200 and body.get('code') in (0, None):
+            print(f'✅ 已上传派对智能纪要图片到「今日总结」→ {date_col} 列（{sheet_id}）')
+        else:
+            print('❌ 上传失败:', code, body)
+            sys.exit(1)
+        return
 
     token = load_token() or refresh_token()
     if not token:

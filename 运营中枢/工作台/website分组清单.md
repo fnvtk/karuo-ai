@@ -17,8 +17,9 @@
 
 | 项目名 | 容器名 | 端口 | 编排位置 | 说明 |
 |:---|:---|:--:|:---|:---|
-| 神射手 | website-shensheshou | **3117** | `开发/2、私域银行/神射手/docker-compose.yml` | 与玩值电竞、OpenClaw 同文件启动 |
+| 神射手 | website-shensheshou | **3117** | `开发/2、私域银行/神射手/docker-compose.yml` | 与玩值电竞、OpenClaw、n8n 同文件启动 |
 | 玩值电竞 Web | website-wanzhi-web | **3001** | 同上 | 同上 |
+| n8n | website-n8n | **5678** | 同上 | 工作流自动化，镜像 docker.n8n.io/n8nio/n8n |
 | OpenClaw 网关 | website-openclaw-gateway | **18789** / **18790** | 同上 | 镜像 openclaw:local 需在 OpenClaw 项目内先 build；配置用 `openclaw/.env` |
 | 存客宝 Web | cunkebao-web | **3100** | `开发/2、私域银行/cunkebao_v3/docker-compose.yml` | 独立编排（不设 name: website）；同编排含触客宝+后端+MySQL+Redis |
 | 触客宝 Web | touchkebao-web | **3101** | 同上 | 同上 |
@@ -30,9 +31,9 @@
 
 ## 统一启动方式
 
-- **神射手 + 玩值电竞 + OpenClaw 网关**（主站）：在神射手目录执行  
+- **神射手 + 玩值电竞 + n8n + OpenClaw 网关**（主站）：在神射手目录执行  
   `docker compose up -d` 或 `docker compose up -d --build`  
-  各服务会出现在 Docker Desktop 的 **website** 分组下。OpenClaw 镜像需先在 `开发/8、小工具/Docker项目/OpenClaw/openclaw` 内执行 `docker compose build` 生成 `openclaw:local`。
+  各服务会出现在 Docker Desktop 的 **website** 分组下。n8n 访问 http://localhost:5678。OpenClaw 镜像需先在 `开发/8、小工具/Docker项目/OpenClaw/openclaw` 内执行 `docker compose build` 生成 `openclaw:local`。
 - **存客宝 + 触客宝**：在存客宝项目目录执行  
   `cd 开发/2、私域银行/cunkebao_v3 && docker compose up -d`（或 `--build` 拉取最新）  
   存客宝 http://localhost:3100 、触客宝 http://localhost:3101 ；同编排内含后端 8082、MySQL 3307、Redis 6380。
@@ -63,3 +64,4 @@
 | 2026-02-28 | 存客宝 Web（3100）、触客宝 Web（3101）归入 website 分类（文档）；编排独立保留数据卷；卡若ai网站端口改为 3102 与存客宝错开；统一启动方式补充存客宝/触客宝 |
 | 2026-03-01 | 开发端口与部署端口隔离，各项目开发端口见「项目与端口注册表」 |
 | 2026-03-01 | OpenClaw 网关迁入 website 编排，容器名 website-openclaw-gateway，端口 18789/18790；启动同神射手目录 |
+| 2026-03-04 | n8n 归入 website 编排，容器名 website-n8n，端口 5678；神射手目录 docker compose 启动 |

@@ -46,6 +46,7 @@ description: 本机（卡若）Docker 与各类服务端口统一登记表。凡
 |-----------|--------|------------------------|-------------------------|
 | 3001      | Web    | website-wanzhi-web    | 万知 web（玩值电竞）    |
 | 3117      | Web    | website-shensheshou   | 深深手                  |
+| 5678      | Web    | website-n8n          | n8n 工作流自动化        |
 | 8000      | 管理   | portainer              | Portainer HTTP          |
 | 9443      | 管理   | portainer              | Portainer HTTPS         |
 | 27017     | 数据库 | datacenter_mongodb     | MongoDB（唯一，见唯一MongoDB约定） |

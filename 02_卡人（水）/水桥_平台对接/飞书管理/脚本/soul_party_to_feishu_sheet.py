@@ -41,21 +41,39 @@ ROWS = {
     '106': [ '退伍军人低空经济 贴息8800', 135, 33312, 395, 7, 88, 3, 24, 9, 42 ],
     # 107场 2026-02-23：关闭页 137min/398进房/60最高/36关注/2礼物/16灵魂力/33820曝光，小助手 10人均/85互动/34关注
     '107': [ '职场情绪价值 核心团队管理', 137, 33820, 398, 10, 85, 2, 16, 36, 60 ],
-    # 113场 2026-03-02：关闭页 163min/445成员/54最高/19新增粉丝/1礼物/29灵魂力/42360曝光，小助手 8人均/139互动/16关注
-    '113': [ '钱一月Ai创业私域', 163, 42360, 445, 8, 139, 1, 29, 19, 54 ],
+    # 113场 2026-03-02：关闭页 163min/430成员/50最高/20新增粉丝/13礼物/66灵魂力/34290曝光，小助手 162min建房/429进房/9人均/110互动/20关注
+    '113': [ '钱一月Ai创业私域', 163, 34290, 430, 9, 110, 13, 66, 20, 50 ],
+    # 114场 2026-03-03：关闭页 163min/445成员/54最高/19新增粉丝/1礼物/29灵魂力/42360曝光，小助手 158min建房/437进房/8人均/139互动/16关注
+    '114': [ '电竞AI私域招人 龙虾', 163, 42360, 445, 8, 139, 1, 29, 19, 54 ],
+    # 115场 2026-03-04：关闭页 156min/484成员/56最高/15新增粉丝/1礼物/3灵魂力/36974曝光，小助手 154min建房/480进房/8人均/82互动/15关注
+    '115': [ '破产两次 家庭先于事业', 156, 36974, 484, 8, 82, 1, 3, 15, 56 ],
 }
 # 场次→按日期列填写时的日期（表头为当月日期 1~31）
-SESSION_DATE_COLUMN = {'105': '20', '106': '21', '107': '23', '113': '2'}
+SESSION_DATE_COLUMN = {'105': '20', '106': '21', '107': '23', '113': '2', '114': '3', '115': '4'}
 # 场次→月份（用于选择 2月/3月 等工作表标签，避免写入错月）
-SESSION_MONTH = {'105': 2, '106': 2, '107': 2, '113': 3}
+SESSION_MONTH = {'105': 2, '106': 2, '107': 2, '113': 3, '114': 3, '115': 3}
+
+# 派对录屏（飞书妙记）链接：场次 → 完整 URL，填表时写入「派对录屏」行对应列
+# 从飞书妙记复制链接后填入，115 场等新场次需补全
+PARTY_VIDEO_LINKS = {
+    '113': 'https://cunkebao.feishu.cn/minutes/obcn6yjq6866c3gl4ibd72vr',
+    '114': 'https://cunkebao.feishu.cn/minutes/obcn7nd828351hy4he3974a8',
+    '115': 'https://cunkebao.feishu.cn/minutes/obcn8cgvnzk15yfy3buak735',
+}
 
 # 小程序当日运营数据：日期号 → {访问次数, 访客, 交易金额}，填表时自动写入对应日期列
-# 数据来源：微信公众平台 → 小程序 → 统计 → 实时访问/概况
-# 历史有数据的都填入，批量写入用 write_miniprogram_batch.py
+# 数据来源：微信公众平台 → 小程序 → 统计 → 实时访问/概况（Soul 小程序同源）
+# 2 月：MINIPROGRAM_EXTRA；3 月：MINIPROGRAM_EXTRA_3（填 113/114/115 时自动写 3 月表）
 MINIPROGRAM_EXTRA = {
     '20': {'访问次数': 45, '访客': 45, '交易金额': 0},  # 2月20日
     '21': {'访问次数': 52, '访客': 52, '交易金额': 0},  # 2月21日
     '23': {'访问次数': 55, '访客': 55, '交易金额': 0},  # 2月23日
+}
+# 3 月：日期列 2/3/4 对应 113/114/115 场；数据从 Soul 小程序后台获取后填入此处
+MINIPROGRAM_EXTRA_3 = {
+    '2': {'访问次数': 0, '访客': 0, '交易金额': 0},   # 3月2日 113场
+    '3': {'访问次数': 0, '访客': 0, '交易金额': 0},   # 3月3日 114场
+    '4': {'访问次数': 0, '访客': 0, '交易金额': 0},   # 3月4日 115场
 }
 
 
@@ -70,12 +88,12 @@ def _find_row_for_keyword(vals, keywords):
     return None
 
 
-def _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter):
-    """若当日有小程序数据，写入 交易金额、访客、小程序访问 到对应行"""
-    extra = MINIPROGRAM_EXTRA.get(date_col)
+def _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter, month=2):
+    """若当日有小程序数据，写入 交易金额、访客、小程序访问 到对应行。2 月用 MINIPROGRAM_EXTRA，3 月用 MINIPROGRAM_EXTRA_3。"""
+    extra = (MINIPROGRAM_EXTRA_3 if month == 3 else MINIPROGRAM_EXTRA).get(date_col)
     if not extra:
         return
-    # 行→extra 中的键
+    month_label = f'{month}月{date_col}日'
     writes = [
         (_find_row_for_keyword(vals, ['交易金额']), extra.get('交易金额', 0)),
         (_find_row_for_keyword(vals, ['访客']), extra.get('访客', extra.get('访问次数'))),
@@ -92,7 +110,26 @@ def _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col,
         if code == 200 and body.get('code') in (0, None):
             written += 1
     if written > 0:
-        print(f'✅ 已写入小程序运营数据（2月{date_col}日列）：访问次数 {extra.get("访问次数","")}、访客 {extra.get("访客","")}、交易金额 {extra.get("交易金额",0)}')
+        print(f'✅ 已写入小程序运营数据（{month_label}列）：访问次数 {extra.get("访问次数","")}、访客 {extra.get("访客","")}、交易金额 {extra.get("交易金额",0)}')
+
+
+def _write_party_video_link(token, spreadsheet_token, sheet_id, vals, col_letter, session):
+    """若有该场次的派对录屏链接，写入「派对录屏」行对应列（如 E29）。"""
+    link = (PARTY_VIDEO_LINKS or {}).get(session, '').strip()
+    if not link:
+        return
+    row_num = _find_row_for_keyword(vals, ['派对录屏', '录屏'])
+    if row_num is None:
+        row_num = 29  # 运营报表「派对录屏」行为第 29 行
+    # 飞书 v2 要求 range 带起止（如 E29:E29），单格也写成范围
+    rng = f"{sheet_id}!{col_letter}{row_num}:{col_letter}{row_num}"
+    code, body = update_sheet_range(token, spreadsheet_token, rng, [[link]], value_input_option='USER_ENTERED')
+    if code == 401 or body.get('code') in (99991677, 99991663):
+        return
+    if code == 200 and body.get('code') in (0, None):
+        print(f'✅ 已写入派对录屏链接 → {col_letter}{row_num}')
+    else:
+        print(f'⚠️ 派对录屏链接写入未成功: {code} {body}')
 
 
 def load_token():
@@ -290,7 +327,7 @@ def main():
     session = (sys.argv[1] if len(sys.argv) > 1 else '104').strip()
     row = ROWS.get(session)
     if not row:
-        print('❌ 未知场次，可用: 96, 97, 98, 99, 100, 103, 104, 105, 106, 107, 113')
+        print('❌ 未知场次，可用: 96, 97, 98, 99, 100, 103, 104, 105, 106, 107, 113, 114, 115')
         sys.exit(1)
     token = load_token() or refresh_and_load_token()
     if not token:
@@ -335,9 +372,9 @@ def main():
     LABELS_GROUP = ['主题', '时长（分钟）', 'Soul推流人数', '进房人数', '人均时长（分钟）', '互动数量', '礼物', '灵魂力', '增加关注', '最高在线']
 
     def _maybe_send_group(sess, raw_vals):
-        if sess not in ('105', '106', '107', '113'):
+        if sess not in ('105', '106', '107', '113', '114', '115'):
             return
-        date_label = {'105': '2月20日', '106': '2月21日', '107': '2月23日', '113': '3月2日'}.get(sess, sess + '场')
+        date_label = {'105': '2月20日', '106': '2月21日', '107': '2月23日', '113': '3月2日', '114': '3月3日', '115': '3月4日'}.get(sess, sess + '场')
         report_link = OPERATION_REPORT_LINK if sheet_id == SHEET_ID else f'https://cunkebao.feishu.cn/wiki/wikcnIgAGSNHo0t36idHJ668Gfd?sheet={sheet_id}'
         lines = [
             '【Soul 派对运营报表】',
@@ -348,7 +385,7 @@ def main():
         for i, label in enumerate(LABELS_GROUP):
             val = raw_vals[i] if i < len(raw_vals) else ''
             lines.append(f'{label}：{val}')
-        src_date = {'105': '20260220', '106': '20260221', '107': '20260223', '113': '20260302'}.get(sess, '20260220')
+        src_date = {'105': '20260220', '106': '20260221', '107': '20260223', '113': '20260302', '114': '20260303', '115': '20260304'}.get(sess, '20260220')
         lines.append(f'数据来源：soul 派对 {sess}场 {src_date}.txt')
         msg = '\n'.join(lines)
         ok, _ = send_feishu_group_message(FEISHU_GROUP_WEBHOOK, msg)
@@ -383,7 +420,8 @@ def main():
             ok, msg = _verify_write(spreadsheet_token, sheet_id, col_letter, values, token)
             if ok:
                 print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter}3:{col_letter}{2+len(values)}，共{len(values)}格），校验通过')
-                _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter)
+                _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter, month=month)
+                _write_party_video_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
                 _maybe_send_group(session, raw)
                 return
             print(f'⚠️ 写入成功但校验未通过：{msg}')
@@ -406,7 +444,8 @@ def main():
                 ok, msg = _verify_write(spreadsheet_token, sheet_id, col_letter, values, token)
                 if ok:
                     print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter} 逐格），校验通过')
-                    _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter)
+                    _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter, month=month)
+                    _write_party_video_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
                     _maybe_send_group(session, raw)
                     return
                 print(f'⚠️ 逐格写入成功但校验未通过：{msg}')
