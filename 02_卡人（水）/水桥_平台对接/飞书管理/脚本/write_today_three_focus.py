@@ -99,6 +99,9 @@ def main():
         print(f"✅ {date_str} 飞书日志已写入（三件事 + 前面未完成）")
         sys.exit(0)
     print("❌ 写入失败")
+    ref_path = SCRIPT_DIR.parent / "参考资料" / f"{date_str}_飞书日志正文_三件事与未完成.md"
+    if ref_path.exists():
+        print(f"💡 可复制 {ref_path} 内容到飞书 3 月文档手动粘贴")
     sys.exit(1)
 
 

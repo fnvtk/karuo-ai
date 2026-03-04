@@ -22,6 +22,14 @@ updated: "2026-03-02"
 
 ## 一键使用（推荐）
 
+**写今日日志（默认）**：一律**直接执行**，不询问用户；三件事 + 前面未完成项：
+
+```bash
+python3 /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/飞书管理/脚本/write_today_three_focus.py
+```
+
+**通用/历史日期**：
+
 ```bash
 python3 /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/飞书管理/脚本/auto_log.py
 ```

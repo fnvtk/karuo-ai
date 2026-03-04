@@ -241,12 +241,15 @@ def parse_month_from_date_str(date_str):
 
 
 def resolve_wiki_token_for_date(date_str, explicit_wiki_token=None):
-    """根据日期路由文档token；允许显式覆盖"""
+    """根据日期路由文档token；允许显式覆盖；当月 token 为空时返回 None"""
     if explicit_wiki_token:
         return explicit_wiki_token
     month = parse_month_from_date_str(date_str)
     if month and month in CONFIG.get('MONTH_WIKI_TOKENS', {}):
-        return CONFIG['MONTH_WIKI_TOKENS'][month]
+        tok = CONFIG['MONTH_WIKI_TOKENS'][month]
+        if tok and str(tok).strip():
+            return tok
+        return None  # 当月未配置 token（如 3 月需 FEISHU_MARCH_WIKI_TOKEN）
     return CONFIG['WIKI_TOKEN']
 
 def _find_date_section_block_ids(blocks, date_str, doc_id):
@@ -287,7 +290,11 @@ def write_log(token, date_str=None, tasks=None, wiki_token=None, overwrite=False
     if not date_str or not tasks:
         date_str, tasks = get_today_tasks()
     target_wiki_token = resolve_wiki_token_for_date(date_str, wiki_token)
-    
+    if not target_wiki_token:
+        month = parse_month_from_date_str(date_str)
+        print(f"❌ 未配置当月文档 token（{month or '?'} 月请设置 FEISHU_MARCH_WIKI_TOKEN 或对应环境变量）")
+        return False
+
     # 获取文档ID
     r = requests.get(f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={target_wiki_token}", 
         headers=headers, timeout=30)
