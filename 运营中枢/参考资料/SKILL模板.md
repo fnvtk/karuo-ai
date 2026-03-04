@@ -70,6 +70,12 @@ command here
 
 ---
 
+## 书写与术语
+
+- **常见词不翻译**：产品名/品牌名/工具名（如 Cursor、Synology、Duet、v0、GitHub、Gitea、MongoDB）一律保留英文原文，不译成中文。详见 `.cursor/rules/karuo-ai.mdc`「常见词与专有名词（不翻译）」及 `BOOTSTRAP.md` 全局规则。
+
+---
+
 ## 安全原则
 
 - 风险操作前先确认
