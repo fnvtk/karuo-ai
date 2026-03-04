@@ -47,6 +47,16 @@ cd /Users/karuo/Documents/开发/2、私域银行/神射手 && docker compose up
 
 两者均在 **神射手** 同一 docker-compose 下，网络互通，n8n 内请求地址为 `http://douyin-api:3099/parse`。
 
+## GitHub 与 n8n 模板库
+
+- **GitHub 仓库**（可被他人通过 URL 导入 n8n）：  
+  https://github.com/fnvtk/n8n-douyin-caption-workflow  
+  - 在 n8n 中：**Import from URL** → 填入  
+    `https://raw.githubusercontent.com/fnvtk/n8n-douyin-caption-workflow/main/douyin-caption-workflow.json`
+- **n8n 模板库**：  
+  - 下载：打开 [n8n 工作流模板库](https://n8n.io/workflows/)，搜索「抖音」或「Douyin caption」，若本工作流已上架可 **Use template** 导入。  
+  - 上架本工作流：通过 [n8n Creator 计划](https://www.n8n.io/creators/) 或社区 [提交模板说明](https://community.n8n.io/t/how-do-i-submit-my-workflow-templates-to-the-n8n-template-library/177320) 提交，使用本目录 `n8n_一键下载抖音视频文案.json` 或 GitHub 仓库中的 `douyin-caption-workflow.json`。
+
 ## 故障排查
 
 - **调用抖音解析API 报错**：确认 `docker ps` 中 `website-douyin-api` 在运行，且 n8n 与 douyin-api 在同一 compose 网络（均为 website）。
