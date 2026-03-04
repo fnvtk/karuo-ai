@@ -25,7 +25,11 @@ cd /Users/karuo/Documents/开发/2、私域银行/神射手 && docker compose up
 
 ### 3. 使用方式
 
-- **方式一（推荐）**：执行前点击节点「**设置链接与是否下载**」，将 `url` 改为要解析的抖音链接（如 `https://v.douyin.com/xxx`），`download` 为 `true` 则同时下载视频，为 `false` 则仅解析文案。然后点击 **Test workflow** 或 **Execute Workflow**。
+- **方式一（推荐）**：执行前点击节点「**设置链接与是否下载**」，将 `url` 改为要解析的抖音链接。支持：
+  - 短链：`https://v.douyin.com/xxx`
+  - 视频页：`https://www.douyin.com/video/7591362359689147057`
+  - 精选页：`https://www.douyin.com/jingxuan?modal_id=7591362359689147057`  
+  `download` 为 `true` 则同时下载视频，为 `false` 则仅解析文案。然后点击 **Test workflow** 或 **Execute Workflow**。
 - **方式二**：用「**Execute Workflow**」时在输入数据中传入一条数据：`{"url": "https://v.douyin.com/xxx", "download": true}`。
 
 ### 4. 结果

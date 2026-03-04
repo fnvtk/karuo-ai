@@ -27,10 +27,12 @@ MOBILE_UA = (
 
 
 def parse_url_to_aweme_id(url: str) -> str | None:
-    """从抖音链接提取 aweme_id"""
+    """从抖音链接提取 aweme_id（支持 /video/ID 与 jingxuan?modal_id=ID）"""
     url = url.strip()
-    # 完整链接可直接提取
     m = re.search(r"/video/(\d+)", url)
+    if m:
+        return m.group(1)
+    m = re.search(r"modal_id=(\d+)", url)
     if m:
         return m.group(1)
     return None
@@ -39,10 +41,16 @@ def parse_url_to_aweme_id(url: str) -> str | None:
 def fetch_and_parse(url: str) -> tuple[dict, str | None]:
     """
     请求视频页面，解析 ID、文案、视频 URL。
-    支持短链 v.douyin.com 或完整链接。
+    支持短链 v.douyin.com、完整链接、精选页 jingxuan?modal_id=ID。
     返回 (info_dict, video_url)
     """
     url = url.strip()
+    initial_url = url  # 保留原始链接，用于回退提取 aweme_id
+    # 精选页 jingxuan?modal_id= 转为 /video/ID 再请求
+    if "jingxuan" in url and "modal_id=" in url:
+        aweme = parse_url_to_aweme_id(url)
+        if aweme:
+            url = f"https://www.douyin.com/video/{aweme}"
     # 短链需先 resolve 到完整链接
     if "v.douyin.com" in url:
         try:
@@ -62,7 +70,7 @@ def fetch_and_parse(url: str) -> tuple[dict, str | None]:
         except Exception as e:
             return {"error": str(e), "aweme_id": None}, None
 
-    aweme_id = parse_url_to_aweme_id(url)
+    aweme_id = parse_url_to_aweme_id(url) or parse_url_to_aweme_id(initial_url)
     info = {
         "aweme_id": aweme_id or "unknown",
         "video_id": None,
@@ -83,6 +91,8 @@ def fetch_and_parse(url: str) -> tuple[dict, str | None]:
         m = re.search(pattern, html)
         if m:
             info[key] = m.group(1)
+    if info.get("aweme_id") == "unknown" and parse_url_to_aweme_id(initial_url):
+        info["aweme_id"] = parse_url_to_aweme_id(initial_url)
 
     # 2. 从 ROUTER_DATA 提取视频 URL（优先，避免拿到封面图）
     router = re.search(r"window\._ROUTER_DATA\s*=\s*(\{.*?\});?\s*</script>", html, re.DOTALL)
