@@ -240,17 +240,38 @@ def parse_month_from_date_str(date_str):
         return None
 
 
+def _get_month_wiki_token(month):
+    """当月 wiki token：3 月优先 环境变量 > 本地 .feishu_month_wiki_tokens.json > CONFIG"""
+    if month == 3:
+        v = os.environ.get("FEISHU_MARCH_WIKI_TOKEN", "").strip()
+        if v:
+            return v
+        try:
+            path = os.path.join(os.path.dirname(__file__), ".feishu_month_wiki_tokens.json")
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as f:
+                    v = (json.load(f).get("3") or "").strip()
+                    if v:
+                        return v
+        except Exception:
+            pass
+        return (CONFIG.get("MONTH_WIKI_TOKENS") or {}).get(3) or ""
+    return (CONFIG.get("MONTH_WIKI_TOKENS") or {}).get(month) or ""
+
+
 def resolve_wiki_token_for_date(date_str, explicit_wiki_token=None):
     """根据日期路由文档token；允许显式覆盖；当月 token 为空时返回 None"""
     if explicit_wiki_token:
         return explicit_wiki_token
     month = parse_month_from_date_str(date_str)
-    if month and month in CONFIG.get('MONTH_WIKI_TOKENS', {}):
-        tok = CONFIG['MONTH_WIKI_TOKENS'][month]
+    if month:
+        tok = _get_month_wiki_token(month)
         if tok and str(tok).strip():
             return tok
-        return None  # 当月未配置 token（如 3 月需 FEISHU_MARCH_WIKI_TOKEN）
-    return CONFIG['WIKI_TOKEN']
+        if month in (1, 2):
+            return CONFIG["MONTH_WIKI_TOKENS"].get(month) or CONFIG["WIKI_TOKEN"]
+        return None  # 3 月等未配置时返回 None
+    return CONFIG["WIKI_TOKEN"]
 
 def _find_date_section_block_ids(blocks, date_str, doc_id):
     """找到某日期区块的 block_id 列表（用于覆盖删除）"""
