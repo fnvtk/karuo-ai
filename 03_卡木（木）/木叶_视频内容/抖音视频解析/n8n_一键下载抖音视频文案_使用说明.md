@@ -13,13 +13,15 @@
 cd /Users/karuo/Documents/开发/2、私域银行/神射手 && docker compose up -d douyin-api n8n
 ```
 
-### 2. 在 n8n 中导入工作流（唯一需手动的一步）
+### 2. 工作流已就绪（已通过 CLI 自动导入）
 
-1. 打开 n8n：http://localhost:5678
-2. 左上角 **菜单** → **Workflows** → **Import from File**（或 **Import from URL**）
-3. 选择本目录下的 **`n8n_一键下载抖音视频文案.json`** 导入  
-   （路径：`卡若AI/03_卡木（木）/木叶_视频内容/抖音视频解析/n8n_一键下载抖音视频文案.json`）
-4. 保存工作流（可命名如「一键下载抖音视频文案」）
+- 工作流「**一键下载抖音视频文案**」已写入当前 n8n 实例，打开 http://localhost:5678 在 Workflows 列表中即可看到并打开。
+- 若需重新导入（例如新装 n8n），可在本机执行：
+  ```bash
+  docker cp "卡若AI/03_卡木（木）/木叶_视频内容/抖音视频解析/n8n_一键下载抖音视频文案.json" website-n8n:/tmp/douyin_workflow.json
+  docker exec -u node website-n8n n8n import:workflow --input=/tmp/douyin_workflow.json
+  ```
+- 或手动：n8n 菜单 → Workflows → **Import from File** → 选择本目录下的 `n8n_一键下载抖音视频文案.json`。
 
 ### 3. 使用方式
 
