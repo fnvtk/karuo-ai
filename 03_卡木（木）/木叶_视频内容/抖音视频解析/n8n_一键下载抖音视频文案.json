@@ -1,0 +1,102 @@
+{
+  "name": "一键下载抖音视频文案",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a1b2c3d4-0000-4000-8000-000000000001",
+      "name": "手动输入抖音链接",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 300],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "url",
+              "name": "url",
+              "value": "https://v.douyin.com/请替换为实际链接",
+              "type": "string"
+            },
+            {
+              "id": "download",
+              "name": "download",
+              "value": true,
+              "type": "boolean"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1b2c3d4-0000-4000-8000-000000000002",
+      "name": "设置链接与是否下载",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 300],
+      "onError": "continue"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://douyin-api:3099/parse",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyContentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ url: $json.url, download: $json.download }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "a1b2c3d4-0000-4000-8000-000000000003",
+      "name": "调用抖音解析API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 300],
+      "onError": "continue"
+    }
+  ],
+  "connections": {
+    "手动输入抖音链接": {
+      "main": [
+        [
+          {
+            "node": "设置链接与是否下载",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "设置链接与是否下载": {
+      "main": [
+        [
+          {
+            "node": "调用抖音解析API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "versionId": "1"
+}

@@ -20,6 +20,7 @@
 | 神射手 | website-shensheshou | **3117** | `开发/2、私域银行/神射手/docker-compose.yml` | 与玩值电竞、OpenClaw、n8n 同文件启动 |
 | 玩值电竞 Web | website-wanzhi-web | **3001** | 同上 | 同上 |
 | n8n | website-n8n | **5678** | 同上 | 工作流自动化，镜像 docker.n8n.io/n8nio/n8n |
+| 抖音解析 API | website-douyin-api | **3099** | 同上 | 供 n8n「一键下载抖音视频文案」工作流调用 |
 | OpenClaw 网关 | website-openclaw-gateway | **18789** / **18790** | 同上 | 镜像 openclaw:local 需在 OpenClaw 项目内先 build；配置用 `openclaw/.env` |
 | 存客宝 Web | cunkebao-web | **3100** | `开发/2、私域银行/cunkebao_v3/docker-compose.yml` | 独立编排（不设 name: website）；同编排含触客宝+后端+MySQL+Redis |
 | 触客宝 Web | touchkebao-web | **3101** | 同上 | 同上 |
@@ -31,9 +32,9 @@
 
 ## 统一启动方式
 
-- **神射手 + 玩值电竞 + n8n + OpenClaw 网关**（主站）：在神射手目录执行  
+- **神射手 + 玩值电竞 + n8n + 抖音解析 API + OpenClaw 网关**（主站）：在神射手目录执行  
   `docker compose up -d` 或 `docker compose up -d --build`  
-  各服务会出现在 Docker Desktop 的 **website** 分组下。n8n 访问 http://localhost:5678。OpenClaw 镜像需先在 `开发/8、小工具/Docker项目/OpenClaw/openclaw` 内执行 `docker compose build` 生成 `openclaw:local`。
+  各服务会出现在 Docker Desktop 的 **website** 分组下。n8n 访问 http://localhost:5678；抖音解析 API 内网 http://douyin-api:3099/parse（供 n8n 工作流调用）。OpenClaw 镜像需先在 `开发/8、小工具/Docker项目/OpenClaw/openclaw` 内执行 `docker compose build` 生成 `openclaw:local`。
 - **存客宝 + 触客宝**：在存客宝项目目录执行  
   `cd 开发/2、私域银行/cunkebao_v3 && docker compose up -d`（或 `--build` 拉取最新）  
   存客宝 http://localhost:3100 、触客宝 http://localhost:3101 ；同编排内含后端 8082、MySQL 3307、Redis 6380。
