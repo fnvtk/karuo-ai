@@ -57,7 +57,8 @@
 |----|-----|
 | URL | `https://api.v0.dev/v1` |
 | Secret | `v1:C6mw1SlvXsJdlO4VFEXSQEVf:519gA0DPqIMbjvfMh7CXf4B2` |
-| 模型 | `claude-opus` |
+| Secret（zhengzhiqun@vip.qq.com 账号） | `v1:t2m5rEmVb8eBvH7I4IAlP4jU:vcp_1p5UWQZ9o8Mh6YuZlFiUrrzvgUhvJFB6QgzjKYkf09XJSZ6iu10ZgFzZ` |
+| 模型 | `claude-opus`（接口侧用 v0-1.5-md 等） |
 
 
 ### n8n（本机工作流 API）
