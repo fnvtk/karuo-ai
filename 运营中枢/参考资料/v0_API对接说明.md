@@ -49,16 +49,26 @@
 
 ### 1. cURL
 
+**英文或简单内容**（可直接内联）：
+
 ```bash
 curl -X POST "https://api.v0.dev/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer 你的V0_API_KEY" \
-  -d '{
-    "model": "v0-1.5-md",
-    "messages": [{"role": "user", "content": "写一个 React 按钮组件"}],
-    "max_tokens": 2048
-  }'
+  -d '{"model":"v0-1.5-md","messages":[{"role":"user","content":"Hello"}],"max_tokens":2048}'
 ```
+
+**含中文等非 ASCII 时**：若在 shell 里用 `-d '...中文...'` 易出现 500，请二选一：
+
+- **方式 A**：请求体写入 UTF-8 文件，用 `-d @文件` 发送：
+  ```bash
+  echo '{"model":"v0-1.5-lg","messages":[{"role":"user","content":"你好"}],"max_tokens":256}' > req.json
+  curl -X POST "https://api.v0.dev/v1/chat/completions" \
+    -H "Content-Type: application/json; charset=utf-8" \
+    -H "Authorization: Bearer 你的V0_API_KEY" \
+    -d @req.json
+  ```
+- **方式 B**：在 JSON 里用 Unicode 转义（如 `\u4f60\u597d` 表示「你好」），再内联 `-d '...'`。
 
 ### 2. JavaScript / Node（fetch）
 

@@ -1,7 +1,7 @@
 # 卡若 账号与 API 索引（明文存储）
 
 > 本机及项目内、**本机服务器、网站**的账号、密码、API、Secret **明文集中存放**，方便日后调取。  
-> 最后更新：2026-01-29
+> 最后更新：2026-03-04
 
 ---
 
@@ -59,6 +59,14 @@
 | Secret | `v1:C6mw1SlvXsJdlO4VFEXSQEVf:519gA0DPqIMbjvfMh7CXf4B2` |
 | 模型 | `claude-opus` |
 
+
+### n8n（本机工作流 API）
+| 项 | 值 |
+|----|-----|
+| 实例地址 | http://localhost:5678 |
+| API Key（JWT） | `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJlOWM2NjFjNS1iZGE2LTRiNjctYmYxNi1iYTA3MDUzYmY2NTIiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiOThiNWQ4OWQtMjA1ZS00NDVhLWE0OGEtYWMzYzMyMmQzYmZmIiwiaWF0IjoxNzcyNjE2NzgxfQ.UU34FESy9AAzsZc2_NCv_kDLN3xZrFO5JAKMMHCyW2w` |
+| 请求头 | `X-N8N-API-KEY: <上表 JWT>` |
+| 说明 | 本机 n8n 工作流 Public API 认证；用于创建工作流、执行工作流等，详见 n8n 文档 API 章节 |
 
 ### Gitea（CKB NAS 自建 Git）
 | 项 | 值 |
@@ -149,6 +157,16 @@
 |------|-----|------|------|--------------|
 | 存客宝 | 42.194.245.239 | 2核16G 50M | 私域银行业务 | https://42.194.245.239:9988 |
 | kr宝塔 | 43.139.27.93 | 2核4G 5M | Node 项目主力 | https://43.139.27.93:9988 |
+
+### 阿猫/婼瑄 MacBook（SSH）
+
+| 项 | 值 |
+|----|-----|
+| 主机 | `macbook.quwanzhi.com` |
+| 端口 | `22203` |
+| 账号 | `kr` |
+| 密码 | `key123456` |
+| 连接命令 | `ssh -p 22203 kr@macbook.quwanzhi.com` |
 
 ### SSH 登录（root）
 
