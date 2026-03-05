@@ -51,6 +51,19 @@ killall nginx; sleep 2; /www/server/nginx/sbin/nginx -c /www/server/nginx/conf/n
 
 ---
 
+## 安全告警（挖矿木马等）
+
+若腾讯云主机安全告警恶意文件（如 Linux.Risk.Miner.Jcnw）：
+
+1. **宝塔终端（推荐）**：打开 https://42.194.245.239:9988 → 终端 → 粘贴执行 `scripts/存客宝_清理挖矿并防入侵_宝塔终端执行.sh` 全部内容（含清理 + 去持久化 + 防再入）。
+2. **本机 SSH**：`sshpass -p 'Zhiqun1984' ssh -o StrictHostKeyChecking=no -p 22 root@42.194.245.239 'bash -s' < scripts/存客宝_清理挖矿并防入侵加固_SSH执行.sh`
+3. **TAT**：`python3 scripts/腾讯云_TAT_存客宝_清理挖矿木马.py`
+4. **控制台**：入侵检测 → 文件查杀 → 确认处置并开启防护
+
+**关闭 22 端口（防入侵）**：存客宝已通过 TAT 或脚本关闭 22，仅保留 22022。SSH 仅用：`ssh -p 22022 root@42.194.245.239`。手动执行：`scripts/存客宝_关闭22端口仅保留22022_宝塔终端执行.sh`。
+
+---
+
 ## 主 Skill 与错误处理
 
 - **主 Skill**：`references/宝塔Node项目管理_SKILL.md`（凭证、Node API、常见错误、脚本）
