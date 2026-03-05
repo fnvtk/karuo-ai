@@ -53,12 +53,17 @@ bash 运营中枢/工作台/scripts/test_v0_api.sh
 # 或指定模型： bash 运营中枢/工作台/scripts/test_v0_api.sh v0-1.0-md
 ```
 
-**当前 Key**：已使用《00_账号与API索引》v0.dev 中的 Secret（vcp_ 开头）。若检测仍为 500，按下列步骤排查。
+脚本会先测 **GET /v1/models**（验证 Key），再测 **POST /v1/chat/completions**（验证对话可用）。
 
-**若返回 HTTP 500 / `{"success":false,"error":"Unknown error"}`：**
-1. 打开 https://v0.app/chat/settings/keys 检查 API Key 是否有效，必要时重新生成并更新到《00_账号与API索引》与 `~/.openclaw/openclaw.json` 中 `custom-custom21.apiKey`。
-2. 确认账号已开通 Premium/Team 且开通了 Model API（按量计费）。
-3. **ClawX 默认模型为本地 Ollama（qwen2.5:3b）**，不依赖 V0 即可正常使用；V0 仅作云端备选，接口异常时选本地模型即可保证可用。
+**若出现「Key 有效」但「Completions 不可用」（500 / Unknown error）：**
+- 说明 API Key 正确，但 **v0 侧未开通或额度/计费有问题**。请到 v0.app 检查：
+  1. **Billing** — 已开通 Premium 或 Team 套餐
+  2. **Usage** — 当月额度未用尽
+  3. **Usage-based billing** — 已开启按量计费（Model API 必需）
+
+**确保可用（不依赖 V0）：**
+- **ClawX 默认主模型为本地 Ollama（qwen2.5:3b）**，未选 V0 时始终走本地，无需 V0 即可正常使用。
+- 回退顺序已配置为：主用 Ollama → 回退 V0；V0 报错时在对话中改选「本地小模型」即可。
 
 ---
 

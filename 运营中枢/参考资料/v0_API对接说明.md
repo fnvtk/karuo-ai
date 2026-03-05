@@ -152,7 +152,15 @@ V0_BASE_URL=https://api.v0.dev/v1  # 可选，默认即此地址
 
 ---
 
-## 七、与卡若AI 的用法
+## 七、常见问题：Key 有效但 Completions 返回 500
+
+若 **GET https://api.v0.dev/v1/models** 返回 200（说明 Key 有效），但 **POST …/chat/completions** 返回 500、`{"success":false,"error":"Unknown error"}`：
+- 多为 v0 账号侧问题：未开通 Model API 所需套餐、额度用尽或未开启 usage-based billing。
+- 处理：登录 [v0.app](https://v0.app) → 检查 Billing（Premium/Team）、Usage（额度）、并开启 usage-based billing。
+
+---
+
+## 八、与卡若AI 的用法
 
 - 在**卡若AI 官网控制台 → API 网关**中可添加 v0：Base URL 填 `https://api.v0.dev/v1`，API Key 填《00_账号与API索引》里 v0.dev 的 Secret，模型选 `v0-1.5-md` 或 `v0-1.5-lg`，设为主用后对话等会走该网关。
 - 环境变量回退：未配置网关时，官网可读 `V0_API_KEY` / `V0_SECRET` 和可选 `V0_BASE_URL`。详见《API网关与常用AI配置说明》。
