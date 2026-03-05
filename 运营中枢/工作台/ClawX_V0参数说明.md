@@ -10,7 +10,7 @@
 |:---|:---|:---|
 | **名称** | 卡若AI V0 (云端) | 在设置里显示的提供商名称 |
 | **基础 URL** | `https://api.v0.dev/v1` | 卡若AI 统一 V0 地址 |
-| **API Key** | `v1:C6mw1SlvXsJdlO4VFEXSQEVf:519gA0DPqIMbjvfMh7CXf4B2` | 来自《00_账号与API索引》v0.dev |
+| **API Key** | `v1:...vcp_62nyAVqetvvasioUqYNCXVPPGK2DRQIaTX85dFCu5PTXpBSaob3m4OEq` | 来自《00_账号与API索引》v0.dev（当前已填入 openclaw） |
 | **模型 ID（默认/推荐）** | `v0-1.5-md` | 卡若AI 推荐，平衡速度与质量 |
 | **同 Provider 回退** | `v0-1.5-lg`、`v0-1.0-md` | 大模型与兼容旧版 |
 | **跨 Provider 回退** | 本地 Ollama qwen2.5:3b | 已在 agents.defaults.model.fallbacks 中配置 |
@@ -53,8 +53,10 @@ bash 运营中枢/工作台/scripts/test_v0_api.sh
 # 或指定模型： bash 运营中枢/工作台/scripts/test_v0_api.sh v0-1.0-md
 ```
 
+**当前 Key**：已使用《00_账号与API索引》v0.dev 中的 Secret（vcp_ 开头）。若检测仍为 500，按下列步骤排查。
+
 **若返回 HTTP 500 / `{"success":false,"error":"Unknown error"}`：**
-1. 打开 https://v0.app/chat/settings/keys 检查 API Key 是否有效，必要时重新生成并更新到《00_账号与API索引》与 ClawX 自定义提供商。
+1. 打开 https://v0.app/chat/settings/keys 检查 API Key 是否有效，必要时重新生成并更新到《00_账号与API索引》与 `~/.openclaw/openclaw.json` 中 `custom-custom21.apiKey`。
 2. 确认账号已开通 Premium/Team 且开通了 Model API（按量计费）。
 3. **ClawX 默认模型为本地 Ollama（qwen2.5:3b）**，不依赖 V0 即可正常使用；V0 仅作云端备选，接口异常时选本地模型即可保证可用。
 

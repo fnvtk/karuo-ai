@@ -56,7 +56,7 @@
 | 项 | 值 |
 |----|-----|
 | URL | `https://api.v0.dev/v1` |
-| Secret | `v1:C6mw1SlvXsJdlO4VFEXSQEVf:519gA0DPqIMbjvfMh7CXf4B2` |
+| Secret | `v1:C6mw1SlvXsJdlO4VFEXSQEVf:vcp_62nyAVqetvvasioUqYNCXVPPGK2DRQIaTX85dFCu5PTXpBSaob3m4OEq`（当前使用） |
 | Secret（zhengzhiqun@vip.qq.com 账号） | `v1:t2m5rEmVb8eBvH7I4IAlP4jU:vcp_1p5UWQZ9o8Mh6YuZlFiUrrzvgUhvJFB6QgzjKYkf09XJSZ6iu10ZgFzZ` |
 | 模型 | `claude-opus`（接口侧用 v0-1.5-md 等） |
 | 检测 | 运行 `bash 运营中枢/工作台/scripts/test_v0_api.sh`；若返回 500/Unknown error，到 [v0.app/chat/settings/keys](https://v0.app/chat/settings/keys) 检查 Key 与套餐；ClawX 默认走本地模型，确保可用 |
