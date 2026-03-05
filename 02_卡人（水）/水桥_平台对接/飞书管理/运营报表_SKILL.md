@@ -1,17 +1,105 @@
 ---
 name: Soul派对运营报表
-description: Soul 派对运营数据全自动写入飞书表格（按月份选 2月/3月 标签）→ 会议纪要图片入表 → 发飞书群（数据+纪要图）；与智能纪要联动，一站式可执行。含 Token 自动刷新、写入校验、小程序数据。
+description: Soul 派对运营数据全自动写入飞书表格（按月份选 2月/3月 标签）→ 会议纪要图片入表 → 发飞书群（数据+纪要图）；与智能纪要联动，一站式可执行。含 Token 自动刷新、写入校验、小程序数据、派对录屏链接。完整流程可复制执行，支持基因胶囊打包。
 triggers: 运营报表、派对填表、派对截图填表发群、会议纪要上传、本月运营数据、全部月份统计、派对纪要、智能纪要、106场、107场、113场、114场、115场
 parent: 飞书管理
 owner: 水桥
 group: 水
-version: "2.3"
+version: "3.0"
 updated: "2026-03-04"
 ---
 
 # Soul 派对运营报表 · 基因胶囊
 
-> **一句话**：派对截图 + TXT → 飞书运营报表（按月份选表）→ 填数据 + 填纪要图 + 发群（文字 + 图片），与**会议纪要**联动，一站式可执行。
+> **一句话**：派对截图 + TXT → 飞书运营报表（按月份选表）→ 填数据 + 填纪要图 + 派对录屏链接 + 发群（文字 + 图片），与**会议纪要**联动，完整流程可复制执行，可打包为基因胶囊。
+
+---
+
+## 零、完整流程提取（可复制执行）
+
+以下为从「派对结束」到「报表+群消息+纪要图」全链路的**逐步清单**与**一键命令**，便于 AI 或人工按序执行。
+
+### 0.1 流程图
+
+```mermaid
+flowchart LR
+    subgraph 输入
+        A1[关闭页截图] --> A2[小助手弹窗]
+        A2 --> A3[派对 TXT]
+        A3 --> A4[飞书妙记链接]
+    end
+    subgraph 步骤
+        B1[1. 注册场次+填数据] --> B2[2. 发群文字]
+        B2 --> B3[3. 生成纪要图]
+        B3 --> B4[4. 纪要图入表]
+        B4 --> B5[5. 纪要图发群]
+    end
+    subgraph 输出
+        C1[飞书运营报表]
+        C2[飞书群消息]
+    end
+    A1 --> B1
+    B1 --> C1
+    B2 --> C2
+    B4 --> C1
+    B5 --> C2
+```
+
+### 0.2 前置条件
+
+| 项 | 说明 |
+|:---|:---|
+| Python 3 + requests | `pip3 install requests` |
+| 飞书 Token | 脚本目录下 `.feishu_tokens.json`，过期时运行 `python3 auto_log.py` |
+| 场次已注册 | 在 `soul_party_to_feishu_sheet.py` 中已添加 ROWS、SESSION_DATE_COLUMN、SESSION_MONTH、PARTY_VIDEO_LINKS（可选）、MINIPROGRAM_EXTRA / MINIPROGRAM_EXTRA_3（可选） |
+| 派对 TXT | 如 `soul 派对 115场 20260304.txt`，用于纪要文本/纪要图 |
+
+### 0.3 逐步命令（以 115 场为例）
+
+| 步 | 动作 | 输入 | 命令 | 输出/校验 |
+|:---|:---|:---|:---|:---|
+| 1 | 填效果数据+小程序+派对录屏+发群 | 场次号 115 | `cd 飞书管理/脚本 && python3 soul_party_to_feishu_sheet.py 115` | 控制台见「已写入」「已同步推送到飞书群」「已写入派对录屏链接」 |
+| 2 | 纪要文本入表（可选） | TXT 路径、日期列 4 | `python3 write_party_minutes_from_txt.py "/path/to/soul 派对 115场 20260304.txt" 4` | 控制台见「已写入派对智能纪要到今日总结」 |
+| 3 | 生成纪要图 | 见智能纪要 Skill | JSON→HTML→截图，输出到 `卡若Ai的文件夹/报告/soul_115场_智能纪要_20260304.png` | 得到 PNG 文件 |
+| 4 | 纪要图入表 | PNG 路径、sheet-id、date-col | `python3 feishu_write_minutes_to_sheet.py --party-image "卡若Ai的文件夹/报告/soul_115场_智能纪要_20260304.png" --sheet-id bJR5sA --date-col 4` | 控制台见「已上传派对智能纪要图片」 |
+| 5 | 纪要图发群 | PNG 路径 | `cd 智能纪要/脚本 && python3 send_to_feishu.py --image "卡若Ai的文件夹/报告/soul_115场_智能纪要_20260304.png"` | 飞书群收到长图 |
+
+**路径约定**：飞书管理脚本目录 = `02_卡人（水）/水桥_平台对接/飞书管理/脚本/`；智能纪要脚本 = `02_卡人（水）/水桥_平台对接/智能纪要/脚本/`；报告输出 = `卡若Ai的文件夹/报告/`。
+
+### 0.4 一键顺序命令块（复制即用）
+
+```bash
+# 假设已配置 115 场且 TXT 与报告路径如下，按顺序执行
+FEISHU_SCRIPT="/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/飞书管理/脚本"
+JIYAO_SCRIPT="/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/智能纪要/脚本"
+REPORT="/Users/karuo/Documents/卡若Ai的文件夹/报告"
+TXT="/Users/karuo/Documents/聊天记录/soul/soul 派对 115场 20260304.txt"
+
+cd "$FEISHU_SCRIPT"
+python3 auto_log.py
+python3 soul_party_to_feishu_sheet.py 115
+python3 write_party_minutes_from_txt.py "$TXT" 4
+
+# 纪要图需先按智能纪要 Skill 生成 HTML 再截图得到 PNG，再执行：
+# python3 feishu_write_minutes_to_sheet.py --party-image "$REPORT/soul_115场_智能纪要_20260304.png" --sheet-id bJR5sA --date-col 4
+# cd "$JIYAO_SCRIPT" && python3 send_to_feishu.py --image "$REPORT/soul_115场_智能纪要_20260304.png"
+```
+
+### 0.5 新场次从零到完成清单
+
+1. **在 `soul_party_to_feishu_sheet.py` 中**：添加 `ROWS['116']`、`SESSION_DATE_COLUMN['116']`、`SESSION_MONTH['116']`，以及在 `_maybe_send_group` 的 `date_label`、`src_date` 中加 `'116'`；若需派对录屏则填 `PARTY_VIDEO_LINKS['116']`；若需小程序则填 `MINIPROGRAM_EXTRA_3['5']`（3 月 5 日）。
+2. **执行填表**：`python3 soul_party_to_feishu_sheet.py 116`。
+3. **可选**：纪要文本 `write_party_minutes_from_txt.py "<txt>" 5`；纪要图按智能纪要生成后 `feishu_write_minutes_to_sheet.py --party-image <png> --sheet-id bJR5sA --date-col 5`，再 `send_to_feishu.py --image <png>`。
+
+### 0.6 故障排查速查
+
+| 现象 | 处理 |
+|:---|:---|
+| 未找到日期列 | 先 `python3 auto_log.py` 再重试；确认 SESSION_DATE_COLUMN、SESSION_MONTH 与表头一致 |
+| 90202 wrong range | 单格写入时 range 写成 `E29:E29` 形式 |
+| 派对录屏未写入 | 检查 PARTY_VIDEO_LINKS 是否非空且格式为完整 URL |
+| 小程序数据未写入 | 3 月用 MINIPROGRAM_EXTRA_3，键为当月「日期号」如 '4' |
+| 飞书群未收到 | 检查 Webhook、机器人是否启用 |
 
 ---
 
@@ -407,6 +495,21 @@ SESSION_MONTH = {..., '116': 3}
 
 ---
 
+## 十一、基因胶囊打包入口
+
+本 Skill 支持打包为基因胶囊，便于继承与分发。打包后产出位于 `卡若Ai的文件夹/导出/基因胶囊/`。
+
+```bash
+cd /Users/karuo/Documents/个人/卡若AI
+python3 "05_卡土（土）/土砖_技能复制/基因胶囊/脚本/gene_capsule.py" pack "02_卡人（水）/水桥_平台对接/飞书管理/运营报表_SKILL.md"
+# 或按技能名（在 SKILL_REGISTRY 中匹配）
+python3 "05_卡土（土）/土砖_技能复制/基因胶囊/脚本/gene_capsule.py" pack "Soul派对运营报表"
+```
+
+打包后将生成：胶囊 JSON、基因胶囊功能流程图.md、说明文档.md（含解包命令与引用）。
+
+---
+
 ## 版本记录
 
 | 版本 | 日期 | 说明 |
@@ -416,3 +519,4 @@ SESSION_MONTH = {..., '116': 3}
 | 2.1 | 2026-03-04 | 月份路由：2月/3月 工作表分离（7A3Cy9 / bJR5sA），SESSION_MONTH 防串月；支持 113～115 场；小程序批量 write_miniprogram_batch；运营报表 SKILL 与当前流程同步 |
 | 2.2 | 2026-03-04 | **智能纪要上传到报表**：§3.2 十步清单（txt→JSON→HTML→PNG→feishu_write_minutes_to_sheet）；与智能纪要 Skill 联动；3 月用 --party-image --sheet-id bJR5sA --date-col |
 | 2.3 | 2026-03-04 | **会议纪要 + 运营报表 + 发群一站式**：文首新增「一站式完整流程」四步（①填数据发群 ②生成纪要图 ③填图片到报表 ④纪要图发群）；飞书群统一：数据推送与纪要图发群同 Webhook，纪要图发群用智能纪要 `send_to_feishu.py --image`；§3.2 增加「发群」步骤与说明 |
+| 3.0 | 2026-03-04 | **完整流程提取 + 基因胶囊**：新增「零、完整流程提取」：流程图、前置条件、逐步命令表、一键命令块、新场次清单、故障排查；派对录屏链接写入（E29:E29 范围）；§十一 基因胶囊打包入口与 pack 命令 |
