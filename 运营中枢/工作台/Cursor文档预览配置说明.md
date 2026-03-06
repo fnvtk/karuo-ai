@@ -1,22 +1,27 @@
 # Cursor 文档预览配置说明
 
-> 更新：2026-03-06。**点 .md 只出现一个界面**，且该界面为 **Markdown Preview Enhanced 插件的预览**（增强预览、非代码）；不用本机原有预览、不出现两个面板。
+> 更新：2026-03-06。
+
+**界面格式约定（务必区分）：**
+- **正确（必须出现）**：**第二张图** = Markdown Preview Enhanced 的界面（有「已做配置」等标题、代码块排版、清晰分段），即 Enhanced 的 Preview。
+- **错误（不要出现）**：**第一张图** = 内置只读预览（标签带 Preview + Markdown、简单渲染、不可编辑），必须关掉。
+
+点 .md 只出现**一个**界面，且必须是 **Enhanced** 的 Preview（第二张图格式），不用内置预览。
 
 ---
 
-## 已做配置（User 设置）
+## 已做配置（User + Workspace 两层）
 
-在 **Cursor User settings**（`~/Library/Application Support/Cursor/User/settings.json`）中：
-
-**① .md 默认用插件的 Enhanced 预览打开，且只显示一个界面：**
+**① User 层**（`~/Library/Application Support/Cursor/User/settings.json`）与 **Workspace 层**（如 `个人.code-workspace`、`卡若Ai.code-workspace` 的 `settings`）均已配置：
 
 ```json
 "workbench.editorAssociations": {
-  "*.md": "markdown-preview-enhanced"
+  "*.md": "markdown-preview-enhanced",
+  "*.markdown": "markdown-preview-enhanced"
 }
 ```
 
-效果：点击 .md 后**直接只打开一个界面**，即 **Markdown Preview Enhanced 插件的预览**（增强页面），不是代码编辑页，也不是左右两个面板。
+效果：点击 .md 后**只打开一个界面**，且必须是 **第二张图那种**（Markdown Preview Enhanced：有「已做配置」、代码块等排版），不是第一张图的内置只读预览。
 
 **② 不自动再开侧边预览，避免出现两个界面：**
 
@@ -54,4 +59,4 @@
 
 当前设置无误；打开 .md = 只出现 **Enhanced 的 Preview**，普通预览已关掉。
 
-**若仍打开为内置预览**：在左侧资源管理器对任意 .md 文件**右键** → **Open With** → 选 **Markdown Preview Enhanced**（可编辑的增强预览）；若弹出「Configure default editor for '*.md'」则选它，即可强制去掉内置、以后都用 Enhanced。
+**若仍出现第一张图（内置预览）**：说明当前仍用内置打开。请：在左侧对 .md **右键** → **Open With** → 选 **Markdown Preview Enhanced**；若有「Configure default editor for '*.md'」则选它，确认后应变为**第二张图**的 Enhanced 界面。User 与 workspace 均已设 `markdown-preview-enhanced`，重开该 .md 或重载窗口后应固定为 Enhanced。

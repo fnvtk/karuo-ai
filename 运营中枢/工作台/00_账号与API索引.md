@@ -201,6 +201,7 @@
 | access_token | `u-78RTHgrWN9np1RgBG_cWgo5lh9bk5kUjh20amN6001TM` |
 | refresh_token | `ur-6Wu3DdR8h4TGJErCFjTarE5lhbzk5kirpO0aiN6000SA` |
 | 说明 | 飞书用户，授权时间 2026-01-29；过期后需重新授权或刷新 |
+| **3月日志文档 wiki token** | 飞书「2026年3月 突破执行」文档地址栏 `wiki/` 后的一串；写入方式：`python3 02_卡人（水）/水桥_平台对接/飞书管理/脚本/feishu_token_cli.py set-march-token <token>` 或环境变量 `FEISHU_MARCH_WIKI_TOKEN` |
 
 ### 卡若AI 脚本如何取飞书 Token
 
