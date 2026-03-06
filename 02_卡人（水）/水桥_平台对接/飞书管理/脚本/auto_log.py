@@ -240,6 +240,71 @@ def parse_month_from_date_str(date_str):
         return None
 
 
+MONTH_TOKENS_FILE = os.path.join(os.path.dirname(__file__), ".feishu_month_wiki_tokens.json")
+
+
+def _try_auto_fetch_march_token(access_token):
+    """无 3 月 token 时通过 API 自动获取：用 2 月文档所在 space 列出节点，匹配标题含「3月」的节点并写入本地。返回 token 或 None。"""
+    feb_token = (CONFIG.get("MONTH_WIKI_TOKENS") or {}).get(2) or CONFIG.get("WIKI_TOKEN")
+    if not feb_token:
+        return None
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+    try:
+        r = requests.get(
+            "https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node",
+            params={"token": feb_token},
+            headers=headers,
+            timeout=15,
+        )
+        j = r.json()
+        if j.get("code") != 0:
+            return None
+        data = j.get("data", {})
+        node = data.get("node", {})
+        space_id = node.get("space_id") or data.get("space_id")
+        if not space_id:
+            return None
+        # 列出空间下节点（可能需分页）
+        page_token = None
+        for _ in range(5):
+            params = {"page_size": 50}
+            if page_token:
+                params["page_token"] = page_token
+            r2 = requests.get(
+                f"https://open.feishu.cn/open-apis/wiki/v2/spaces/{space_id}/nodes",
+                params=params,
+                headers=headers,
+                timeout=15,
+            )
+            j2 = r2.json()
+            if j2.get("code") != 0:
+                break
+            items = j2.get("data", {}).get("items", [])
+            for n in items:
+                title = (n.get("title") or "")
+                if "3月" in title or "3 月" in title:
+                    tok = n.get("node_token") or n.get("obj_token") or n.get("token")
+                    if tok:
+                        data = {}
+                        if os.path.exists(MONTH_TOKENS_FILE):
+                            try:
+                                with open(MONTH_TOKENS_FILE, encoding="utf-8") as f:
+                                    data = json.load(f)
+                            except Exception:
+                                pass
+                        data["3"] = tok
+                        with open(MONTH_TOKENS_FILE, "w", encoding="utf-8") as f:
+                            json.dump(data, f, ensure_ascii=False, indent=2)
+                        print("✅ 已通过 API 自动获取 3 月文档 token 并写入本地")
+                        return tok
+            page_token = j2.get("data", {}).get("page_token")
+            if not page_token or not j2.get("data", {}).get("has_more"):
+                break
+    except Exception as e:
+        print(f"⚠️ 自动获取 3 月 token 异常: {e}")
+    return None
+
+
 def _get_month_wiki_token(month):
     """当月 wiki token：3 月优先 环境变量 > 本地 .feishu_month_wiki_tokens.json > CONFIG"""
     if month == 3:
@@ -247,9 +312,8 @@ def _get_month_wiki_token(month):
         if v:
             return v
         try:
-            path = os.path.join(os.path.dirname(__file__), ".feishu_month_wiki_tokens.json")
-            if os.path.exists(path):
-                with open(path, encoding="utf-8") as f:
+            if os.path.exists(MONTH_TOKENS_FILE):
+                with open(MONTH_TOKENS_FILE, encoding="utf-8") as f:
                     v = (json.load(f).get("3") or "").strip()
                     if v:
                         return v
@@ -311,16 +375,36 @@ def write_log(token, date_str=None, tasks=None, wiki_token=None, overwrite=False
     if not date_str or not tasks:
         date_str, tasks = get_today_tasks()
     target_wiki_token = resolve_wiki_token_for_date(date_str, wiki_token)
+    month = parse_month_from_date_str(date_str)
     if not target_wiki_token:
-        month = parse_month_from_date_str(date_str)
-        print(f"❌ 未配置当月文档 token（{month or '?'} 月请设置 FEISHU_MARCH_WIKI_TOKEN 或对应环境变量）")
-        return False
+        if month == 3:
+            print("🔄 未配置 3 月 token，尝试通过 API 自动获取...")
+            target_wiki_token = _try_auto_fetch_march_token(token)
+        if not target_wiki_token:
+            print(f"❌ 未配置当月文档 token（{month or '?'} 月请用 feishu_token_cli.py set-march-token <token> 或设置环境变量）")
+            return False
 
-    # 获取文档ID
-    r = requests.get(f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={target_wiki_token}", 
+    # 获取文档ID（若为 3 月且 get_node 失败，可再尝试自动获取后重试一次）
+    r = requests.get(f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={target_wiki_token}",
         headers=headers, timeout=30)
+    if r.json().get('code') != 0 and month == 3:
+        target_wiki_token = _try_auto_fetch_march_token(token)
+        if target_wiki_token:
+            r = requests.get(f"https://open.feishu.cn/open-apis/wiki/v2/spaces/get_node?token={target_wiki_token}",
+                headers=headers, timeout=30)
     if r.json().get('code') != 0:
-        print(f"❌ 获取文档失败")
+        # 若本地曾保存过无效 token，清除以便下次可重新自动获取或手动 set
+        try:
+            if os.path.exists(MONTH_TOKENS_FILE) and month == 3:
+                with open(MONTH_TOKENS_FILE, encoding="utf-8") as f:
+                    data = json.load(f)
+                if (data.get("3") or "").strip() == (target_wiki_token or "").strip():
+                    data["3"] = ""
+                    with open(MONTH_TOKENS_FILE, "w", encoding="utf-8") as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+        print(f"❌ 获取文档失败（当月 token 无效或网络异常，可用 feishu_token_cli.py set-march-token 写入正确 token）")
         return False
     node = r.json()['data']['node']
     doc_id = node['obj_token']

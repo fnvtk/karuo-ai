@@ -1,6 +1,6 @@
 # Cursor 文档预览配置说明
 
-> 更新：2026-03-06。**去掉本机原有 Markdown 预览**，**只用 Markdown Preview Enhanced 插件的预览模式与显示风格**；不搞错、不敷衍。
+> 更新：2026-03-06。**点 .md 只出现一个界面**，且该界面为 **Markdown Preview Enhanced 插件的预览**（增强预览、非代码）；不用本机原有预览、不出现两个面板。
 
 ---
 
@@ -8,51 +8,50 @@
 
 在 **Cursor User settings**（`~/Library/Application Support/Cursor/User/settings.json`）中：
 
-**① 去掉本机内置预览，不把 .md 关联到内置预览：**
+**① .md 默认用插件的 Enhanced 预览打开，且只显示一个界面：**
 
 ```json
 "workbench.editorAssociations": {
-  "*.md": "default"
+  "*.md": "markdown-preview-enhanced"
 }
 ```
 
-效果：.md 不再用本机「Markdown 原来的那个」预览；点开 .md 先以源码编辑器打开。
+效果：点击 .md 后**直接只打开一个界面**，即 **Markdown Preview Enhanced 插件的预览**（增强页面），不是代码编辑页，也不是左右两个面板。
 
-**② 只用插件的预览模式，并自动打开插件预览（显示格式=插件风格）：**
+**② 不自动再开侧边预览，避免出现两个界面：**
 
 ```json
-"markdown-preview-enhanced.automaticallyShowPreviewOfMarkdownBeingEdited": true,
-"markdown-preview-enhanced.openPreviewToTheSide": true
+"markdown-preview-enhanced.automaticallyShowPreviewOfMarkdownBeingEdited": false
 ```
 
-效果：打开 .md 后，**Markdown Preview Enhanced 插件**会自动在侧边打开预览，**你看到的预览界面和格式就是插件的（Enhanced）风格**，不是本机原有的那个预览。
+效果：不会在已有预览旁再自动打开一个侧边预览，保证**只显示一个**。
 
 ---
 
-## 预览时一律用插件（不用本机原有）
+## 需要改源码时
 
-- **显示的格式**：必须是 **Markdown Preview Enhanced 插件** 的预览样式，不是 Cursor 内置的 Markdown 预览。
-- **如何打开插件预览**：
-  - **⌘⇧V**：打开插件预览（主预览）
-  - **⌘K V**：在侧边打开插件预览（编辑+预览同屏）
-  - **命令面板**（⇧⌘P）→ 输入 `Markdown Preview Enhanced` → 选「Open Preview」或「Open Preview to the Side」。
-- **不要点标签栏的「Preview」**：那个会打开本机原有预览，会搞混；只用上面快捷键或命令面板，确保是插件的预览。
+当前点 .md 默认是**插件的 Enhanced 预览（单界面）**。若要编辑源码：
 
-已在 `keybindings.json` 中解除本机预览的 ⌘⇧V / ⌘K V 绑定，并改为只打开 Markdown Preview Enhanced，保证按快捷键时**一定是插件的预览模式与风格**。
+- **右键该 .md 标签** →「Reopen Editor With...」→ 选 **「Text Editor」**，即可切到源码编辑。
 
 ---
 
 ## 相关设置（已有）
 
-- `workbench.editorAssociations`：`"*.md": "default"` → 本机原有预览**已去掉**，不用于 .md。
-- `markdown-preview-enhanced.automaticallyShowPreviewOfMarkdownBeingEdited`: **true** → 打开 .md 后自动用**插件**在侧边出预览，**显示格式=插件风格**。
-- 内置 `markdown.preview.*` 仅影响本机预览，**不影响插件**；当前配置下预览界面一律是插件的。
+- `workbench.editorAssociations`：`"*.md": "markdown-preview-enhanced"` → 点 .md **只出一个界面**，且是**插件的增强预览**。
+- `markdown-preview-enhanced.automaticallyShowPreviewOfMarkdownBeingEdited`: **false** → 不再自动开侧边，**确定只显示一个**。
 
-**上述配置保证：本机原有增强预览去掉，只用 Markdown Preview Enhanced 插件的预览模式与显示格式；不搞错。**
+上述配置保证：**点一下只出现一个界面，是默认的插件 Enhanced 预览，不是代码页，没有两个。**
 
 ---
 
-## 若仍出现本机预览或两个预览
+## 最终确认：普通预览已关掉，只用 Enhanced PREVIEW
 
-- 不要点击标签栏上的「Preview」，否则会打开本机原有预览。
-- 关掉多出来的本机预览标签，以后只用 **⌘⇧V** 或 **⌘K V**（或命令面板「Markdown Preview Enhanced: Open Preview」），确保看到的是**插件的**预览界面与风格。
+- **打开 .md**：`workbench.editorAssociations: "*.md": "markdown-preview-enhanced"` → 一定是 **Enhanced** 的 Preview，不是普通/内置预览。
+- **快捷键**：`keybindings.json` 已解除内置 `markdown.showPreview` / `markdown.showPreviewToSide`，⌘⇧V、⌘K V 只触发 **markdown-preview-enhanced**，普通预览不会通过快捷键打开。
+- **不要点标签栏「Preview」**：该按钮会调出内置预览；只用 Enhanced 时通过点 .md（已关联）或命令面板「Markdown Preview Enhanced: Open Preview」即可。
+- **自动侧边**：`automaticallyShowPreviewOfMarkdownBeingEdited: false`，不会多出一个界面。
+
+当前设置无误；打开 .md = 只出现 **Enhanced 的 Preview**，普通预览已关掉。
+
+**若仍打开为内置预览**：在左侧资源管理器对任意 .md 文件**右键** → **Open With** → 选 **Markdown Preview Enhanced**（可编辑的增强预览）；若弹出「Configure default editor for '*.md'」则选它，即可强制去掉内置、以后都用 Enhanced。
