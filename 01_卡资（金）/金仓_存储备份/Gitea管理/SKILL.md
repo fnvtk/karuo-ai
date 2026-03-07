@@ -66,6 +66,8 @@ git push -u gitea main
 | cunkebao, cunkebao_v3, cunkebao_v4 | http://open.quwanzhi.com:3000/fnvtk/ |
 | kr, kr-phone, karuo-deploy | 同上 |
 | wanzhi, zhiji, godeye, my, mybooks | 同上 |
+| Mycontent（一场soul的创业实验） | http://open.quwanzhi.com:3000/fnvtk/Mycontent |
+| soul-yongping（一场soul的创业实验-永平 网站） | http://open.quwanzhi.com:3000/fnvtk/soul-yongping |
 
 ---
 
