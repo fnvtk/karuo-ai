@@ -47,7 +47,8 @@ def set_slide_background(slide, color=BG_CREAM):
         pass
 
 
-def add_title(slide, text, top=Inches(0.4), left=Inches(0.6), width=Inches(12), font_size=28):
+def add_title(slide, text, top=Inches(0.4), left=Inches(0.6), width=Inches(12), font_size=28, center=False):
+    """添加标题；center=True 时文字居中"""
     tb = slide.shapes.add_textbox(left, top, width, Inches(0.8))
     tf = tb.text_frame
     p = tf.paragraphs[0]
@@ -55,10 +56,12 @@ def add_title(slide, text, top=Inches(0.4), left=Inches(0.6), width=Inches(12), 
     p.font.size = Pt(font_size)
     p.font.bold = True
     p.font.color.rgb = TITLE_BROWN
+    if center:
+        p.alignment = PP_ALIGN.CENTER
     return tb
 
 
-def add_body(slide, lines, top, left=Inches(0.6), width=Inches(7), font_size=20):
+def add_body(slide, lines, top, left=Inches(0.6), width=Inches(7), font_size=20, center=False):
     tb = slide.shapes.add_textbox(left, top, width, Inches(3.5))
     tf = tb.text_frame
     tf.word_wrap = True
@@ -71,6 +74,8 @@ def add_body(slide, lines, top, left=Inches(0.6), width=Inches(7), font_size=20)
         p.font.size = Pt(font_size)
         p.font.color.rgb = TEXT_DARK
         p.space_after = Pt(8)
+        if center:
+            p.alignment = PP_ALIGN.CENTER
     return tb
 
 
@@ -104,12 +109,16 @@ def add_flowchart(slide, top=Inches(2), left=Inches(0.8), glass_style=True):
             arrow.line.color.rgb = ACCENT
 
 
-def add_picture_glass(slide, path, left, top, width, border_rgb=GLASS_BORDER):
-    """插入图片并加毛玻璃感边框（圆角效果用细白/浅灰边框）"""
+SLIDE_W = Inches(13.333)
+
+def add_picture_glass(slide, path, left, top, width, border_rgb=GLASS_BORDER, center=False):
+    """插入图片并加毛玻璃感边框。center=True 时水平居中。"""
     path = Path(path)
     if not path.exists():
         return None
     try:
+        if center:
+            left = (SLIDE_W - width) / 2
         pic = slide.shapes.add_picture(str(path), left, top, width=width)
         pic.line.color.rgb = border_rgb
         pic.line.width = Pt(2)
@@ -224,20 +233,19 @@ def build_presentation(photo_path=None, extra_images=None):
     def add_slide():
         return prs.slides.add_slide(blank)
 
-    # ---------- 第1页：封面（毛玻璃感 + 插图）----------
+    # ---------- 第1页：封面（标题居中、图片居中放大、汇报人一行）----------
     s1 = add_slide()
     set_slide_background(s1, BG_CREAM)
-    add_title(s1, "天恩 Word · 智能单词记忆小助手", top=Inches(1.6), font_size=40)
-    add_body(s1, ["向全班、全校、全国的小朋友介绍我们的项目"], top=Inches(2.3), width=Inches(10), font_size=22)
-    add_body(s1, ["汇报人：施吴佶"], top=Inches(3.2), font_size=24)
-    add_body(s1, ["二年级 4 班"], top=Inches(3.8), font_size=20)
+    add_title(s1, "天恩 Word · 智能单词记忆小助手", top=Inches(0.7), left=Inches(0.5), width=Inches(12.3), font_size=40, center=True)
+    add_body(s1, ["向全班、全校、全国的小朋友介绍我们的项目"], top=Inches(1.4), left=Inches(1.5), width=Inches(10.3), font_size=22, center=True)
     if speaker_img and Path(speaker_img).exists():
-        add_picture_glass(s1, speaker_img, Inches(9.4), Inches(2.0), Inches(2.4), BORDER)
+        add_picture_glass(s1, speaker_img, 0, Inches(2.0), Inches(3.2), BORDER, center=True)
+    add_title(s1, "汇报人：二年四班 4号 施吴佶", top=Inches(5.6), left=Inches(0.5), width=Inches(12.3), font_size=24, center=True)
 
     # ---------- 第2页：大家好，我是施吴佶（双图可用 speaker2）----------
     s2 = add_slide()
     set_slide_background(s2, BG_CREAM)
-    add_title(s2, "大家好，我是施吴佶！", font_size=32)
+    add_title(s2, "大家好，我是施吴佶！", font_size=32, center=True)
     add_icon_text(s2, "👋", "我是二年级4班的一名小学生。", Inches(0.6), Inches(1.4))
     add_icon_text(s2, "📚", "我和小伙伴们一起做了一个「记单词」的小项目，", Inches(0.6), Inches(2.0))
     add_icon_text(s2, "✨", "今天想跟大家说一说它是怎么用的！", Inches(0.6), Inches(2.6))
@@ -247,7 +255,7 @@ def build_presentation(photo_path=None, extra_images=None):
     # ---------- 第3页：今天讲什么 ----------
     s3 = add_slide()
     set_slide_background(s3, BG_CREAM)
-    add_title(s3, "今天我要讲什么？", font_size=30)
+    add_title(s3, "今天我要讲什么？", font_size=30, center=True)
     add_body(s3, [
         "我们要讲的是一个「智能单词记忆小助手」！",
         "它有一个很厉害的方法，叫「笛卡尔坐标记忆法」。",
@@ -258,7 +266,7 @@ def build_presentation(photo_path=None, extra_images=None):
     # ---------- 第4页：为什么做这个（可配情绪/改进示意图）----------
     s4 = add_slide()
     set_slide_background(s4, BG_PINK)
-    add_title(s4, "我们为什么做这个？", font_size=30)
+    add_title(s4, "我们为什么做这个？", font_size=30, center=True)
     add_icon_text(s4, "😣", "记单词太难了！", Inches(0.6), Inches(1.3), 24)
     add_body(s4, [
         "以前记单词总是死记硬背，很容易忘。",
@@ -272,7 +280,7 @@ def build_presentation(photo_path=None, extra_images=None):
     # ---------- 第5页：我们的办法 — 笛卡尔坐标 + 坐标系插图 ----------
     s5 = add_slide()
     set_slide_background(s5, BG_CREAM)
-    add_title(s5, "我们的办法：笛卡尔坐标记忆法", font_size=28)
+    add_title(s5, "我们的办法：笛卡尔坐标记忆法", font_size=28, center=True)
     add_body(s5, [
         "把单词拆成「前缀」和「后缀」：",
         "X 轴放后缀（比如 DAY、BOOK），Y 轴放前缀（比如 SUN、NOTE）。",
@@ -286,7 +294,7 @@ def build_presentation(photo_path=None, extra_images=None):
     # ---------- 第6页：什么是笛卡尔坐标 + DAY 单词表示例图 ----------
     s6 = add_slide()
     set_slide_background(s6, BG_CREAM)
-    add_title(s6, "什么是笛卡尔坐标？", font_size=30)
+    add_title(s6, "什么是笛卡尔坐标？", font_size=30, center=True)
     add_body(s6, [
         "就像画一个「十字」，横着的是后缀，竖着的是前缀。",
         "它们交叉的地方，就是一个新单词！",
@@ -300,7 +308,7 @@ def build_presentation(photo_path=None, extra_images=None):
     # ---------- 第7页：怎么用 — 流程图（毛玻璃）+ 步骤示意图 ----------
     s7 = add_slide()
     set_slide_background(s7, BG_PINK)
-    add_title(s7, "怎么用？五步就会！", font_size=30)
+    add_title(s7, "怎么用？五步就会！", font_size=30, center=True)
     add_flowchart(s7, top=Inches(1.85), left=Inches(0.5), glass_style=True)
     if flow_words_img.exists():
         add_picture_glass(s7, flow_words_img, Inches(7.2), Inches(2.0), Inches(5.3), GLASS_BORDER)
@@ -311,7 +319,7 @@ def build_presentation(photo_path=None, extra_images=None):
     # ---------- 第8页：记忆句和配图 + 联想示意图 ----------
     s8 = add_slide()
     set_slide_background(s8, BG_CREAM)
-    add_title(s8, "记忆句和配图", font_size=30)
+    add_title(s8, "记忆句和配图", font_size=30, center=True)
     add_icon_text(s8, "📝", "一句子里藏着这一组的所有单词，读一句就复习一遍。", Inches(0.6), Inches(1.3))
     add_icon_text(s8, "🖼️", "还有 AI 画的配图，看图就能想起这句话和单词。", Inches(0.6), Inches(1.9))
     add_body(s8, [
@@ -323,7 +331,7 @@ def build_presentation(photo_path=None, extra_images=None):
     # ---------- 第9页：界面长什么样 + 单词表示例 ----------
     s9 = add_slide()
     set_slide_background(s9, BG_CREAM)
-    add_title(s9, "我们做的界面长什么样？", font_size=28)
+    add_title(s9, "我们做的界面长什么样？", font_size=28, center=True)
     add_body(s9, [
         "打开网页就能用，不用装软件。",
         "上面是「坐标系」：左边是前缀，上边是后缀，中间是单词和意思。",
@@ -336,7 +344,7 @@ def build_presentation(photo_path=None, extra_images=None):
     # ---------- 第10页：我们班的收获 ----------
     s10 = add_slide()
     set_slide_background(s10, BG_PINK)
-    add_title(s10, "我们班的收获", font_size=30)
+    add_title(s10, "我们班的收获", font_size=30, center=True)
     add_icon_text(s10, "🌟", "记单词变快了，而且不容易忘。", Inches(0.6), Inches(1.4))
     add_icon_text(s10, "😊", "大家觉得好玩，都愿意多背几组。", Inches(0.6), Inches(2.0))
     add_icon_text(s10, "🤝", "我们一起想点子、一起用，更像一个小组了。", Inches(0.6), Inches(2.6))
@@ -345,14 +353,14 @@ def build_presentation(photo_path=None, extra_images=None):
     # ---------- 第11页：谢谢大家 ----------
     s11 = add_slide()
     set_slide_background(s11, BG_CREAM)
-    add_title(s11, "谢谢大家！", top=Inches(2.2), font_size=44)
+    add_title(s11, "谢谢大家！", top=Inches(2.2), font_size=44, center=True)
     add_body(s11, ["欢迎大家一起用「天恩 Word」记单词～"], top=Inches(3.0), font_size=24)
-    add_body(s11, ["汇报人：二年级4班 施吴佶"], top=Inches(4.0), font_size=20)
+    add_body(s11, ["汇报人：二年四班 4号 施吴佶"], top=Inches(4.0), font_size=20, center=True)
 
     # ---------- 第12页：感谢 ----------
     s12 = add_slide()
     set_slide_background(s12, LIGHT_PINK)
-    add_title(s12, "感谢聆听", top=Inches(2.8), font_size=38)
+    add_title(s12, "感谢聆听", top=Inches(2.8), font_size=38, center=True)
     add_body(s12, ["感谢全班、全校、全国的老师和小伙伴们！"], top=Inches(3.6), font_size=22)
 
     out_ppt = OUT_DIR / "天恩Word项目介绍_二年级4班施吴佶_12页.pptx"
