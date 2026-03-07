@@ -31,7 +31,7 @@ CKB NAS 自建 Gitea 的**创建、推送、API、挂载**统一管理。Git 相
 | 地址 | http://open.quwanzhi.com:3000 |
 | 账号 | fnvtk |
 | 密码 | Zhiqun1984 |
-| HTTPS 推送 URL | `http://fnvtk:Zhiqun1984@open.quwanzhi.com:3000/fnvtk/{仓库名}.git` |
+| HTTPS 推送 URL | `http://fnvtk:Zhiqun1984@open.quwanzhi.com:3000/fnvtk/{仓库名}.git`（密码小写 zhiqun1984 更稳；大仓用 Token 见 `references/命令行建仓与推送流程.md`） |
 | 存储路径（NAS） | `/volume1/git/github/fnvtk/{仓库名}.git` |
 
 ---
@@ -125,6 +125,7 @@ git push -u gitea main
 |------|------|------|
 | 卡若AI | `bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/自动同步.sh` | 代码+百科+代码管理 |
 | 分布式算力矩阵 | `bash 01_卡资（金）/金仓_存储备份/Gitea管理/脚本/auto_sync_suanli_juzhen.sh` | 代码 |
+| soul-yongping（永平网站） | `push_soul_yongping.sh` 首次推送；`sync_soul_yongping.sh` 有变更时同步；`watch_and_sync_soul_yongping.sh` 监控本地变更并自动同步 | 提交说明写清变更内容与修改原因 |
 
 **Webhook 说明**：Webhook 是 Gitea→外部（push 后通知飞书/触发部署），**不能**实现本地→Gitea。本地→Gitea 用上述脚本，可定时执行或对话结束时执行。详见 `references/Webhook与本地协同方案.md`。
 
@@ -151,3 +152,4 @@ git push -u gitea main
 | 工单/合并请求/Wiki/发布 | `运营中枢/references/Gitea_工单与合并请求使用说明.md` | 各功能使用说明 |
 | 代码管理 | `运营中枢/工作台/代码管理.md` | 每次上传记录 |
 | 账号与 API | `运营中枢/工作台/00_账号与API索引.md` § Gitea | 凭证 |
+| 命令行建仓与推送 | `Gitea管理/references/命令行建仓与推送流程.md` | 全命令行建仓+Token 推送+大仓防超时 |
