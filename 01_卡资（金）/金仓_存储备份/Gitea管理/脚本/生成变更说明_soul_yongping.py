@@ -31,6 +31,12 @@ def label(p):
         if '.js' in p:
             return 'miniprogram 页面逻辑'
         return 'miniprogram 小程序'
+    if p.startswith('开发文档/'):
+        if '需求' in p:
+            return '开发文档 需求'
+        if '修改' in p:
+            return '开发文档 修改记录'
+        return '开发文档'
     if p.startswith('scripts/') or p.startswith('.gitignore') or p.endswith('.sh'):
         return '脚本与配置'
     if 'Gitea' in p or 'gitea' in p:
@@ -55,6 +61,9 @@ def reason(labels):
         'miniprogram 小程序': '小程序代码修改',
         '脚本与配置': '脚本或配置文件修改',
         'Gitea 同步配置': 'Gitea 同步配置修改',
+        '开发文档 需求': '需求文档更新',
+        '开发文档 修改记录': '修改记录更新',
+        '开发文档': '开发文档更新',
     }
     reasons = [m.get(l, l) for l in labels]
     if len(reasons) == 1:
