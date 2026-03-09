@@ -184,28 +184,38 @@ def draw_text_with_outline(draw, pos, text, font, color, outline_color, outline_
     draw.text((x, y), text, font=font, fill=color)
 
 def _normalize_title_for_display(title: str) -> str:
-    """标题去杠、更清晰：将 ：｜、—、/ 等替换为空格"""
+    """标题去杠去下划线：将 ：｜、—、/、_ 等全部替换为空格，避免文件名和封面出现杂符号"""
     if not title:
         return ""
     s = _to_simplified(str(title).strip())
-    for char in "：:｜|—－-/、":
+    for char in "：:｜|—－-/、_":
         s = s.replace(char, " ")
     s = re.sub(r"\s+", " ", s).strip()
     return s
 
 
+# macOS/APFS 文件名允许的中文标点（保留刺激性标题所需的标点）
+_SAFE_CJK_PUNCT = set("，。？！；：·、…（）【】「」《》～—·+")
+
 def sanitize_filename(name: str, max_length: int = 50) -> str:
-    """成片文件名：先标题去杠，再仅保留中文、空格、_-"""
+    """成片文件名：先去杠去下划线，再保留中文、ASCII字母数字、安全标点与空格。
+    
+    保留英文大写（如 MBTI、ENFJ）和数字（如 170万、1000曝光），避免因过度过滤
+    导致标题残缺（如原来 ENFJ 等被删掉变成 '组建团队 初期找'）。
+    """
     name = _normalize_title_for_display(name) or _to_simplified(str(name))
     safe = []
     for c in name:
-        if c in " _-" or "\u4e00" <= c <= "\u9fff":
+        if (c == " "
+                or "\u4e00" <= c <= "\u9fff"   # 中文字符
+                or c.isalnum()                  # ASCII 字母+数字（MBTI、ENFJ、AI、30、170…）
+                or c in _SAFE_CJK_PUNCT):       # 中文标点（？！，。）
             safe.append(c)
     result = "".join(safe).strip()
     result = re.sub(r"\s+", " ", result).strip()
     if len(result) > max_length:
         result = result[:max_length]
-    return result.strip(" _-") or "片段"
+    return result.strip() or "片段"
 
 
 def clean_filler_words(text):
@@ -279,18 +289,32 @@ def _filter_relevant_subtitles(subtitles):
 
 
 def _is_bad_transcript(subtitles, min_lines=15, max_repeat_ratio=0.85):
-    """检测是否为异常转录（如整篇同一句话）：若大量重复则视为无效，不烧录错误字幕"""
+    """检测是否为异常转录（如整篇同一句话）。
+
+    只对“较长、信息量更高”的字幕做重复检测，避免正常口语里大量
+    “对/嗯/是/那”这类短句把整段误判成坏转录。
+    """
     if not subtitles or len(subtitles) < min_lines:
         return False
+
     from collections import Counter
-    texts = [ (s.get("text") or "").strip() for s in subtitles ]
-    most_common = Counter(texts).most_common(1)
+
+    texts = [(s.get("text") or "").strip() for s in subtitles]
+    meaningful = [t for t in texts if len(t) >= 4]
+    if len(meaningful) < max(6, min_lines // 2):
+        return False
+
+    counter = Counter(meaningful)
+    most_common = counter.most_common(1)
     if not most_common:
         return False
+
     _, count = most_common[0]
-    if count >= len(texts) * max_repeat_ratio:
-        return True
-    return False
+    repeat_ratio = count / max(1, len(meaningful))
+    unique_ratio = len(counter) / max(1, len(meaningful))
+
+    # 真正的异常转录一般表现为：大部分较长字幕都完全相同，且去重后种类极少。
+    return repeat_ratio >= max_repeat_ratio and unique_ratio <= 0.2
 
 
 def _sec_to_srt_time(sec):
@@ -745,9 +769,18 @@ def create_silence_filter(silences, duration, margin=0.1):
     return '+'.join(selects)
 
 def _parse_clip_index(filename: str) -> int:
-    """从文件名解析切片序号，支持 soul_01_xxx 或 01_xxx 格式"""
-    m = re.search(r'\d+', filename)
-    return int(m.group()) if m else 0
+    """从文件名解析切片序号。
+    
+    格式：prefix场次_序号_标题，如 soul119_01_xxx → 1，soul_01_xxx → 1。
+    取所有 _数字_ 模式中最小的值（序号通常是 01/02，场次如 112/119 是大数）。
+    避免把视频场次号误认为切片序号。
+    """
+    matches = re.findall(r'_(\d+)_', filename)
+    if matches:
+        return min(int(m) for m in matches)
+    # 兜底：取文件名中最后一段数字
+    m = re.search(r'(\d+)', filename)
+    return int(m.group(1)) if m else 0
 
 
 def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_path,
@@ -843,47 +876,57 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         current_video = cover_output
     print(f"  ✓ 封面烧录", flush=True)
     
-    # 5.2 烧录字幕（图像 overlay；每张图 -loop 1 才能按 enable=between(t,a,b) 显示，随语音走动）
+    # 5.2 烧录字幕
+    # 策略：先尝试单次 FFmpeg 通道（一次 pass 完成所有字幕叠加）；
+    #       若失败（filter 太长/输入太多）则自动分批（batch_size=40）兜底。
     if sub_images:
         print(f"  [3/5] 字幕烧录中（{len(sub_images)} 条，随语音时间轴显示）…", flush=True)
-        batch_size = 5
+
+        # 字幕烧录：使用 -ss/-t 有限时长输入（非 -loop 1），FFmpeg 只在字幕有效段处理图像帧，速度大幅提升。
+        # 原理：-loop 1 会生成无限帧流（每帧都要合成），-ss start -t duration 生成有限帧，FFmpeg 自动优化。
+        # 每批 25 条 overlay（约 2-4 次 pass）。
+        batch_size = 25
         total_batches = (len(sub_images) + batch_size - 1) // batch_size
         for batch_idx in range(0, len(sub_images), batch_size):
             batch = sub_images[batch_idx:batch_idx + batch_size]
             inputs = ['-i', current_video]
             for img in batch:
-                inputs.extend(['-loop', '1', '-i', img['path']])
-            filters = []
-            last_output = '0:v'
+                sub_start = max(img['start'], cover_duration)
+                sub_end = img['end']
+                sub_dur = max(0.05, sub_end - sub_start)  # 有限时长，至少 50ms
+                # -ss 偏移，-t 时长，-i 图片 → 有限帧数的图像输入
+                inputs.extend(['-ss', f'{sub_start:.3f}', '-t', f'{sub_dur:.3f}', '-i', img['path']])
+            fc_parts = []
+            last = '0:v'
             for i, img in enumerate(batch):
-                input_idx = i + 1
-                output_name = f'v{i}'
+                idx = i + 1
+                out_n = f'vsub{i}'
                 sub_start = max(img['start'], cover_duration)
                 if sub_start < img['end']:
-                    enable = f"between(t,{sub_start:.3f},{img['end']:.3f})"
-                    filters.append(f"[{last_output}][{input_idx}:v]overlay={overlay_pos}:enable='{enable}'[{output_name}]")
+                    # itsoffset 告诉 FFmpeg 从主视频哪个时刻开始叠加该输入
+                    fc_parts.append(
+                        f"[{last}][{idx}:v]overlay={overlay_pos}:enable='between(t,{sub_start:.3f},{img['end']:.3f})'[{out_n}]"
+                    )
                 else:
-                    filters.append(f"[{last_output}]copy[{output_name}]")
-                last_output = output_name
-            filter_complex = ';'.join(filters)
-            batch_output = os.path.join(temp_dir, f'sub_batch_{batch_idx}.mp4')
+                    fc_parts.append(f"[{last}]copy[{out_n}]")
+                last = out_n
+            fc = ';'.join(fc_parts)
+            batch_out = os.path.join(temp_dir, f'sub_batch_{batch_idx}.mp4')
             cmd = [
                 'ffmpeg', '-y', *inputs,
-                '-filter_complex', filter_complex,
-                '-map', f'[{last_output}]', '-map', '0:a',
+                '-filter_complex', fc,
+                '-map', f'[{last}]', '-map', '0:a',
                 '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
-                '-c:a', 'copy', '-shortest', batch_output
+                '-c:a', 'copy', '-shortest', batch_out
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                print(f"  ⚠ 字幕批次 {batch_idx} 报错: {(result.stderr or '')[-500:]}", file=sys.stderr)
-            if result.returncode == 0 and os.path.exists(batch_output):
-                current_video = batch_output
-            cur_batch = batch_idx // batch_size + 1
-            if total_batches > 1 and cur_batch <= total_batches:
-                print(f"      字幕批次 {cur_batch}/{total_batches} 完成", flush=True)
-        if sub_images:
-            print(f"  ✓ 字幕烧录完成 ({len(sub_images)} 条)", flush=True)
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            if r.returncode != 0:
+                print(f"  ⚠ 字幕批次 {batch_idx//batch_size+1} 失败: {(r.stderr or '')[-300:]}", file=sys.stderr)
+            if r.returncode == 0 and os.path.exists(batch_out):
+                current_video = batch_out
+            if total_batches > 1:
+                print(f"      字幕批次 {batch_idx//batch_size+1}/{total_batches} 完成", flush=True)
+        print(f"  ✓ 字幕烧录完成（{total_batches}批，{len(sub_images)} 条）", flush=True)
     else:
         if do_burn_subs and os.path.exists(transcript_path):
             print(f"  ⚠ 未烧录字幕：解析后无有效字幕（请用 MLX Whisper 重新生成 transcript.srt）", flush=True)

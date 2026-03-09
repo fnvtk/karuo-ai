@@ -52,9 +52,17 @@
 
 ## 五、成片：封面 + 字幕 + 竖屏
 
-- **封面**：竖屏 498×1080 内**不超出界面**；**半透明质感**（背景 alpha=165）；深色渐变、左上角 Soul logo；**封面显示标题 = 成片文件名 = highlights.title**（去杠后一致，无 `：｜—/`、无序号）；标题文字严格居中、多行自动换行。透明度由 `VERTICAL_COVER_ALPHA` 调节。
-- **字幕**：封面结束后才显示，**居中**在竖屏内；烧录用**图像 overlay**（每张字幕图 `-loop 1` + `enable=between(t,a,b)`），若系统 FFmpeg 带 libass 可改用 SRT+subtitles 滤镜；语助词由 soul_enhance 统一清理。重新加字幕时加 `--force-burn-subs`。
+- **封面**：竖屏 498×1080 内**不超出界面**；**半透明质感**（背景 alpha=165）；深色渐变、左上角 Soul logo；**封面显示标题 = 成片文件名 = highlights.title**（去杠、去下划线后一致，无 `：｜—/_`、无序号）；标题文字严格居中、多行自动换行。透明度由 `VERTICAL_COVER_ALPHA` 调节。
+- **字幕**：封面结束后才显示，**居中**在竖屏内；先尝试**单次 FFmpeg 通道**（一次 pass 完成所有字幕叠加，最快）；若失败自动回退到分批模式（batch_size=40）；语助词在解析阶段已由 `clean_filler_words` 去除。重新加字幕时加 `--force-burn-subs`。⚠️ 注意：当前 FFmpeg 不支持 drawtext/subtitles 滤镜，只能用 PIL 图像 overlay 方案。
 - **竖屏**：498×1080，crop 参数与 `参考资料/竖屏中段裁剪参数说明.md` 一致
+
+### ⚠️ 字幕烧录常见坑（已修复）
+
+| 坑 | 原因 | 修复 |
+|---|---|---|
+| 字幕全跳过（转录稿异常误判） | `_parse_clip_index` 取到场次号（如 119）而非切片序号（01），导致 highlight_info 为空，start_sec=0 落入噪声区 | 改为取 `_数字_` 模式中**最小值**，119→01=1 ✓ |
+| 标题/文件名有下划线 | `sanitize_filename` 保留了 `_` | 现在 `_` 也替换为空格 |
+| 字幕烧录极慢（N/5 次 encode） | 原 batch_size=5，180 条字幕需 36 次 FFmpeg 重编码 | 改为单次通道（1 次 pass）；失败时 batch_size=40 兜底 |
 
 ---
 
@@ -80,8 +88,10 @@ python3 batch_clip.py -i "原视频.mp4" -l highlights.json -o clips/ -p soul112
 
 **3. 成片（竖屏+封面+字幕+去语助词，直出到 成片/）**
 ```bash
-python3 soul_enhance.py -c clips/ -l highlights.json -t transcript.srt -o 成片/ --vertical --title-only
+python3 soul_enhance.py -c clips/ -l highlights.json -t transcript.srt -o 成片/ --vertical --title-only --force-burn-subs
 ```
+
+**前缀命名注意**：`-p soul119` 这类带场次号的前缀会产生 `soul119_01_xxx.mp4`，`soul_enhance` 会正确识别 `01` 为切片序号（取所有 `_数字_` 中最小值）。
 
 输出目录结构示例：
 ```

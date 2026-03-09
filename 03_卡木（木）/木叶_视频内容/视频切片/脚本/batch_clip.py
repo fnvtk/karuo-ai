@@ -71,16 +71,21 @@ def _title_no_slash(s: str) -> str:
     return s
 
 
-def sanitize_filename(name: str, max_length: int = 50, chinese_only: bool = True) -> str:
-    """清理文件名，先标题去杠，再仅保留中文、空格、_-"""
+_SAFE_CJK_PUNCT = set("，。？！；：·、…（）【】「」《》～—·+")
+
+
+def sanitize_filename(name: str, max_length: int = 50, chinese_only: bool = False) -> str:
+    """清理文件名：去杠去下划线，保留中文、ASCII字母数字（MBTI/AI/ENFJ等）、安全标点与空格"""
     name = _title_no_slash(name) or _to_simplified(str(name))
     safe_chars = []
     for c in name:
-        if c in " _-" or "\u4e00" <= c <= "\u9fff":
-            safe_chars.append(c)
-        elif not chinese_only and (c.isalnum() or c.isdigit()):
+        if (c == " "
+                or "\u4e00" <= c <= "\u9fff"
+                or c.isalnum()
+                or c in _SAFE_CJK_PUNCT):
             safe_chars.append(c)
     result = "".join(safe_chars).strip()
+    result = __import__('re').sub(r"\s+", " ", result).strip()
     if len(result) > max_length:
         result = result[:max_length]
     return result.strip(" _-") or "片段"
