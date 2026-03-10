@@ -6,15 +6,17 @@ description: >
 triggers: 小红书发布、发布到小红书、小红书登录、小红书上传、RED发布
 owner: 木叶
 group: 木
-version: "1.0"
+version: "2.0"
 updated: "2026-03-10"
 ---
 
-# 小红书发布 Skill（v1.0）
+# 小红书发布 Skill（v2.0）
 
-> **核心能力**：逆向小红书创作者中心（creator.xiaohongshu.com）内部 API，Cookie 认证后全程 HTTP 操作。
-> **认证方式**：Playwright 登录（扫码或手机号）获取 Cookie，之后纯 API。
-> **推兔参考**：推兔对小红书也是用 webview + 页面注入，本方案更进一步直接调 HTTP API。
+> **核心能力**：Playwright headless 自动化小红书创作者中心（creator.xiaohongshu.com）。
+> **定时发布**：Playwright UI「定时发布」（当前降级为立即发布，待优化 datepicker）。
+> **去重**：基于 publish_log.json，同一视频不重复发。
+> **119 场实测**：14/14 全部成功（含去重跳过 1 条），Cookie 有效期 ~12 个月。
+> **注意**：标题限 20 字，正文无限制。
 
 ---
 

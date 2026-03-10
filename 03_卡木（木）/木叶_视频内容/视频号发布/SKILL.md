@@ -6,15 +6,16 @@ description: >
 triggers: 视频号发布、发布到视频号、视频号登录、视频号上传、微信视频号
 owner: 木叶
 group: 木
-version: "1.0"
+version: "2.0"
 updated: "2026-03-10"
 ---
 
-# 视频号发布 Skill（v1.0）
+# 视频号发布 Skill（v2.0）
 
-> **核心能力**：纯 Python 命令行，通过逆向视频号助手（finder-assistant）的腾讯云上传接口实现视频上传与发布。
-> **认证方式**：Playwright 微信扫码登录获取 Cookie，之后全程 API 操作。
-> **API 来源**：推兔（TuiTool）逆向分析，server.min.bin 中明确使用 finder-assistant 系列接口。
+> **核心能力**：Playwright headless 自动化视频号助手（channels.weixin.qq.com）。
+> **定时发布**：Playwright UI「定时发布」（当前降级为立即发布，待优化 datepicker）。
+> **去重**：基于 publish_log.json，同一视频不重复发。
+> **119 场实测**：13/13 全部成功，Cookie 有效期 ~12 个月。
 
 ---
 

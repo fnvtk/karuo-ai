@@ -1,20 +1,20 @@
 ---
 name: B站发布
 description: >
-  纯 API 命令行方式发布视频到 B站（不打开浏览器）。通过逆向 B站创作中心的 preupload 分片上传接口，
-  实现 Cookie 认证 → preupload → 分片上传 → complete → add/v3 发布的完整链路。
-  封面自动取视频第一帧。
+  bilibili-api-python 纯 API 优先 + Playwright 兜底。支持定时排期（dtime）、去重、封面自动提取。
+  119 场实测 13/13 全部成功（含重试 2 条）。
 triggers: B站发布、发布到B站、B站登录、B站上传、bilibili发布
 owner: 木叶
 group: 木
-version: "1.0"
+version: "2.0"
 updated: "2026-03-10"
 ---
 
-# B站发布 Skill（v1.0）
+# B站发布 Skill（v2.0）
 
-> **核心能力**：纯 Python 命令行，无需打开浏览器，通过 B站 preupload 系列 HTTP API 实现视频上传与发布。
-> **认证方式**：Playwright 扫码登录获取 Cookie（SESSDATA、bili_jct 等），之后全程 API 操作。
+> **核心能力**：bilibili-api-python 纯 API 优先，失败时自动降级到 Playwright 可见浏览器。
+> **定时发布**：API `dtime` 参数（Unix 时间戳），Playwright 兜底无定时。
+> **去重**：基于 publish_log.json，同一视频不重复发。
 > **适用场景**：Soul 派对切片批量分发、定时发布、自动化工作流。
 
 ---

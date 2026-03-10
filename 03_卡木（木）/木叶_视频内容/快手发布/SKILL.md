@@ -6,15 +6,16 @@ description: >
 triggers: 快手发布、发布到快手、快手登录、快手上传、kuaishou发布
 owner: 木叶
 group: 木
-version: "1.0"
+version: "2.0"
 updated: "2026-03-10"
 ---
 
-# 快手发布 Skill（v1.0）
+# 快手发布 Skill（v2.0）
 
-> **核心能力**：逆向快手创作者服务平台（cp.kuaishou.com）内部 API，Cookie 认证后全程 HTTP 操作。
-> **认证方式**：Playwright 快手扫码登录获取 Cookie，之后纯 API。
-> **推兔参考**：推兔对快手也是用 webview + 页面注入，本方案更进一步直接调 HTTP API。
+> **核心能力**：Playwright headless 自动化快手创作者中心（cp.kuaishou.com）。
+> **定时发布**：Playwright UI 交互设置「定时发布」，成功率高。
+> **去重**：基于 publish_log.json，同一视频不重复发。
+> **119 场实测**：12/12 成功（含重试 3 条「未找到上传控件」→ 重试全过）。
 
 ---
 
