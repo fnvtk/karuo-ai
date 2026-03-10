@@ -1,3 +1,13 @@
+---
+name: Soul竖屏切片
+description: Soul 派对视频→竖屏成片（498×1080），剪辑→成片两文件夹，MLX 转录→高光识别→batch_clip→soul_enhance（封面+字幕+去语助词）。支持基因胶囊打包。
+triggers: Soul竖屏切片、视频切片、热点切片、竖屏成片、派对切片
+owner: 木叶
+group: 木
+version: "1.0"
+updated: "2026-02-27"
+---
+
 # Soul 竖屏切片 · 专用 Skill
 
 > 专门切 Soul 派对视频为**竖屏成片**，用于抖音/首页。**只保留两个文件夹**：剪辑 → 成片。
@@ -118,3 +128,19 @@ xxx_output/
 详细 crop 说明见：`参考资料/竖屏中段裁剪参数说明.md`。
 
 **发布到抖音**：成片生成后，可用「抖音发布」Skill（开放平台 OAuth 登录 + 上传/创建视频）或腕推等工具发布；见 `03_卡木（木）/木叶_视频内容/抖音发布/SKILL.md`。
+
+---
+
+## 九、基因胶囊
+
+本 Skill 可打包为基因胶囊，供其他 Agent/项目继承：
+
+```bash
+cd /Users/karuo/Documents/个人/卡若AI
+python3 "05_卡土（土）/土砖_技能复制/基因胶囊/脚本/gene_capsule.py" pack "03_卡木（木）/木叶_视频内容/视频切片/Soul竖屏切片_SKILL.md"
+```
+
+解包：
+```bash
+python3 .../gene_capsule.py unpack Soul竖屏切片_*.json -o <目标目录>
+```
