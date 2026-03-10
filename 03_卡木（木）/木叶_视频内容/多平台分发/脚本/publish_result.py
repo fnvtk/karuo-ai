@@ -62,6 +62,12 @@ def load_published_set() -> set[tuple[str, str]]:
     return published
 
 
+def is_published(platform: str, video_path: str) -> bool:
+    """检查某条视频是否已成功发布到某平台（供各平台脚本直接调用）"""
+    fname = Path(video_path).name
+    return (platform, fname) in load_published_set()
+
+
 def load_failed_tasks() -> list[dict]:
     """加载失败任务列表（用于重试）"""
     failed = []

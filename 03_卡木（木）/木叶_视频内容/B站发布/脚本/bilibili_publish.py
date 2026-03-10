@@ -15,7 +15,7 @@ COOKIE_FILE = SCRIPT_DIR / "bilibili_storage_state.json"
 VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul 派对 119场 20260309_output/成片")
 
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "多平台分发" / "脚本"))
-from publish_result import PublishResult
+from publish_result import PublishResult, is_published
 
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -264,12 +264,17 @@ async def _playwright_publish(video_path: str, title: str) -> PublishResult:
         )
 
 
-async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1) -> PublishResult:
+async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1, skip_dedup: bool = False) -> PublishResult:
     """API 优先 → Playwright 兜底"""
     fname = Path(video_path).name
     fsize = Path(video_path).stat().st_size
     print(f"\n[{idx}/{total}] {fname} ({fsize/1024/1024:.1f}MB)", flush=True)
     print(f"  标题: {title[:60]}", flush=True)
+
+    if not skip_dedup and is_published("B站", video_path):
+        print(f"  [跳过] 该视频已发布到B站", flush=True)
+        return PublishResult(platform="B站", video_path=video_path, title=title,
+                           success=True, status="skipped", message="去重跳过（已发布）")
 
     if not COOKIE_FILE.exists():
         return PublishResult(

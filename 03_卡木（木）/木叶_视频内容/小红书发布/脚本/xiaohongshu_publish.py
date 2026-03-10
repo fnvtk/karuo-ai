@@ -54,14 +54,20 @@ TITLES = {
 }
 
 
-async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1) -> PublishResult:
+async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1, skip_dedup: bool = False) -> PublishResult:
     from playwright.async_api import async_playwright
+    from publish_result import is_published
 
     fname = Path(video_path).name
     fsize = Path(video_path).stat().st_size
     t0 = time.time()
     print(f"\n[{idx}/{total}] {fname} ({fsize/1024/1024:.1f}MB)", flush=True)
     print(f"  标题: {title[:60]}", flush=True)
+
+    if not skip_dedup and is_published("小红书", video_path):
+        print(f"  [跳过] 该视频已发布到小红书", flush=True)
+        return PublishResult(platform="小红书", video_path=video_path, title=title,
+                           success=True, status="skipped", message="去重跳过（已发布）")
 
     if not COOKIE_FILE.exists():
         return PublishResult(platform="小红书", video_path=video_path, title=title,
@@ -217,6 +223,8 @@ async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1)
 
 
 async def main():
+    from publish_result import print_summary, save_results
+
     if not COOKIE_FILE.exists():
         print("[✗] Cookie 不存在")
         return 1
@@ -227,17 +235,19 @@ async def main():
         return 1
     print(f"共 {len(videos)} 条视频\n")
 
-    ok_count = 0
+    results = []
     for i, vp in enumerate(videos):
         t = TITLES.get(vp.name, f"{vp.stem} #Soul派对 #创业日记")
-        ok = await publish_one(str(vp), t, i + 1, len(videos))
-        if ok:
-            ok_count += 1
+        r = await publish_one(str(vp), t, i + 1, len(videos))
+        results.append(r)
         if i < len(videos) - 1:
             await asyncio.sleep(5)
 
-    print(f"\n成功: {ok_count}/{len(videos)}")
-    return 0 if ok_count == len(videos) else 1
+    actual = [r for r in results if r.status != "skipped"]
+    print_summary(actual)
+    save_results(actual)
+    ok = sum(1 for r in actual if r.success)
+    return 0 if ok == len(actual) else 1
 
 
 if __name__ == "__main__":
