@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 统一发布结果模块 — 所有平台的 publish_one 都返回此结构。
+含：结果日志、去重检查、失败重试加载、飞书通知。
 """
 import json
 import time
@@ -39,6 +40,49 @@ def save_results(results: list[PublishResult]):
     with open(RESULT_LOG, "a", encoding="utf-8") as f:
         for r in results:
             f.write(json.dumps(r.to_dict(), ensure_ascii=False) + "\n")
+
+
+def load_published_set() -> set[tuple[str, str]]:
+    """加载已成功发布的 (platform, video_filename) 集合，用于去重"""
+    published = set()
+    if not RESULT_LOG.exists():
+        return published
+    with open(RESULT_LOG, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                if rec.get("success"):
+                    fname = Path(rec.get("video_path", "")).name
+                    published.add((rec["platform"], fname))
+            except json.JSONDecodeError:
+                continue
+    return published
+
+
+def load_failed_tasks() -> list[dict]:
+    """加载失败任务列表（用于重试）"""
+    failed = []
+    if not RESULT_LOG.exists():
+        return failed
+    seen = {}
+    with open(RESULT_LOG, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                key = (rec.get("platform", ""), Path(rec.get("video_path", "")).name)
+                seen[key] = rec
+            except json.JSONDecodeError:
+                continue
+    for key, rec in seen.items():
+        if not rec.get("success"):
+            failed.append(rec)
+    return failed
 
 
 def print_summary(results: list[PublishResult]):
