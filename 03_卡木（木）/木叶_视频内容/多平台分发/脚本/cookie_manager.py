@@ -19,6 +19,15 @@ import httpx
 COOKIE_STORE_DIR = Path(__file__).parent.parent / "cookies"
 CHANNELS_LEGACY_PATH = Path(__file__).parent.parent.parent / "视频号发布" / "脚本" / "channels_storage_state.json"
 
+_BASE = Path(__file__).parent.parent.parent
+PLATFORM_LEGACY_PATHS = {
+    "视频号": _BASE / "视频号发布" / "脚本" / "channels_storage_state.json",
+    "B站": _BASE / "B站发布" / "脚本" / "bilibili_storage_state.json",
+    "快手": _BASE / "快手发布" / "脚本" / "kuaishou_storage_state.json",
+    "小红书": _BASE / "小红书发布" / "脚本" / "xiaohongshu_storage_state.json",
+    "抖音": _BASE / "抖音发布" / "脚本" / "douyin_storage_state.json",
+}
+
 SUPPORTED_PLATFORMS = ["视频号", "抖音", "快手", "B站", "小红书"]
 
 # 各平台默认 cookie 域名
@@ -72,10 +81,10 @@ def load_cookies(platform: str) -> dict[str, str] | None:
     """
     path = get_cookie_path(platform)
     if not path.exists():
-        # 视频号：尝试从旧路径迁移
-        if platform == "视频号" and CHANNELS_LEGACY_PATH.exists():
+        legacy = PLATFORM_LEGACY_PATHS.get(platform)
+        if legacy and legacy.exists():
             try:
-                with open(CHANNELS_LEGACY_PATH, "r", encoding="utf-8") as f:
+                with open(legacy, "r", encoding="utf-8") as f:
                     data = json.load(f)
                 _ensure_cookie_dir()
                 with open(path, "w", encoding="utf-8") as f:
@@ -163,16 +172,62 @@ def _check_video_account_valid(cookies: dict[str, str]) -> tuple[bool, str]:
     return True, "有效"
 
 
+def _check_bilibili_valid(cookies: dict[str, str]) -> tuple[bool, str]:
+    """B站：GET /x/web-interface/nav 校验"""
+    cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+    try:
+        with httpx.Client(timeout=10) as c:
+            r = c.get("https://api.bilibili.com/x/web-interface/nav",
+                       headers={"Cookie": cookie_str, "User-Agent": UA})
+            body = r.json()
+        if body.get("code") == 0:
+            nick = body.get("data", {}).get("uname", "?")
+            return True, f"有效 (昵称: {nick})"
+        return False, f"Cookie 过期: {body.get('message', '')}"
+    except Exception as e:
+        return False, f"预检异常: {e}"
+
+
+def _check_kuaishou_valid(cookies: dict[str, str]) -> tuple[bool, str]:
+    """快手：GET 创作者中心用户信息"""
+    cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+    try:
+        with httpx.Client(timeout=10) as c:
+            r = c.get("https://cp.kuaishou.com/rest/pc/user/myInfo",
+                       headers={"Cookie": cookie_str, "User-Agent": UA,
+                                "Referer": "https://cp.kuaishou.com/"})
+            body = r.json()
+        if body.get("result") == 1:
+            nick = body.get("data", {}).get("userName", "?")
+            return True, f"有效 (昵称: {nick})"
+        return False, f"Cookie 过期: {body.get('error_msg', '')}"
+    except Exception as e:
+        return False, f"预检异常: {e}"
+
+
+def _check_xiaohongshu_valid(cookies: dict[str, str]) -> tuple[bool, str]:
+    """小红书：GET 创作者中心用户信息"""
+    cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+    try:
+        with httpx.Client(timeout=10) as c:
+            r = c.get("https://creator.xiaohongshu.com/api/galaxy/user/info",
+                       headers={"Cookie": cookie_str, "User-Agent": UA,
+                                "Referer": "https://creator.xiaohongshu.com/"})
+            body = r.json()
+        if body.get("code") == 0:
+            nick = body.get("data", {}).get("nick_name", "?")
+            return True, f"有效 (昵称: {nick})"
+        return False, f"Cookie 过期: {body.get('msg', '')}"
+    except Exception as e:
+        return False, f"预检异常: {e}"
+
+
 def _check_platform_stub(platform: str, cookies: dict[str, str]) -> tuple[bool, str]:
-    """抖音、B站、快手、小红书：暂为 stub，仅检查文件存在和基本结构"""
+    """通用 stub：仅检查 cookie 存在"""
     if not cookies:
         return False, "无 cookie 数据"
-    # 简单启发：有常见 session 字段则视为可能有效
     session_keys = {
         "抖音": ["sessionid"],
-        "B站": ["SESSDATA", "bili_jct"],
-        "快手": ["kuaishou.server.web_st", "userId"],
-        "小红书": ["web_session", "a1"],
     }
     keys = session_keys.get(platform, [])
     found = any(k in cookies for k in keys)
@@ -193,7 +248,13 @@ def check_cookie_valid(platform: str) -> tuple[bool, str]:
     if platform == "视频号":
         return _check_video_account_valid(cookies)
 
-    if platform in ("抖音", "B站", "快手", "小红书"):
+    if platform == "B站":
+        return _check_bilibili_valid(cookies)
+    if platform == "快手":
+        return _check_kuaishou_valid(cookies)
+    if platform == "小红书":
+        return _check_xiaohongshu_valid(cookies)
+    if platform == "抖音":
         return _check_platform_stub(platform, cookies)
 
     return False, f"不支持的平台: {platform}"

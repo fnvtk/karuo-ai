@@ -391,10 +391,15 @@ async def publish_one(
 # ---------------------------------------------------------------------------
 async def main():
     from publish_result import print_summary, save_results
+    from cookie_manager import check_cookie_valid
 
-    if not COOKIE_FILE.exists():
-        print("[✗] Cookie 不存在，请先运行 channels_login.py 扫码")
+    print("=== 账号预检 ===", flush=True)
+    ok, info = check_cookie_valid("视频号")
+    print(f"  视频号: {info}", flush=True)
+    if not ok:
+        print("[✗] 账号预检不通过，终止发布", flush=True)
         return 1
+    print()
 
     videos = sorted(VIDEO_DIR.glob("*.mp4"))
     if not videos:

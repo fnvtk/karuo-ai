@@ -313,9 +313,15 @@ async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1,
 
 
 async def main():
-    if not COOKIE_FILE.exists():
-        print("[✗] Cookie 不存在，请先运行 bilibili_login.py")
+    from cookie_manager import check_cookie_valid
+
+    print("=== 账号预检 ===", flush=True)
+    ok, info = check_cookie_valid("B站")
+    print(f"  B站: {info}", flush=True)
+    if not ok:
+        print("[✗] 账号预检不通过，终止发布", flush=True)
         return 1
+    print()
 
     videos = sorted(VIDEO_DIR.glob("*.mp4"))
     if not videos:

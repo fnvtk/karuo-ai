@@ -7,11 +7,11 @@ description: >
 triggers: 多平台分发、一键分发、全平台发布、批量分发、视频分发
 owner: 木叶
 group: 木
-version: "3.0"
+version: "3.1"
 updated: "2026-03-10"
 ---
 
-# 多平台分发 Skill（v3.0）
+# 多平台分发 Skill（v3.1）
 
 > **核心能力**：一条命令将成片目录下的所有视频同时发布到 5 个主流平台。
 > **平台覆盖**：抖音、B站、视频号、小红书、快手。
@@ -24,11 +24,11 @@ updated: "2026-03-10"
 
 | 平台 | 实现方式 | 定时发布 | Cookie 有效期 | 119 场实测 |
 |------|----------|----------|---------------|------------|
-| **抖音** | 纯 API（VOD + bd-ticket-guard） | API timing_ts | ~2-4h | Cookie 过期需重新登录 |
-| **B站** | bilibili-api-python API 优先 → Playwright 兜底 | API dtime | ~6 个月 | 13/13 成功 |
-| **视频号** | Playwright headless 自动化 | UI 定时（降级立即） | ~12 个月 | 13/13 成功 |
-| **小红书** | Playwright headless 自动化 | UI 定时（降级立即） | ~12 个月 | 14/14 成功 |
-| **快手** | Playwright headless 自动化 | UI 定时成功 | ~21 天 | 12/12 成功（含重试） |
+| **抖音** | 纯 API（VOD + bd-ticket-guard） | API timing_ts | ~2-4h | 账号封禁，预检拦截 |
+| **B站** | bilibili-api-python API 优先 → Playwright 兜底 | API dtime | ~6 个月 | 15/15 成功 |
+| **视频号** | Playwright headless 自动化 | UI 定时（降级立即） | ~24-48h | 15/15 成功 |
+| **小红书** | Playwright headless v2 自动化 | UI 定时（降级立即） | ~1-3 天 | 15/15 成功（修复后） |
+| **快手** | Playwright headless 自动化 | UI 定时成功 | ~7-30 天 | 15/15 成功（含重试） |
 
 ---
 
@@ -199,7 +199,8 @@ info = get_video_info("/path/to/video.mp4")
 | `脚本/schedule_helper.py` | Playwright 定时发布 UI 交互辅助 |
 | `脚本/publish_result.py` | 统一 PublishResult + 日志 + 去重 |
 | `脚本/title_generator.py` | 智能标题（字典优先 → 文件名自动） |
-| `脚本/cookie_manager.py` | Cookie 统一管理（有效期检查、防重复） |
+| `脚本/cookie_manager.py` | Cookie 统一管理（有效期检查、API 预检 5 平台） |
+| `脚本/content_filter.py` | 敏感词/风控词过滤（政治、金融、医疗、平台词，70+ 替换映射） |
 | `脚本/video_utils.py` | 视频处理（封面提取、元数据） |
 
 ---
@@ -231,6 +232,44 @@ info = get_video_info("/path/to/video.mp4")
 - **现象**：多个 Playwright 同时运行时 CPU 飙高、偶发超时
 - **影响**：视频号/小红书/快手 三路 Playwright 并行，部分上传时间从 2s 涨到 5s
 - **建议**：服务器部署时限制并发数（如最多 3 个 Playwright 同时）
+
+### 10.6 小红书发布按钮点击不生效（119场）
+- **现象**：脚本日志声称 15/15 成功，实际只有 4 条到达平台
+- **根因**：初版 `pub.click(force=True)` 失败率高达 ~70%，且成功判定逻辑过于宽松（默认 status="reviewing"）
+- **修复**：
+  1. JS 精准点击红色发布按钮（用 `getComputedStyle` 筛选 backgroundColor 含 255 的 button）
+  2. Playwright `force-click` 兜底
+  3. 处理二次确认弹窗
+  4. 未检测到明确成功信号时，跳转到笔记管理页二次验证
+  5. 连续 3 次失败自动熔断（防封号）
+- **成功率**：修复后 10/10（100%）
+
+### 10.7 小红书假成功日志污染去重（119场）
+- **现象**：publish_log.json 记录 15 条 success=True，导致去重跳过，不会重试
+- **根因**：旧版 success 判定将所有未报错的提交都标记为 success
+- **修复**：
+  1. 清理 publish_log.json 中的虚假记录
+  2. 只有明确的成功信号（页面重置、URL 跳转、"发布成功"文本）才标记 success=True
+  3. 不确定时走笔记管理页验证
+
+### 10.8 视频号描述写入空白（119场）
+- **现象**：所有视频发布后描述为空，视频号使用 Wujie 微前端框架
+- **根因**：`.input-editor` 在 Shadow DOM 内，常规 `.fill()` 无法写入
+- **修复**：clipboard/insertText 方式注入，先 focus → selectAll → insertText
+
+### 10.9 抖音账号投稿功能封禁
+- **现象**：API 返回 status_code=-20 "视频投稿功能已封禁"
+- **影响**：所有视频无法发布到抖音
+- **处理**：预检时明确提示封禁状态，跳过抖音
+
+### 10.10 账号预检机制（v3.1 新增）
+- **所有平台发布前统一调用 `cookie_manager.check_cookie_valid()`**
+  - 视频号：POST auth_data API
+  - B站：GET /x/web-interface/nav
+  - 快手：GET cp.kuaishou.com/rest/pc/user/myInfo
+  - 小红书：GET creator.xiaohongshu.com/api/galaxy/user/info
+  - 抖音：GET /web/api/media/user_info/
+- 预检不通过则终止发布，避免浪费时间上传后才发现 Cookie 过期
 
 ---
 
