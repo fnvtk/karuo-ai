@@ -317,8 +317,45 @@ def improve_subtitle_punctuation(text: str) -> str:
         t = t + '。'
     return apply_platform_safety(t)
 
-def parse_srt_for_clip(srt_path, start_sec, end_sec):
-    """解析SRT，提取指定时间段的字幕"""
+def _detect_clip_pts_offset(clip_path: str) -> float:
+    """探测切片实际起始 PTS（秒），用于补偿 -ss input seeking 的关键帧偏移。
+    
+    batch_clip 用 -ss before -i（input seeking），FFmpeg 会 seek 到最近关键帧，
+    实际起始帧可能比请求的 start_time 早 0~3 秒。探测这个偏移量，字幕做相应延迟。
+    """
+    try:
+        r = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'v:0',
+             '-show_entries', 'frame=pts_time', '-read_intervals', '%+#1',
+             '-of', 'csv=p=0', clip_path],
+            capture_output=True, text=True, timeout=10
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            first_pts = float(r.stdout.strip().splitlines()[0])
+            return first_pts  # 通常是 0 或接近 0
+    except Exception:
+        pass
+    return 0.0
+
+
+# 字幕与语音同步的全局延迟补偿（秒）
+# batch_clip -ss input seeking 导致实际切割比请求早 0~3 秒（关键帧对齐）
+# 字幕按 highlights.start_time 算相对时间，会比实际音频提前
+# 加正值延迟 = 字幕往后推 = 与声音更同步
+SUBTITLE_DELAY_SEC = 0.8  # 根据实测 Soul 视频关键帧间隔约 2s，取保守值
+
+
+def parse_srt_for_clip(srt_path, start_sec, end_sec, delay_sec=None):
+    """解析SRT，提取指定时间段的字幕。
+    
+    优化：
+    1. 字幕延迟补偿（delay_sec）：补偿 FFmpeg input seeking 关键帧偏移，让字幕与声音同步
+    2. 合并过短字幕：相邻字幕 <1.2s 且文字可拼接时自动合并，减少闪烁
+    3. 最小显示时长：每条至少显示 1.2s，避免一闪而过看不清
+    """
+    if delay_sec is None:
+        delay_sec = SUBTITLE_DELAY_SEC
+
     with open(srt_path, 'r', encoding='utf-8') as f:
         content = f.read()
     
@@ -330,31 +367,53 @@ def parse_srt_for_clip(srt_path, start_sec, end_sec):
         parts = t.split(':')
         return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
     
-    subtitles = []
+    raw_subs = []
     for match in matches:
         sub_start = time_to_sec(match[1])
         sub_end = time_to_sec(match[2])
         text = match[3].strip()
         
-        # 检查是否与片段时间范围重叠
         if sub_end > start_sec and sub_start < end_sec + 2:
-            # 调整为相对于片段开始的相对时间
-            rel_start = max(0, sub_start - start_sec)
-            rel_end = sub_end - start_sec
+            rel_start = max(0, sub_start - start_sec + delay_sec)
+            rel_end = sub_end - start_sec + delay_sec
             
-            # 繁转简 + 修正错误 + 清理语气词
             text = _to_simplified(text)
             for w, c in CORRECTIONS.items():
                 text = text.replace(w, c)
             cleaned_text = clean_filler_words(text)
-            if len(cleaned_text) > 1:  # 过滤太短的
-                subtitles.append({
+            if len(cleaned_text) > 1:
+                raw_subs.append({
                     'start': max(0, rel_start),
-                    'end': rel_end,
+                    'end': max(rel_start + 0.5, rel_end),
                     'text': cleaned_text
                 })
     
-    return subtitles
+    # 合并过短的连续字幕（<1.2s 且总长 <25字），让每条有足够阅读时间
+    MIN_DISPLAY = 1.2
+    merged = []
+    i = 0
+    while i < len(raw_subs):
+        cur = dict(raw_subs[i])
+        dur = cur['end'] - cur['start']
+        # 尝试向后合并
+        while dur < MIN_DISPLAY and i + 1 < len(raw_subs):
+            nxt = raw_subs[i + 1]
+            gap = nxt['start'] - cur['end']
+            combined_text = cur['text'] + '，' + nxt['text']
+            if gap <= 0.5 and len(combined_text) <= 25:
+                cur['end'] = nxt['end']
+                cur['text'] = combined_text
+                dur = cur['end'] - cur['start']
+                i += 1
+            else:
+                break
+        # 强制最小显示时长
+        if cur['end'] - cur['start'] < MIN_DISPLAY:
+            cur['end'] = cur['start'] + MIN_DISPLAY
+        merged.append(cur)
+        i += 1
+    
+    return merged
 
 
 def _filter_relevant_subtitles(subtitles):
