@@ -5,11 +5,15 @@
 """
 import asyncio
 import sys
+import time
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
 COOKIE_FILE = SCRIPT_DIR / "xiaohongshu_storage_state.json"
 VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul 派对 119场 20260309_output/成片")
+
+sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "多平台分发" / "脚本"))
+from publish_result import PublishResult
 
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -50,17 +54,18 @@ TITLES = {
 }
 
 
-async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1) -> bool:
+async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1) -> PublishResult:
     from playwright.async_api import async_playwright
 
     fname = Path(video_path).name
     fsize = Path(video_path).stat().st_size
+    t0 = time.time()
     print(f"\n[{idx}/{total}] {fname} ({fsize/1024/1024:.1f}MB)", flush=True)
     print(f"  标题: {title[:60]}", flush=True)
 
     if not COOKIE_FILE.exists():
-        print("  [✗] Cookie 不存在", flush=True)
-        return False
+        return PublishResult(platform="小红书", video_path=video_path, title=title,
+                           success=False, status="error", message="Cookie 不存在")
 
     try:
         async with async_playwright() as pw:
@@ -86,9 +91,11 @@ async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1)
 
             txt = await page.evaluate("document.body.innerText")
             if "登录" in (await page.title()) and "上传" not in txt:
-                print("  [✗] 未登录，请重新运行 xiaohongshu_login.py", flush=True)
                 await browser.close()
-                return False
+                return PublishResult(platform="小红书", video_path=video_path, title=title,
+                                   success=False, status="error",
+                                   message="未登录，请重新运行 xiaohongshu_login.py",
+                                   error_code="NOT_LOGGED_IN", elapsed_sec=time.time()-t0)
 
             print("  [2] 上传视频...", flush=True)
             fl = page.locator('input[type="file"]').first
@@ -97,9 +104,12 @@ async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1)
                 print("  [2] 文件已选择", flush=True)
             else:
                 await page.screenshot(path="/tmp/xhs_no_input.png")
-                print("  [✗] 未找到上传控件", flush=True)
                 await browser.close()
-                return False
+                return PublishResult(platform="小红书", video_path=video_path, title=title,
+                                   success=False, status="error",
+                                   message="未找到上传控件",
+                                   screenshot="/tmp/xhs_no_input.png",
+                                   elapsed_sec=time.time()-t0)
 
             # 等待上传完成（封面生成完毕）
             for i in range(90):
@@ -177,25 +187,33 @@ async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1)
             await page.screenshot(path="/tmp/xhs_result.png")
             txt = await page.evaluate("document.body.innerText")
             url = page.url
+            elapsed = time.time() - t0
 
             if "发布成功" in txt or "已发布" in txt:
-                print("  [✓] 发布成功！", flush=True)
+                status, msg = "published", "发布成功"
             elif "审核" in txt:
-                print("  [✓] 已提交审核", flush=True)
+                status, msg = "reviewing", "已提交审核"
             elif "笔记" in url or "manage" in url:
-                print("  [✓] 已跳转（发布成功）", flush=True)
+                status, msg = "reviewing", "已跳转到笔记管理（发布成功）"
             elif "拖拽视频到此" in txt or ("上传视频" in txt and "封面" not in txt):
-                print("  [✓] 页面已重置（发布成功）", flush=True)
+                status, msg = "published", "页面已重置（发布成功）"
             else:
-                print("  [⚠] 查看截图: /tmp/xhs_result.png", flush=True)
+                status, msg = "reviewing", "已提交，请确认截图"
 
+            result = PublishResult(
+                platform="小红书", video_path=video_path, title=title,
+                success=True, status=status, message=msg,
+                screenshot="/tmp/xhs_result.png", elapsed_sec=elapsed,
+            )
+            print(f"  {result.log_line()}", flush=True)
             await ctx.storage_state(path=str(COOKIE_FILE))
             await browser.close()
-            return True
+            return result
 
     except Exception as e:
-        print(f"  [✗] 异常: {e}", flush=True)
-        return False
+        return PublishResult(platform="小红书", video_path=video_path, title=title,
+                           success=False, status="error",
+                           message=f"异常: {str(e)[:80]}", elapsed_sec=time.time()-t0)
 
 
 async def main():

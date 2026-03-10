@@ -33,10 +33,10 @@ def get_video_info(video_path: str) -> dict:
 
 
 def extract_cover(video_path: str, output_path: str = "", timestamp: str = "00:00:00.500") -> str:
-    """提取视频第一帧作为封面（JPEG）"""
+    """提取视频第一帧作为封面（JPEG），默认存 /tmp"""
     if not output_path:
-        stem = Path(video_path).stem
-        output_path = str(Path(video_path).parent / f"{stem}_cover.jpg")
+        stem = Path(video_path).stem[:40]
+        output_path = f"/tmp/{stem}_cover.jpg"
 
     cmd = [
         "ffmpeg", "-y", "-i", video_path,

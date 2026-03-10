@@ -23,6 +23,7 @@ VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul 派对 119场 20260309_out
 
 sys.path.insert(0, str(SCRIPT_DIR))
 from cookie_manager import CookieManager, check_all_cookies
+from publish_result import PublishResult, print_summary, save_results
 
 PLATFORM_CONFIG = {
     "抖音": {
@@ -59,14 +60,14 @@ PLATFORM_CONFIG = {
 
 
 def check_cookies():
-    """检查所有平台 Cookie 状态"""
     print("=" * 60)
     print("  多平台 Cookie 状态")
     print("=" * 60)
     results = check_all_cookies(BASE_DIR)
     available = []
     for platform, info in results.items():
-        icons = {"ok": "✓", "warning": "⚠", "expiring_soon": "⚠", "expired": "✗", "missing": "○", "error": "✗"}
+        icons = {"ok": "✓", "warning": "⚠", "expiring_soon": "⚠",
+                 "expired": "✗", "missing": "○", "error": "✗"}
         icon = icons.get(info["status"], "?")
         print(f"  [{icon}] {platform}: {info['message']}")
         if info["status"] in ("ok", "warning"):
@@ -76,7 +77,6 @@ def check_cookies():
 
 
 def load_platform_module(name: str, config: dict):
-    """动态加载平台发布模块"""
     script_path = config["script"]
     if not script_path.exists():
         return None
@@ -87,8 +87,7 @@ def load_platform_module(name: str, config: dict):
     return module
 
 
-async def distribute_to_platform(platform: str, config: dict, videos: list) -> dict:
-    """分发到单个平台"""
+async def distribute_to_platform(platform: str, config: dict, videos: list) -> list[PublishResult]:
     print(f"\n{'#'*60}")
     print(f"  开始分发到 [{platform}]")
     print(f"{'#'*60}")
@@ -96,41 +95,47 @@ async def distribute_to_platform(platform: str, config: dict, videos: list) -> d
     cookie_path = config["cookie"]
     if not cookie_path.exists():
         print(f"  [✗] {platform} 未登录，跳过")
-        return {"platform": platform, "status": "skipped", "reason": "未登录"}
+        return [PublishResult(platform=platform, video_path=str(v), title="",
+                             success=False, status="error", message="未登录") for v in videos]
 
     try:
         cm = CookieManager(cookie_path, config["domain"])
         if not cm.is_valid():
             print(f"  [✗] {platform} Cookie 已过期，跳过")
-            return {"platform": platform, "status": "skipped", "reason": "Cookie过期"}
+            return [PublishResult(platform=platform, video_path=str(v), title="",
+                                 success=False, status="error", message="Cookie过期") for v in videos]
     except Exception as e:
-        print(f"  [✗] {platform} Cookie 加载失败: {e}")
-        return {"platform": platform, "status": "error", "reason": str(e)}
+        return [PublishResult(platform=platform, video_path=str(v), title="",
+                             success=False, status="error", message=str(e)) for v in videos]
 
     module = load_platform_module(platform, config)
     if not module:
-        print(f"  [✗] {platform} 脚本不存在: {config['script']}")
-        return {"platform": platform, "status": "error", "reason": "脚本不存在"}
+        return [PublishResult(platform=platform, video_path=str(v), title="",
+                             success=False, status="error", message="脚本不存在") for v in videos]
 
-    success = 0
+    results = []
     total = len(videos)
     for i, vp in enumerate(videos):
         title = getattr(module, "TITLES", {}).get(vp.name, f"{vp.stem} #Soul派对")
         try:
-            ok = await module.publish_one(str(vp), title, i + 1, total)
-            if ok:
-                success += 1
+            r = await module.publish_one(str(vp), title, i + 1, total)
+            if isinstance(r, PublishResult):
+                results.append(r)
+            else:
+                results.append(PublishResult(
+                    platform=platform, video_path=str(vp), title=title,
+                    success=bool(r), status="reviewing" if r else "failed",
+                    message="旧接口兼容",
+                ))
         except Exception as e:
-            print(f"  [✗] {vp.name} 异常: {e}")
+            results.append(PublishResult(
+                platform=platform, video_path=str(vp), title=title,
+                success=False, status="error", message=str(e)[:80],
+            ))
         if i < total - 1:
             await asyncio.sleep(3)
 
-    return {
-        "platform": platform,
-        "status": "done",
-        "success": success,
-        "total": total,
-    }
+    return results
 
 
 async def main():
@@ -148,18 +153,15 @@ async def main():
 
     if not available:
         print("\n[✗] 没有可用的平台，请先登录各平台")
-        print("    抖音: python3 ../抖音发布/脚本/douyin_login.py")
-        print("    B站:  python3 ../B站发布/脚本/bilibili_login.py")
-        print("    视频号: python3 ../视频号发布/脚本/channels_login.py")
-        print("    小红书: python3 ../小红书发布/脚本/xiaohongshu_login.py")
-        print("    快手: python3 ../快手发布/脚本/kuaishou_login.py")
+        for p, c in PLATFORM_CONFIG.items():
+            print(f"    {p}: python3 {c['script']}")
         return 1
 
     targets = args.platforms if args.platforms else available
     targets = [t for t in targets if t in available]
 
     if not targets:
-        print(f"\n[✗] 指定的平台均不可用")
+        print("\n[✗] 指定的平台均不可用")
         return 1
 
     video_dir = Path(args.video_dir) if args.video_dir else VIDEO_DIR
@@ -180,27 +182,19 @@ async def main():
     print(f"  总任务: {len(videos) * len(targets)} 条")
     print()
 
-    all_results = []
+    all_results: list[PublishResult] = []
     for platform in targets:
         config = PLATFORM_CONFIG[platform]
-        result = await distribute_to_platform(platform, config, videos)
-        all_results.append(result)
+        platform_results = await distribute_to_platform(platform, config, videos)
+        all_results.extend(platform_results)
 
-    print(f"\n\n{'='*60}")
-    print(f"  多平台分发汇总")
-    print(f"{'='*60}")
-    for r in all_results:
-        if r["status"] == "done":
-            print(f"  [{r['platform']}] 成功 {r['success']}/{r['total']}")
-        elif r["status"] == "skipped":
-            print(f"  [{r['platform']}] 跳过 ({r['reason']})")
-        else:
-            print(f"  [{r['platform']}] 错误 ({r.get('reason', '未知')})")
+    print_summary(all_results)
+    save_results(all_results)
 
-    total_success = sum(r.get("success", 0) for r in all_results if r["status"] == "done")
-    total_tasks = sum(r.get("total", 0) for r in all_results if r["status"] == "done")
-    print(f"\n  总计: {total_success}/{total_tasks}")
-    return 0
+    ok = sum(1 for r in all_results if r.success)
+    total = len(all_results)
+    print(f"  日志已保存: {SCRIPT_DIR / 'publish_log.json'}")
+    return 0 if ok == total else 1
 
 
 if __name__ == "__main__":
