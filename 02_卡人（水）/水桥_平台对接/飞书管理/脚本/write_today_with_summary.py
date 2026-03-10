@@ -11,7 +11,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from auto_log import get_token_silent, write_log, open_result, resolve_wiki_token_for_date
+from auto_log import get_token_silent, write_log, open_result, resolve_wiki_token_for_date, CONFIG
 
 REF_DIR = SCRIPT_DIR.parent / "参考资料"
 
@@ -155,10 +155,10 @@ def main():
         open_result(target_wiki_token)
         print(f"✅ {date_str} 飞书日志已更新（含进度汇总与目标百分比）")
         sys.exit(0)
-    print("❌ 写入失败")
-    ref_path = SCRIPT_DIR.parent / "参考资料" / f"{date_str}_飞书日志_进度汇总与百分比.md"
-    if ref_path.exists():
-        print(f"💡 可复制 {ref_path} 内容到飞书 3 月文档「{date_str}」下粘贴")
+    open_token = target_wiki_token or (CONFIG.get("MONTH_WIKI_TOKENS") or {}).get(2) or CONFIG.get("WIKI_TOKEN")
+    open_result(open_token)
+    print("❌ 写入失败（文档月份不符时请先迁当月文档并 set-march-token）")
+    print("📎 飞书日志固定链接：https://cunkebao.feishu.cn/wiki/ZdSBwHrsGii14HkcIbccQ0flnee")
     sys.exit(1)
 
 

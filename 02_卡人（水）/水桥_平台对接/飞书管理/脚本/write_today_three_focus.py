@@ -13,7 +13,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from auto_log import get_token_silent, write_log, open_result, resolve_wiki_token_for_date
+from auto_log import get_token_silent, write_log, open_result, resolve_wiki_token_for_date, CONFIG
 
 
 def build_tasks_today_three_focus():
@@ -94,14 +94,13 @@ def main():
     tasks = build_tasks_today_three_focus()
     target_wiki_token = resolve_wiki_token_for_date(date_str)
     ok = write_log(token, date_str, tasks, target_wiki_token, overwrite=args.overwrite)
+    open_token = target_wiki_token or (CONFIG.get("MONTH_WIKI_TOKENS") or {}).get(2) or CONFIG.get("WIKI_TOKEN")
+    open_result(open_token)
     if ok:
-        open_result(target_wiki_token)
-        print(f"✅ {date_str} 飞书日志已写入（三件事 + 前面未完成）")
+        print(f"✅ {date_str} 飞书日志已写入飞书")
         sys.exit(0)
-    print("❌ 写入失败")
-    ref_path = SCRIPT_DIR.parent / "参考资料" / f"{date_str}_飞书日志正文_三件事与未完成.md"
-    if ref_path.exists():
-        print(f"💡 可复制 {ref_path} 内容到飞书 3 月文档手动粘贴")
+    print("❌ 写入失败（文档月份不符时请先迁当月文档并 set-march-token）")
+    print("📎 飞书日志固定链接：https://cunkebao.feishu.cn/wiki/ZdSBwHrsGii14HkcIbccQ0flnee")
     sys.exit(1)
 
 

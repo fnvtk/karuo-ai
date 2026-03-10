@@ -158,10 +158,13 @@ Content-Type: application/octet-stream
 Content-CRC32: {hex_crc32}
 Body: 文件二进制
 
-# finish 阶段
+# finish 阶段（单 chunk）
 POST /upload/v1/{storeUri}?uploadid={UploadID}&phase=finish
 Content-Type: text/plain
 Body: "1:{server_returned_crc32}"
+
+# finish 阶段（多 chunk）★ 必须用逗号分隔，不是换行！
+Body: "1:{crc32_1},2:{crc32_2},3:{crc32_3}"
 ```
 
 ### 4.5 SecurityKeys 加载注意事项
@@ -199,9 +202,15 @@ Body: "1:{server_returned_crc32}"
 
 **现象**：`/upload/v1/` 协议的 finish 阶段返回 `code=4019, message="Mismatch Part List"`。
 
-**根因**：finish 请求 body 格式为 `{partNumber}:{crc32}`，partNumber 必须与 transfer 阶段一致。transfer 用 `part_number=1`，则 finish body 必须是 `1:{crc32}`（不是 `0:{crc32}`）。
+**根因**：
+- **单 chunk**：body 为 `1:{crc32}`（换行也行）→ 可以成功
+- **多 chunk**：body 必须用**逗号分隔**，如 `1:{crc32_1},2:{crc32_2},3:{crc32_3}`
+- 用 `\n` 或 `\r\n` 分隔多 chunk 都会返回 4019
 
-**关键**：crc32 值使用**服务端返回的** `data.crc32`，不是客户端计算的。
+**关键**：
+- crc32 值使用**服务端返回的** `data.crc32`，不是客户端计算的
+- partNumber 从 1 开始（不是 0）
+- 多 chunk 分隔符是**逗号**（`,`），不是换行（`\n`）
 
 ### 5.3 SecurityKeys 读取错误的 sign 数据
 

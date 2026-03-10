@@ -49,35 +49,35 @@ UA = (
 
 TITLES = {
     "早起不是为了开派对，是不吵老婆睡觉.mp4":
-        "早起不是为了开派对，是不吵老婆睡觉。初衷就这一个。#Soul派对 #创业日记 #晨间直播 #私域干货",
+        "每天6点起床不是因为自律，是因为老婆还在睡。创业人最真实的起床理由，你猜到了吗？#Soul派对 #创业日记 #晨间直播 #真实创业",
     "懒人的活法 动作简单有利可图正反馈.mp4":
-        "懒有懒的活法：动作简单、有利可图、正反馈，就能坐得住。#Soul派对 #副业 #私域 #切片变现",
+        "懒人也能赚钱？关键就三个词：动作简单、有利可图、正反馈。90%的人输在太勤快了 #Soul派对 #副业思维 #私域变现 #认知升级",
     "初期团队先找两个IS，比钱好使 ENFJ链接人，ENTJ指挥.mp4":
-        "初期团队先找两个IS，比钱好使。ENFJ链接人，ENTJ指挥。#MBTI #创业团队 #Soul派对",
+        "创业初期别急着找钱，先找两个IS型人格。ENFJ负责链接，ENTJ负责指挥，比融资好使十倍 #MBTI创业 #团队搭建 #Soul派对 #合伙人",
     "ICU出来一年多 活着要在互联网上留下东西.mp4":
-        "ICU出来一年多，活着要在互联网上留下东西。#人生感悟 #创业 #Soul派对 #记录生活",
+        "ICU出来一年多了。那之后我想明白一件事：活着，就要在互联网上留下点东西 #人生感悟 #创业觉醒 #Soul派对 #向死而生",
     "MBTI疗愈SOUL 年轻人测MBTI，40到60岁走五行八卦.mp4":
-        "年轻人测MBTI，40到60岁走五行八卦。#MBTI #Soul派对 #五行 #疗愈",
+        "20岁测MBTI，40岁以后该学五行八卦了。年轻人用性格分类，中年人靠命理运营自己 #MBTI #五行 #Soul派对 #认知觉醒",
     "Soul业务模型 派对+切片+小程序全链路.mp4":
-        "Soul业务模型：派对+切片+小程序全链路。#Soul派对 #商业模式 #私域运营 #小程序",
+        "一个人怎么跑通一条商业链路？派对获客→AI切片→小程序变现，全链路拆给你看 #Soul派对 #商业模式 #全链路 #一人公司",
     "Soul切片30秒到8分钟 AI半小时能剪10到30个.mp4":
-        "Soul切片30秒到8分钟，AI半小时能剪10到30个。#AI剪辑 #Soul派对 #切片变现 #效率工具",
+        "AI剪辑有多快？30秒到8分钟的切片，半小时出10到30条。内容工厂的效率密码 #AI剪辑 #Soul派对 #内容效率 #批量生产",
     "刷牙听业务逻辑 Soul切片变现怎么跑.mp4":
-        "刷牙听业务逻辑：Soul切片变现怎么跑。#Soul派对 #切片变现 #副业 #商业逻辑",
+        "刷牙3分钟，刚好听完一套变现逻辑。Soul切片怎么从0到日产30条？碎片时间才是生产力 #Soul派对 #碎片创业 #副业逻辑 #效率",
     "国学易经怎么学 两小时七七八八，召唤作者对话.mp4":
-        "国学易经怎么学？两小时七七八八，召唤作者对话。#国学 #易经 #Soul派对 #学习方法",
+        "易经其实不难，两小时就能学个七七八八。关键是找到作者的思维频率，跟古人对话 #国学 #易经入门 #Soul派对 #终身学习",
     "广点通能投Soul了，1000曝光6到10块.mp4":
-        "广点通能投Soul了，1000曝光6到10块。#Soul派对 #广点通 #流量投放 #私域获客",
+        "广点通终于能投Soul了！1000次曝光只要6到10块，这个获客成本你敢信？#Soul派对 #广点通投放 #低成本获客 #流量红利",
     "建立信任不是求来的 卖外挂发邮件三个月拿下德国总代.mp4":
-        "建立信任不是求来的。卖外挂发邮件三个月拿下德国总代。#销售 #信任 #Soul派对 #商业故事",
+        "信任不是求来的。一个卖外挂的小伙子，发了三个月邮件，拿下德国总代理。死磕比社交有用 #销售思维 #信任建立 #Soul派对 #死磕精神",
     "核心就两个字 筛选。能开派对坚持7天的人再谈.mp4":
-        "核心就两个字：筛选。能开派对坚持7天的人再谈。#筛选 #Soul派对 #创业 #坚持",
+        "别跟所有人合作，核心就两个字：筛选。能坚持开7天派对的人，才值得深聊 #筛选思维 #Soul派对 #创业认知 #人性",
     "睡眠不好？每天放下一件事，做减法.mp4":
-        "睡眠不好？每天放下一件事，做减法。#睡眠 #减法 #Soul派对 #生活方式",
+        "睡不好不是因为太累，是因为脑子里装太多。每天放下一件事，做减法，睡眠自然好 #睡眠 #做减法 #Soul派对 #心理健康",
     "这套体系花了170万，但前端几十块就能参与.mp4":
-        "这套体系花了170万，但前端几十块就能参与。#商业体系 #Soul派对 #私域 #低成本创业",
+        "后端花了170万搭的体系，前端几十块就能参与。真正的商业模式是让别人低成本上车 #商业认知 #Soul派对 #低门槛创业 #体系思维",
     "金融AI获客体系 后端30人沉淀12年，前端丢手机.mp4":
-        "金融AI获客体系：后端30人沉淀12年，前端丢手机。#AI获客 #金融 #Soul派对 #商业模式",
+        "后端30人沉淀了12年，前端操作就是丢个手机号。金融AI获客体系，把复杂留给自己 #AI获客 #金融科技 #Soul派对 #系统思维",
 }
 
 
@@ -184,7 +184,7 @@ def _hmac_sha256(key: bytes, msg: str) -> bytes:
     return hmac.new(key, msg.encode(), hashlib.sha256).digest()
 
 
-USER_ID = "95519194897"
+USER_ID = ""  # 自动从 user_info 接口获取
 
 
 def aws4_sign(ak: str, sk: str, token: str, qs: str,
@@ -340,7 +340,7 @@ async def upload_chunks(
         crc_parts.append(f"{i+1}:{sv_crc}")
         print(f"      chunk {i+1}/{n_chunks} ok (crc32={sv_crc})")
 
-    finish_body = "\n".join(crc_parts).encode()
+    finish_body = ",".join(crc_parts).encode()
     finish_resp = await client.post(
         f"{base_url}?uploadid={upload_id}&phase=finish",
         content=finish_body,
@@ -539,13 +539,13 @@ async def create_v2(
 # 单视频发布
 # ═══════════════════════════════════════════════════════════
 async def publish_one(
-    keys: SecurityKeys,
     video_path: str,
     title: str,
     timing_ts: int = 0,
     idx: int = 1,
     total: int = 1,
 ) -> bool:
+    global USER_ID
     fname = Path(video_path).name
     fsize = Path(video_path).stat().st_size
     timing_str = datetime.datetime.fromtimestamp(timing_ts).strftime("%m-%d %H:%M") if timing_ts > 0 else "立即"
@@ -556,25 +556,40 @@ async def publish_one(
     print(f"  标题: {title[:60]}")
     print(f"{'='*60}")
 
-    async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-        auth = await get_upload_auth(client, keys)
-        info = await apply_upload(client, auth, fsize)
-        if not await upload_chunks(client, info, video_path):
-            print("  [✗] 上传失败")
-            return False
-        video_id = await commit_upload(client, auth, info["session_key"])
-        if not video_id:
-            print("  [✗] 未获取到 video_id")
-            return False
-        await wait_video_ready(client, keys, video_id)
-        result = await create_v2(client, keys, video_id, title, timing_ts)
+    try:
+        keys = SecurityKeys(COOKIE_FILE)
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            resp = await client.get(
+                USER_INFO_URL, headers={"Cookie": keys.cookie_str, "User-Agent": UA}
+            )
+            uid_data = resp.json()
+            if uid_data.get("status_code") != 0:
+                print(f"  [✗] Cookie 已过期，请重新运行 douyin_login.py")
+                return False
+            user = uid_data.get("user") or uid_data.get("user_info") or {}
+            USER_ID = str(user.get("uid", "") or user.get("user_id", ""))
 
-        if result.get("status_code") == 0:
-            print("  [✓] 发布成功！")
-            return True
-        else:
-            print(f"  [✗] 发布失败: {result}")
-            return False
+            auth = await get_upload_auth(client, keys)
+            info = await apply_upload(client, auth, fsize)
+            if not await upload_chunks(client, info, video_path):
+                print("  [✗] 上传失败")
+                return False
+            video_id = await commit_upload(client, auth, info["session_key"])
+            if not video_id:
+                print("  [✗] 未获取到 video_id")
+                return False
+            result = await create_v2(client, keys, video_id, title, timing_ts)
+
+            if result.get("status_code") == 0:
+                item_id = result.get("item_id", "")
+                print(f"  [✓] 发布成功！ item_id={item_id}")
+                return True
+            else:
+                print(f"  [✗] 发布失败: {result}")
+                return False
+    except Exception as e:
+        print(f"  [✗] 异常: {e}")
+        return False
 
 
 # ═══════════════════════════════════════════════════════════
@@ -587,13 +602,11 @@ async def main():
 
     keys = SecurityKeys(COOKIE_FILE)
     print(f"[✓] Cookie 加载 ({len(keys.cookies)} items)")
-    print(f"    msToken: {'✓' if keys.ms_token else '✗'}")
-    print(f"    ec_privateKey: {'✓' if keys.ec_private_key else '✗'}")
-    print(f"    server_public_key: {'✓' if keys.server_public_key else '✗'}")
-    print(f"    ticket: {'✓' if keys.ticket else '✗'}")
-    print(f"    ts_sign: {'✓' if keys.ts_sign_raw else '✗'}")
-    print(f"    csrf_token: {'✓' if keys.csrf_token else '✗'}")
+    for k in ("ms_token", "ec_private_key", "server_public_key", "ticket", "ts_sign_raw", "csrf_token"):
+        v = getattr(keys, k, None)
+        print(f"    {k}: {'✓' if v else '✗'}")
 
+    global USER_ID
     async with httpx.AsyncClient(timeout=15.0) as c:
         resp = await c.get(
             USER_INFO_URL, headers={"Cookie": keys.cookie_str, "User-Agent": UA}
@@ -602,7 +615,10 @@ async def main():
         if data.get("status_code") != 0:
             print(f"[✗] Cookie 无效: {data}")
             return 1
-        print(f"[✓] 用户: {data.get('user_info', {}).get('nickname', 'unknown')}\n")
+        user = data.get("user") or data.get("user_info") or {}
+        nickname = user.get("nickname", "unknown")
+        USER_ID = str(user.get("uid", "") or user.get("user_id", ""))
+        print(f"[✓] 用户: {nickname} (uid={USER_ID})\n")
 
     videos = sorted(VIDEO_DIR.glob("*.mp4"))
     if not videos:
@@ -623,11 +639,12 @@ async def main():
 
     results = []
     for i, (vp, title, ts) in enumerate(schedule):
-        ok = await publish_one(keys, str(vp), title, ts, i + 1, len(schedule))
+        ok = await publish_one(str(vp), title, ts, i + 1, len(schedule))
         results.append((vp.name, ok, ts))
-        if i < len(schedule) - 1 and ok:
-            print("  等待 5s...")
-            await asyncio.sleep(5)
+        if i < len(schedule) - 1:
+            wait = 3 if ok else 1
+            print(f"  等待 {wait}s...")
+            await asyncio.sleep(wait)
 
     print(f"\n{'='*60}")
     print("  发布汇总")

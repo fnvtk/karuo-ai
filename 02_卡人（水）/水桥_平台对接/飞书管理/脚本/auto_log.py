@@ -410,10 +410,11 @@ def write_log(token, date_str=None, tasks=None, wiki_token=None, overwrite=False
     doc_id = node['obj_token']
     doc_title = node.get('title', '')
 
-    # 防串月
+    # 防串月：文档月份与当月不符则先迁（新建当月文档并 set-march-token）
     month = parse_month_from_date_str(date_str)
     if month and f"{month}月" not in doc_title:
-        print(f"❌ 月份校验失败：{date_str} 不应写入《{doc_title}》")
+        print(f"❌ 文档月份与当月不符：《{doc_title}》不含「{month}月」")
+        print(f"   请先在飞书新建当月文档，再用 feishu_token_cli.py set-march-token <新文档token> 后重试")
         return False
     
     r = requests.get(f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks", 
