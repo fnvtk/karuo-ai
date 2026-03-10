@@ -71,8 +71,8 @@ def _load_credential():
     )
 
 
-async def _api_publish(video_path: str, title: str) -> PublishResult:
-    """方案一：bilibili-api-python 纯 API"""
+async def _api_publish(video_path: str, title: str, scheduled_time=None) -> PublishResult:
+    """方案一：bilibili-api-python 纯 API（支持定时发布）"""
     from bilibili_api import video_uploader
     from video_utils import extract_cover
 
@@ -99,6 +99,11 @@ async def _api_publish(video_path: str, title: str) -> PublishResult:
         "up_close_danmaku": False,
         "up_close_reply": False,
     }
+
+    if scheduled_time:
+        dtime = int(scheduled_time.timestamp())
+        meta["dtime"] = dtime
+        print(f"  [API] 定时发布: {scheduled_time.strftime('%Y-%m-%d %H:%M')}", flush=True)
 
     page = video_uploader.VideoUploaderPage(
         path=video_path,
@@ -264,11 +269,12 @@ async def _playwright_publish(video_path: str, title: str) -> PublishResult:
         )
 
 
-async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1, skip_dedup: bool = False) -> PublishResult:
-    """API 优先 → Playwright 兜底"""
+async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1, skip_dedup: bool = False, scheduled_time=None) -> PublishResult:
+    """API 优先 → Playwright 兜底（支持定时发布）"""
     fname = Path(video_path).name
     fsize = Path(video_path).stat().st_size
-    print(f"\n[{idx}/{total}] {fname} ({fsize/1024/1024:.1f}MB)", flush=True)
+    time_hint = f" → 定时 {scheduled_time.strftime('%H:%M')}" if scheduled_time else ""
+    print(f"\n[{idx}/{total}] {fname} ({fsize/1024/1024:.1f}MB){time_hint}", flush=True)
     print(f"  标题: {title[:60]}", flush=True)
 
     if not skip_dedup and is_published("B站", video_path):
@@ -285,7 +291,7 @@ async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1,
     # 方案一：纯 API
     print("  [方案一] bilibili-api-python 纯 API...", flush=True)
     try:
-        result = await _api_publish(video_path, title)
+        result = await _api_publish(video_path, title, scheduled_time)
         print(f"  {result.log_line()}", flush=True)
         return result
     except Exception as e:

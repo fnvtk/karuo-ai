@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-多平台一键分发 v2 — 全链路自动化
+多平台一键分发 v3 — 全链路自动化 + 定时排期
+- 定时排期：30-120 分钟随机间隔，超 24h 自动压缩
 - 并行分发：5 平台同时上传（asyncio.gather）
 - 去重机制：已成功发布的视频自动跳过
 - 失败重试：--retry 自动重跑历史失败任务
@@ -9,13 +10,15 @@
 - 结果持久化：JSON Lines 日志 + 控制台汇总
 
 用法:
-  python3 distribute_all.py                        # 并行分发到所有平台
+  python3 distribute_all.py                        # 定时排期并行分发
+  python3 distribute_all.py --now                  # 立即发布（不排期）
   python3 distribute_all.py --platforms B站 快手     # 只发指定平台
   python3 distribute_all.py --check                # 检查 Cookie
   python3 distribute_all.py --retry                # 重试失败任务
   python3 distribute_all.py --video /path/to.mp4   # 发单条视频
   python3 distribute_all.py --no-dedup             # 跳过去重检查
   python3 distribute_all.py --serial               # 串行模式（调试用）
+  python3 distribute_all.py --min-gap 30 --max-gap 120  # 自定义间隔
 """
 import argparse
 import asyncio
@@ -34,6 +37,7 @@ from cookie_manager import CookieManager, check_all_cookies
 from publish_result import (PublishResult, print_summary, save_results,
                             load_published_set, load_failed_tasks)
 from title_generator import generate_title
+from schedule_generator import generate_schedule, format_schedule
 
 PLATFORM_CONFIG = {
     "抖音": {
@@ -139,8 +143,9 @@ def load_platform_module(name: str, config: dict):
 async def distribute_to_platform(
     platform: str, config: dict, videos: list[Path],
     published_set: set, skip_dedup: bool = False,
+    schedule_times: list = None,
 ) -> list[PublishResult]:
-    """分发到单个平台（含去重）"""
+    """分发到单个平台（含去重 + 定时排期）"""
     print(f"\n{'#'*60}")
     print(f"  [{platform}] 开始分发")
     print(f"{'#'*60}")
@@ -190,11 +195,19 @@ async def distribute_to_platform(
             success=True, status="skipped", message="去重跳过（已发布）",
         ))
 
+    publish_schedule = None
+    if schedule_times and len(to_publish) > 0:
+        if len(schedule_times) >= len(to_publish):
+            publish_schedule = schedule_times[:len(to_publish)]
+        else:
+            publish_schedule = generate_schedule(len(to_publish))
+
     total = len(to_publish)
     for i, vp in enumerate(to_publish):
         title = generate_title(vp.name, titles_dict)
+        stime = publish_schedule[i] if publish_schedule else None
         try:
-            r = await module.publish_one(str(vp), title, i + 1, total)
+            r = await module.publish_one(str(vp), title, i + 1, total, scheduled_time=stime)
             if isinstance(r, PublishResult):
                 results.append(r)
             else:
@@ -215,12 +228,13 @@ async def distribute_to_platform(
 
 
 async def run_parallel(targets: list[str], videos: list[Path],
-                       published_set: set, skip_dedup: bool) -> list[PublishResult]:
-    """多平台并行分发"""
+                       published_set: set, skip_dedup: bool,
+                       schedule_times: list = None) -> list[PublishResult]:
+    """多平台并行分发（共享排期）"""
     tasks = []
     for platform in targets:
         config = PLATFORM_CONFIG[platform]
-        task = distribute_to_platform(platform, config, videos, published_set, skip_dedup)
+        task = distribute_to_platform(platform, config, videos, published_set, skip_dedup, schedule_times)
         tasks.append(task)
 
     platform_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -239,12 +253,13 @@ async def run_parallel(targets: list[str], videos: list[Path],
 
 
 async def run_serial(targets: list[str], videos: list[Path],
-                     published_set: set, skip_dedup: bool) -> list[PublishResult]:
+                     published_set: set, skip_dedup: bool,
+                     schedule_times: list = None) -> list[PublishResult]:
     """多平台串行分发（调试用）"""
     all_results = []
     for platform in targets:
         config = PLATFORM_CONFIG[platform]
-        results = await distribute_to_platform(platform, config, videos, published_set, skip_dedup)
+        results = await distribute_to_platform(platform, config, videos, published_set, skip_dedup, schedule_times)
         all_results.extend(results)
     return all_results
 
@@ -299,7 +314,7 @@ async def retry_failed() -> list[PublishResult]:
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="多平台一键视频分发 v2")
+    parser = argparse.ArgumentParser(description="多平台一键视频分发 v3（定时排期）")
     parser.add_argument("--platforms", nargs="+", help="指定平台")
     parser.add_argument("--check", action="store_true", help="只检查 Cookie")
     parser.add_argument("--retry", action="store_true", help="重试失败任务")
@@ -307,6 +322,10 @@ async def main():
     parser.add_argument("--video-dir", help="自定义视频目录")
     parser.add_argument("--no-dedup", action="store_true", help="跳过去重")
     parser.add_argument("--serial", action="store_true", help="串行模式")
+    parser.add_argument("--now", action="store_true", help="立即发布（不排期）")
+    parser.add_argument("--min-gap", type=int, default=30, help="最小间隔(分钟)")
+    parser.add_argument("--max-gap", type=int, default=120, help="最大间隔(分钟)")
+    parser.add_argument("--max-hours", type=float, default=24.0, help="最大排期跨度(小时)")
     args = parser.parse_args()
 
     available, alerts = check_cookies_with_alert()
@@ -354,16 +373,31 @@ async def main():
             if (p, v.name) not in published_set:
                 total_new += 1
 
+    # 生成排期
+    schedule_times = None
+    if not args.now and total_new > 1:
+        schedule_times = generate_schedule(
+            len(videos),
+            min_gap=args.min_gap,
+            max_gap=args.max_gap,
+            max_hours=args.max_hours,
+        )
+
     print(f"\n{'='*60}")
     print(f"  分发计划 ({mode})")
     print(f"{'='*60}")
     print(f"  视频数: {len(videos)}")
     print(f"  目标平台: {', '.join(targets)}")
     print(f"  新任务: {total_new} 条")
+    print(f"  发布方式: {'立即发布' if args.now or not schedule_times else '定时排期'}")
     if not args.no_dedup:
         skipped = len(videos) * len(targets) - total_new
         if skipped > 0:
             print(f"  去重跳过: {skipped} 条")
+
+    if schedule_times:
+        print(f"\n  排期表：")
+        print(format_schedule([v.name for v in videos], schedule_times))
     print()
 
     if total_new == 0:
@@ -372,9 +406,9 @@ async def main():
 
     t0 = time.time()
     if args.serial:
-        all_results = await run_serial(targets, videos, published_set, args.no_dedup)
+        all_results = await run_serial(targets, videos, published_set, args.no_dedup, schedule_times)
     else:
-        all_results = await run_parallel(targets, videos, published_set, args.no_dedup)
+        all_results = await run_parallel(targets, videos, published_set, args.no_dedup, schedule_times)
 
     actual_results = [r for r in all_results if r.status != "skipped"]
     print_summary(actual_results)

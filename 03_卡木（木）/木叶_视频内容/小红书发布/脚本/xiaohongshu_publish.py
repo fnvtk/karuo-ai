@@ -54,14 +54,15 @@ TITLES = {
 }
 
 
-async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1, skip_dedup: bool = False) -> PublishResult:
+async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1, skip_dedup: bool = False, scheduled_time=None) -> PublishResult:
     from playwright.async_api import async_playwright
     from publish_result import is_published
 
     fname = Path(video_path).name
     fsize = Path(video_path).stat().st_size
     t0 = time.time()
-    print(f"\n[{idx}/{total}] {fname} ({fsize/1024/1024:.1f}MB)", flush=True)
+    time_hint = f" → 定时 {scheduled_time.strftime('%H:%M')}" if scheduled_time else ""
+    print(f"\n[{idx}/{total}] {fname} ({fsize/1024/1024:.1f}MB){time_hint}", flush=True)
     print(f"  标题: {title[:60]}", flush=True)
 
     if not skip_dedup and is_published("小红书", video_path):
@@ -150,6 +151,13 @@ async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1,
                 }""", title)
 
             await asyncio.sleep(1)
+
+            # 定时发布
+            if scheduled_time:
+                from schedule_helper import set_scheduled_time
+                scheduled_ok = await set_scheduled_time(page, scheduled_time, "小红书")
+                if scheduled_ok:
+                    print(f"  [定时] 小红书定时发布已设置", flush=True)
 
             await asyncio.sleep(1)
             print("  [4] 等待发布按钮启用...", flush=True)

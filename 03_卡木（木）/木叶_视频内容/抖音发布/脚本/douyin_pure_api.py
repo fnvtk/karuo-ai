@@ -541,20 +541,31 @@ async def create_v2(
 async def publish_one(
     video_path: str,
     title: str,
-    timing_ts: int = 0,
     idx: int = 1,
     total: int = 1,
-) -> bool:
+    skip_dedup: bool = False,
+    scheduled_time=None,
+) -> "PublishResult":
     global USER_ID
+    sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "多平台分发" / "脚本"))
+    from publish_result import PublishResult, is_published
+
     fname = Path(video_path).name
     fsize = Path(video_path).stat().st_size
-    timing_str = datetime.datetime.fromtimestamp(timing_ts).strftime("%m-%d %H:%M") if timing_ts > 0 else "立即"
+    timing_ts = int(scheduled_time.timestamp()) if scheduled_time else 0
+    timing_str = scheduled_time.strftime("%m-%d %H:%M") if scheduled_time else "立即"
+    t0 = time.time()
 
     print(f"\n{'='*60}")
     print(f"  [{idx}/{total}] {fname}")
     print(f"  大小: {fsize/1024/1024:.1f}MB | 定时: {timing_str}")
     print(f"  标题: {title[:60]}")
     print(f"{'='*60}")
+
+    if not skip_dedup and is_published("抖音", video_path):
+        print(f"  [跳过] 该视频已发布到抖音", flush=True)
+        return PublishResult(platform="抖音", video_path=video_path, title=title,
+                           success=True, status="skipped", message="去重跳过（已发布）")
 
     try:
         keys = SecurityKeys(COOKIE_FILE)
@@ -564,32 +575,45 @@ async def publish_one(
             )
             uid_data = resp.json()
             if uid_data.get("status_code") != 0:
-                print(f"  [✗] Cookie 已过期，请重新运行 douyin_login.py")
-                return False
+                return PublishResult(platform="抖音", video_path=video_path, title=title,
+                                   success=False, status="error", message="Cookie 已过期",
+                                   elapsed_sec=time.time()-t0)
             user = uid_data.get("user") or uid_data.get("user_info") or {}
             USER_ID = str(user.get("uid", "") or user.get("user_id", ""))
 
             auth = await get_upload_auth(client, keys)
             info = await apply_upload(client, auth, fsize)
             if not await upload_chunks(client, info, video_path):
-                print("  [✗] 上传失败")
-                return False
+                return PublishResult(platform="抖音", video_path=video_path, title=title,
+                                   success=False, status="failed", message="上传失败",
+                                   elapsed_sec=time.time()-t0)
             video_id = await commit_upload(client, auth, info["session_key"])
             if not video_id:
-                print("  [✗] 未获取到 video_id")
-                return False
+                return PublishResult(platform="抖音", video_path=video_path, title=title,
+                                   success=False, status="failed", message="未获取到 video_id",
+                                   elapsed_sec=time.time()-t0)
             result = await create_v2(client, keys, video_id, title, timing_ts)
 
+            elapsed = time.time() - t0
             if result.get("status_code") == 0:
                 item_id = result.get("item_id", "")
-                print(f"  [✓] 发布成功！ item_id={item_id}")
-                return True
+                msg = f"发布成功 item_id={item_id}"
+                if timing_ts > 0:
+                    msg += f" (定时 {timing_str})"
+                print(f"  [✓] {msg}")
+                return PublishResult(platform="抖音", video_path=video_path, title=title,
+                                   success=True, status="reviewing", message=msg,
+                                   elapsed_sec=elapsed)
             else:
-                print(f"  [✗] 发布失败: {result}")
-                return False
+                msg = f"发布失败: {str(result)[:80]}"
+                print(f"  [✗] {msg}")
+                return PublishResult(platform="抖音", video_path=video_path, title=title,
+                                   success=False, status="failed", message=msg,
+                                   elapsed_sec=elapsed)
     except Exception as e:
-        print(f"  [✗] 异常: {e}")
-        return False
+        return PublishResult(platform="抖音", video_path=video_path, title=title,
+                           success=False, status="error", message=f"异常: {str(e)[:80]}",
+                           elapsed_sec=time.time()-t0)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -626,36 +650,27 @@ async def main():
         return 1
     print(f"[i] 共 {len(videos)} 条视频")
 
-    now_ts = int(time.time())
-    base_ts = ((now_ts + 3600) // 3600 + 1) * 3600
+    sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "多平台分发" / "脚本"))
+    from publish_result import print_summary, save_results
+    from schedule_generator import generate_schedule, format_schedule
 
-    schedule = []
-    for i, vp in enumerate(videos):
-        ts = base_ts + i * 3600
-        title = TITLES.get(vp.name, f"{vp.stem} #Soul派对 #创业日记")
-        schedule.append((vp, title, ts))
-        dt_str = datetime.datetime.fromtimestamp(ts).strftime("%m-%d %H:%M")
-        print(f"  {i+1:2d}. {dt_str} | {vp.name[:50]}")
+    schedule_times = generate_schedule(len(videos))
+    print(f"\n排期：")
+    print(format_schedule([v.name for v in videos], schedule_times))
 
     results = []
-    for i, (vp, title, ts) in enumerate(schedule):
-        ok = await publish_one(str(vp), title, ts, i + 1, len(schedule))
-        results.append((vp.name, ok, ts))
-        if i < len(schedule) - 1:
-            wait = 3 if ok else 1
-            print(f"  等待 {wait}s...")
-            await asyncio.sleep(wait)
+    for i, (vp, stime) in enumerate(zip(videos, schedule_times)):
+        title = TITLES.get(vp.name, f"{vp.stem} #Soul派对 #创业日记")
+        r = await publish_one(str(vp), title, i + 1, len(videos), scheduled_time=stime)
+        results.append(r)
+        if i < len(videos) - 1:
+            await asyncio.sleep(3)
 
-    print(f"\n{'='*60}")
-    print("  发布汇总")
-    print(f"{'='*60}")
-    for name, ok, ts in results:
-        s = "✓" if ok else "✗"
-        t = datetime.datetime.fromtimestamp(ts).strftime("%m-%d %H:%M")
-        print(f"  [{s}] {t} | {name}")
-    success = sum(1 for _, ok, _ in results if ok)
-    print(f"\n  成功: {success}/{len(results)}")
-    return 0 if success == len(results) else 1
+    actual = [r for r in results if r.status != "skipped"]
+    print_summary(actual)
+    save_results(actual)
+    ok = sum(1 for r in actual if r.success)
+    return 0 if ok == len(actual) else 1
 
 
 if __name__ == "__main__":
