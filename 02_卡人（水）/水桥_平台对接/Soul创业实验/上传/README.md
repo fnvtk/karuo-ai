@@ -8,7 +8,7 @@
 
 - 文章已按 **写作/写作规范.md** 写好。
 - **第9章（第101场及以前）**：保存为 `9.xx 第X场｜主题.md`，位于第9章目录。
-- **2026 场次（第102场及以后）**：保存为 `第X场｜主题.md`，位于 `2026年/` 目录。
+- **2026 场次（第102场及以后）**：保存为 `第X场｜主题.md`，位于 `2026每日派对干货/` 目录。
 
 ---
 
@@ -17,7 +17,7 @@
 | 项目 | 值 |
 |:---|:---|
 | 第9章文章目录 | `/Users/karuo/Documents/个人/2、我写的书/《一场soul的创业实验》/第四篇｜真实的赚钱/第9章｜我在Soul上亲访的赚钱案例/` |
-| **2026 场次目录** | `/Users/karuo/Documents/个人/2、我写的书/《一场soul的创业实验》/2026年/` |
+| **2026 场次目录** | `/Users/karuo/Documents/个人/2、我写的书/《一场soul的创业实验》/2026每日派对干货/` |
 | 项目（含 content_upload） | `一场soul的创业实验-永平`（根目录有 `content_upload.py`） |
 | 第9章参数 | part-4, chapter-9, price 1.0 |
 | **2026每日派对干货参数** | part-2026-daily, chapter-2026-daily, id 10.xx, price 1.0 |
@@ -39,7 +39,7 @@ python3 content_upload.py --title "第X场｜标题" \
 
 # 或指定 id（如 10.18）
 python3 content_upload.py --id 10.18 --title "第119场｜开派对的初心是早上不影响老婆睡觉" \
-  --content-file "/Users/karuo/Documents/个人/2、我写的书/《一场soul的创业实验》/2026年/第119场｜开派对的初心是早上不影响老婆睡觉.md" \
+  --content-file "/Users/karuo/Documents/个人/2、我写的书/《一场soul的创业实验》/2026每日派对干货/第119场｜开派对的初心是早上不影响老婆睡觉.md" \
   --part part-2026-daily --chapter chapter-2026-daily --price 1.0
 ```
 

@@ -24,13 +24,28 @@ async def main():
         page = await context.new_page()
         await page.goto(LOGIN_URL, timeout=60000)
 
-        print("等待扫码登录...")
-        try:
-            await page.wait_for_url("**/article/publish/**", timeout=180000)
-            await asyncio.sleep(3)
-        except Exception:
-            print("未自动检测到跳转，请手动确认已登录后按 Enter")
-            await page.pause()
+        print("等待扫码登录...\n")
+        # 等待从登录页跳转到创作中心（URL 变化 + 页面内容变化）
+        for i in range(300):
+            try:
+                url = page.url
+                cookies = await context.cookies()
+                cp_cookies = [c for c in cookies if "cp.kuaishou.com" in c.get("domain", "")]
+                page_text = await page.evaluate("document.body.innerText")
+                if cp_cookies or ("发布" in page_text and "立即登录" not in page_text and "平台优势" not in page_text):
+                    print(f"检测到已登录！(cookies: {len(cp_cookies)}, url: {url[:60]})")
+                    await asyncio.sleep(5)
+                    break
+            except Exception:
+                # 页面正在导航（好兆头：说明用户在操作）
+                await asyncio.sleep(2)
+                continue
+            if i > 0 and i % 30 == 0:
+                print(f"  等待中... ({i}s)")
+            await asyncio.sleep(1)
+        else:
+            print("超时，请确认已登录后按 Enter...")
+            input()
 
         await context.storage_state(path=str(COOKIE_FILE))
         await context.close()

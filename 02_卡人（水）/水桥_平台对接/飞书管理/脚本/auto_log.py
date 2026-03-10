@@ -13,8 +13,21 @@ import json
 import subprocess
 import requests
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 import time
 import re
+
+# 飞书日志日期以中国时间为准
+CHINA_TZ = ZoneInfo("Asia/Shanghai")
+
+def now_china():
+    """当前时间（中国时间）"""
+    return datetime.now(CHINA_TZ)
+
+def get_today_date_str():
+    """今日日期字符串（中国时间），如 3月10日"""
+    t = now_china()
+    return f"{t.month}月{t.day}日"
 
 # ============ 配置 ============
 CONFIG = {
@@ -152,9 +165,8 @@ def get_token_silent():
 # ============ 日志写入 ============
 # 写日志前应先读 运营中枢/工作台/2026年整体目标.md，使百分比与总目标一致、上下文相关
 def get_today_tasks():
-    """获取今天的任务（可自定义修改）；目标百分比以总目标为核心，见 2026年整体目标.md"""
-    today = datetime.now()
-    date_str = f"{today.month}月{today.day}日"
+    """获取今天的任务（可自定义修改）；日期以中国时间为准；目标百分比以总目标为核心，见 2026年整体目标.md"""
+    date_str = get_today_date_str()
     
     # 每日固定项：开发<20%，侧重事务与方向；每晚20:00玩值电竞朋友圈已入本机日历
     tasks = [
@@ -181,11 +193,10 @@ def get_today_tasks():
     return date_str, tasks
 
 def build_blocks(date_str, tasks):
-    """构建飞书文档块（倒序：新日期在上）"""
+    """构建飞书文档块（倒序：新日期在上）；callout 易触发 field validation failed，改用 text"""
     blocks = [
         {'block_type': 6, 'heading4': {'elements': [{'text_run': {'content': f'{date_str}  '}}], 'style': {'align': 1}}},
-        {'block_type': 19, 'callout': {'emoji_id': 'sunrise', 'background_color': 2, 'border_color': 2, 
-         'elements': [{'text_run': {'content': '[执行]', 'text_element_style': {'bold': True, 'text_color': 7}}}]}}
+        {'block_type': 2, 'text': {'elements': [{'text_run': {'content': '[执行]', 'text_element_style': {'bold': True}}}], 'style': {}}}
     ]
     
     quadrant_colors = {"重要紧急": 5, "重要不紧急": 3, "不重要紧急": 6, "不重要不紧急": 4}
@@ -226,6 +237,23 @@ def build_blocks(date_str, tasks):
             blocks.append({'block_type': 2, 'text': {'elements': [{'text_run': {'content': '}'}}], 'style': {}}})
         blocks.append({'block_type': 2, 'text': {'elements': [{'text_run': {'content': ''}}], 'style': {}}})
     
+    return blocks
+
+
+def _text_block_simple(content):
+    """极简文本块，兼容 field validation 严格校验"""
+    return {'block_type': 2, 'text': {'elements': [{'text_run': {'content': content}}], 'style': {}}}
+
+
+def _build_blocks_simple(date_str, tasks):
+    """极简块（仅纯文本），用于 field validation failed 时回退"""
+    blocks = [_text_block_simple(f'{date_str}  '), _text_block_simple('[执行]')]
+    for task in tasks:
+        events = '、'.join(task.get('events', []))
+        blocks.append(_text_block_simple(f"{task.get('person', '')}（{events}）"))
+        for key in ('t_targets', 'n_process', 't_thoughts', 'w_work', 'f_feedback'):
+            for item in task.get(key, []):
+                blocks.append(_text_block_simple(f"  {item}"))
     return blocks
 
 
@@ -472,11 +500,16 @@ def write_log(token, date_str=None, tasks=None, wiki_token=None, overwrite=False
                     insert_index = i + 1
                     break
     
-    # 写入（倒序：新日期在上）
+    # 写入（倒序：新日期在上）；field validation failed 时尝试极简纯文本块
     content_blocks = build_blocks(date_str, tasks)
+    payload = {'children': content_blocks, 'index': insert_index}
     r = requests.post(f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{doc_id}/children",
-        headers=headers, json={'children': content_blocks, 'index': insert_index}, timeout=30)
-    
+        headers=headers, json=payload, timeout=30)
+    if r.json().get('code') != 0 and 'field validation failed' in (r.json().get('msg') or '').lower():
+        content_blocks = _build_blocks_simple(date_str, tasks)
+        payload = {'children': content_blocks, 'index': insert_index}
+        r = requests.post(f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{doc_id}/children",
+            headers=headers, json=payload, timeout=30)
     if r.json().get('code') == 0:
         print(f"✅ {date_str} 日志写入成功 -> {doc_title}")
         return True

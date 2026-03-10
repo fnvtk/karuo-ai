@@ -13,13 +13,12 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from auto_log import get_token_silent, write_log, open_result, resolve_wiki_token_for_date, CONFIG
+from auto_log import get_token_silent, write_log, open_result, resolve_wiki_token_for_date, CONFIG, get_today_date_str
 
 
 def build_tasks_today_three_focus():
-    """今日三件事 + 前面未完成；百分比以 2026年整体目标.md 为基准"""
-    today = datetime.now()
-    date_str = f"{today.month}月{today.day}日"
+    """今日三件事 + 前面未完成；日期以中国时间为准；百分比以 2026年整体目标.md 为基准"""
+    date_str = get_today_date_str()
     # 前面未完成（延续 3 月 / 本月未闭环）
     unfinished = [
         "20 条 Soul 视频 + 20:00 发 1 条朋友圈（每日固定）",
@@ -79,10 +78,9 @@ def main():
     parser.add_argument("--overwrite", action="store_true", help="覆盖已有当日日志")
     args = parser.parse_args()
 
-    today = datetime.now()
-    date_str = f"{today.month}月{today.day}日"
+    date_str = get_today_date_str()
     print("=" * 50)
-    print(f"📝 写入今日飞书日志：{date_str}" + (" [覆盖]" if args.overwrite else ""))
+    print(f"📝 写入今日飞书日志（中国时间）：{date_str}" + (" [覆盖]" if args.overwrite else ""))
     print("  ① 卡若AI 完善/接口可用  ② 一场创业实验 网站/小程序上线  ③ 玩值电竞 布局 + 前面未完成")
     print("=" * 50)
 

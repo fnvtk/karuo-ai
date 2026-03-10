@@ -11,7 +11,7 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from auto_log import get_token_silent, write_log, open_result, resolve_wiki_token_for_date, CONFIG
+from auto_log import get_token_silent, write_log, open_result, resolve_wiki_token_for_date, CONFIG, get_today_date_str
 
 REF_DIR = SCRIPT_DIR.parent / "参考资料"
 
@@ -85,9 +85,8 @@ def _upload_and_insert_image(token: str, doc_id: str, image_path: Path, date_str
 
 
 def build_tasks_today_with_summary():
-    """今日：最近进度汇总 + 每天20切片 + 1980成交及全链路 + 目标百分比"""
-    today = datetime.now()
-    date_str = f"{today.month}月{today.day}日"
+    """今日：最近进度汇总 + 每天20切片 + 1980成交及全链路 + 目标百分比（日期以中国时间为准）"""
+    date_str = get_today_date_str()
     # 最近进度汇总（来自全库+智能纪要 output）
     summary = [
         "【进度汇总】飞书 Token 全命令行（get/set-march-token）、今日日志三件事+未完成已固化",
@@ -126,8 +125,7 @@ def build_tasks_today_with_summary():
 
 
 def main():
-    today = datetime.now()
-    date_str = f"{today.month}月{today.day}日"
+    date_str = get_today_date_str()
     print("=" * 50)
     print(f"📝 写入今日飞书日志（进度汇总+20切片+1980全链路+百分比）：{date_str}")
     print("=" * 50)

@@ -3,19 +3,17 @@
 今日飞书日志（3月定制）：200视频/日、工具研发10～30切片、售内容产出、李永平、年度目标百分比
 """
 import sys
-from datetime import datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
-from auto_log import get_token_silent, write_log, open_result, resolve_wiki_token_for_date, CONFIG
+from auto_log import get_token_silent, write_log, open_result, resolve_wiki_token_for_date, CONFIG, get_today_date_str
 
 
 def build_tasks_today():
-    """今日：200视频/日、工具研发10～30切片、售内容产出、按年度目标百分比"""
-    today = datetime.now()
-    date_str = f"{today.month}月{today.day}日"
+    """今日：200视频/日、工具研发10～30切片、售内容产出、按年度目标百分比（日期以中国时间为准）"""
+    date_str = get_today_date_str()
 
     return [
         {
@@ -96,8 +94,7 @@ def build_tasks_today():
 
 
 def main():
-    today = datetime.now()
-    date_str = f"{today.month}月{today.day}日"
+    date_str = get_today_date_str()
     print("=" * 50)
     print(f"📝 写入今日飞书日志（200视频+工具研发+售内容+年度目标%）：{date_str}")
     print("=" * 50)
