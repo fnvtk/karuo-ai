@@ -1,202 +1,252 @@
 #!/usr/bin/env python3
 """
 多平台 Cookie 统一管理器
-- 加载 Playwright storage_state.json
-- 检查 Cookie 有效期
-- 提供 cookie_str / headers
-- 防止重复获取 Cookie
+- 中央存储：多平台分发/cookies/{platform}_cookies.json
+- Playwright storage_state 格式：{"cookies": [...], "origins": [...]}
+- 支持视频号 auth API 校验，其它平台预留 stub
+- 视频号保存时同步至 channels_storage_state.json 以兼容旧脚本
 """
 import json
 import time
 from pathlib import Path
 from datetime import datetime
+from typing import Any
+
+import httpx
 
 
-class CookieManager:
-    """统一管理各平台的 storage_state.json"""
+# 常量
+COOKIE_STORE_DIR = Path(__file__).parent.parent / "cookies"
+CHANNELS_LEGACY_PATH = Path(__file__).parent.parent.parent / "视频号发布" / "脚本" / "channels_storage_state.json"
 
-    def __init__(self, state_path: Path, domain_filter: str = ""):
-        self.state_path = Path(state_path)
-        self.domain_filter = domain_filter
-        self._state = {}
-        self._cookies = {}
-        self._load()
+SUPPORTED_PLATFORMS = ["视频号", "抖音", "快手", "B站", "小红书"]
 
-    def _load(self):
-        if not self.state_path.exists():
-            raise FileNotFoundError(f"Cookie 文件不存在: {self.state_path}")
-        with open(self.state_path, "r", encoding="utf-8") as f:
-            self._state = json.load(f)
-        self._cookies = self._extract_cookies()
+# 各平台默认 cookie 域名
+PLATFORM_DOMAINS = {
+    "视频号": "channels.weixin.qq.com",
+    "抖音": ".douyin.com",
+    "快手": ".kuaishou.com",
+    "B站": ".bilibili.com",
+    "小红书": ".xiaohongshu.com",
+}
 
-    def _extract_cookies(self) -> dict:
-        result = {}
-        for c in self._state.get("cookies", []):
-            domain = c.get("domain", "")
-            if self.domain_filter and self.domain_filter not in domain:
-                continue
-            result[c["name"]] = {
-                "value": c["value"],
-                "domain": domain,
-                "expires": c.get("expires", -1),
-                "path": c.get("path", "/"),
-            }
-        return result
-
-    @property
-    def cookie_str(self) -> str:
-        return "; ".join(f"{k}={v['value']}" for k, v in self._cookies.items())
-
-    @property
-    def cookie_dict(self) -> dict:
-        return {k: v["value"] for k, v in self._cookies.items()}
-
-    def get(self, name: str, default: str = "") -> str:
-        info = self._cookies.get(name)
-        return info["value"] if info else default
-
-    def get_local_storage(self, origin_filter: str, key: str) -> str:
-        for origin in self._state.get("origins", []):
-            if origin_filter not in origin.get("origin", ""):
-                continue
-            for item in origin.get("localStorage", []):
-                if item["name"] == key:
-                    return item["value"]
-        return ""
-
-    # 各平台核心 session cookie（只检查这些的有效期，忽略短期追踪 cookie）
-    SESSION_COOKIES = {
-        "bilibili.com": ["SESSDATA", "bili_jct", "DedeUserID"],
-        "douyin.com": ["sessionid", "passport_csrf_token", "sid_guard"],
-        "weixin.qq.com": ["wedrive_session_id", "sess_key"],
-        "xiaohongshu.com": ["web_session", "a1", "webId"],
-        "kuaishou.com": ["kuaishou.server.web_st", "kuaishou.server.web_ph", "userId"],
-    }
-
-    def check_expiry(self) -> dict:
-        """检查 Cookie 有效期（只看核心 session cookie，忽略短期追踪 cookie）"""
-        now = time.time()
-
-        session_names = set()
-        for domain_key, names in self.SESSION_COOKIES.items():
-            if self.domain_filter and domain_key in self.domain_filter:
-                session_names.update(names)
-            elif not self.domain_filter:
-                session_names.update(names)
-
-        max_session_expires = 0
-        has_session_cookie = False
-        long_lived_expires = float("inf")
-
-        for name, info in self._cookies.items():
-            exp = info.get("expires", -1)
-            if name in session_names:
-                has_session_cookie = True
-                if exp > 0 and exp > max_session_expires:
-                    max_session_expires = exp
-            elif exp > 0 and (exp - now) > 3600:
-                if exp < long_lived_expires:
-                    long_lived_expires = exp
-
-        if has_session_cookie and max_session_expires > 0:
-            best_exp = max_session_expires
-        elif has_session_cookie:
-            return {
-                "status": "ok",
-                "message": "Session cookie 存在（无明确过期时间）",
-                "remaining_hours": -1,
-            }
-        elif long_lived_expires < float("inf"):
-            best_exp = long_lived_expires
-        else:
-            all_expires = [
-                info["expires"] for info in self._cookies.values()
-                if info.get("expires", -1) > now
-            ]
-            if all_expires:
-                best_exp = max(all_expires)
-            elif any(info.get("expires", -1) <= 0 for info in self._cookies.values()):
-                return {
-                    "status": "ok",
-                    "message": "Cookie 存在（session 类型，无明确过期时间）",
-                    "remaining_hours": -1,
-                }
-            else:
-                return {
-                    "status": "expired",
-                    "message": "Cookie 全部已过期",
-                }
-
-        remaining = (best_exp - now) / 3600
-        expires_at = datetime.fromtimestamp(best_exp).strftime("%Y-%m-%d %H:%M")
-        if remaining < 0:
-            status = "expired"
-        elif remaining < 1:
-            status = "expiring_soon"
-        elif remaining < 24:
-            status = "warning"
-        else:
-            status = "ok"
-
-        return {
-            "status": status,
-            "expires_at": expires_at,
-            "remaining_hours": round(remaining, 1),
-            "message": f"Cookie 有效至 {expires_at}（剩余 {remaining:.1f}h）",
-        }
-
-    def is_valid(self) -> bool:
-        info = self.check_expiry()
-        return info["status"] != "expired"
-
-    @property
-    def file_age_hours(self) -> float:
-        if not self.state_path.exists():
-            return float("inf")
-        mtime = self.state_path.stat().st_mtime
-        return (time.time() - mtime) / 3600
-
-    def summary(self) -> str:
-        expiry = self.check_expiry()
-        age = self.file_age_hours
-        lines = [
-            f"Cookie 文件: {self.state_path.name}",
-            f"Cookie 数量: {len(self._cookies)}",
-            f"文件年龄: {age:.1f}h",
-            f"状态: {expiry['message']}",
-        ]
-        return "\n".join(lines)
+UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+)
 
 
-def check_all_cookies(base_dir: Path) -> dict:
-    """检查所有平台的 Cookie 状态"""
-    platforms = {
-        "抖音": ("抖音发布/脚本/douyin_storage_state.json", "douyin.com"),
-        "B站": ("B站发布/脚本/bilibili_storage_state.json", "bilibili.com"),
-        "视频号": ("视频号发布/脚本/channels_storage_state.json", "weixin.qq.com"),
-        "小红书": ("小红书发布/脚本/xiaohongshu_storage_state.json", "xiaohongshu.com"),
-        "快手": ("快手发布/脚本/kuaishou_storage_state.json", "kuaishou.com"),
-    }
-    results = {}
-    for name, (rel_path, domain) in platforms.items():
-        path = base_dir / rel_path
+def _ensure_cookie_dir() -> None:
+    """确保 cookie 存储目录存在"""
+    COOKIE_STORE_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def get_cookie_path(platform: str) -> Path:
+    """返回平台对应的 cookie 文件路径"""
+    _ensure_cookie_dir()
+    return COOKIE_STORE_DIR / f"{platform}_cookies.json"
+
+
+def _dict_to_storage_cookies(cookies: dict, domain: str) -> list[dict]:
+    """将 {name: value} 转为 storage_state 的 cookies 数组"""
+    now = time.time()
+    result = []
+    for name, value in cookies.items():
+        result.append({
+            "name": name,
+            "value": str(value),
+            "domain": domain,
+            "path": "/",
+            "expires": now + 86400 * 30,  # 默认 30 天
+            "httpOnly": False,
+            "secure": True,
+            "sameSite": "None",
+        })
+    return result
+
+
+def load_cookies(platform: str) -> dict[str, str] | None:
+    """
+    从文件加载 cookies，返回 {name: value}，文件不存在或解析失败返回 None。
+    视频号：若中央存储不存在但旧路径 channels_storage_state.json 存在，自动迁移并加载。
+    """
+    path = get_cookie_path(platform)
+    if not path.exists():
+        # 视频号：尝试从旧路径迁移
+        if platform == "视频号" and CHANNELS_LEGACY_PATH.exists():
+            try:
+                with open(CHANNELS_LEGACY_PATH, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                _ensure_cookie_dir()
+                with open(path, "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+            except (json.JSONDecodeError, OSError):
+                pass
         if not path.exists():
-            results[name] = {"status": "missing", "message": "未登录"}
+            return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        cookies = data.get("cookies", [])
+        return {c["name"]: c["value"] for c in cookies if isinstance(c.get("name"), str)}
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        # 静默失败，返回 None
+        return None
+
+
+def save_cookies(
+    platform: str,
+    cookies: dict[str, str],
+    extra_data: dict[str, Any] | None = None,
+) -> None:
+    """
+    保存 cookies 为 Playwright storage_state 格式。
+    cookies: {name: value}
+    extra_data: 可选，如 {"origins": [...]} 以保留 localStorage 等
+    """
+    _ensure_cookie_dir()
+    path = get_cookie_path(platform)
+    domain = PLATFORM_DOMAINS.get(platform, ".example.com")
+    storage_cookies = _dict_to_storage_cookies(cookies, domain)
+    data: dict[str, Any] = {"cookies": storage_cookies, "origins": []}
+    if extra_data:
+        if "origins" in extra_data:
+            data["origins"] = extra_data["origins"]
+        if "cookies" in extra_data:
+            # 若 extra 中有完整 cookies 对象，可覆盖
+            data["cookies"] = extra_data["cookies"]
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+    # 视频号：同步到旧路径以兼容 channels_publish 等脚本
+    if platform == "视频号":
+        try:
+            CHANNELS_LEGACY_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(CHANNELS_LEGACY_PATH, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except OSError:
+            pass
+
+
+def _check_video_account_valid(cookies: dict[str, str]) -> tuple[bool, str]:
+    """视频号：POST auth/auth_data 校验，errCode==0 为有效"""
+    url = "https://channels.weixin.qq.com/cgi-bin/mmfinderassistant-bin/auth/auth_data"
+    cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+    headers = {
+        "User-Agent": UA,
+        "Referer": "https://channels.weixin.qq.com/",
+        "Cookie": cookie_str,
+        "Content-Type": "application/json",
+    }
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            r = client.post(url, headers=headers, json={})
+            r.raise_for_status()
+            body = r.json()
+    except httpx.HTTPError as e:
+        return False, f"请求失败: {e}"
+    except json.JSONDecodeError as e:
+        return False, f"响应解析失败: {e}"
+
+    err = body.get("errCode", -1)
+    if err != 0:
+        msg = body.get("errMsg", "未知错误")
+        return False, f"接口返回 errCode={err}, {msg}"
+
+    # 提取昵称
+    data = body.get("data") or body
+    nickname = ""
+    if isinstance(data, dict):
+        nickname = data.get("nickname") or data.get("nickName") or ""
+    if nickname:
+        return True, f"有效 (昵称: {nickname})"
+    return True, "有效"
+
+
+def _check_platform_stub(platform: str, cookies: dict[str, str]) -> tuple[bool, str]:
+    """抖音、B站、快手、小红书：暂为 stub，仅检查文件存在和基本结构"""
+    if not cookies:
+        return False, "无 cookie 数据"
+    # 简单启发：有常见 session 字段则视为可能有效
+    session_keys = {
+        "抖音": ["sessionid"],
+        "B站": ["SESSDATA", "bili_jct"],
+        "快手": ["kuaishou.server.web_st", "userId"],
+        "小红书": ["web_session", "a1"],
+    }
+    keys = session_keys.get(platform, [])
+    found = any(k in cookies for k in keys)
+    if found:
+        return True, "存在（未做接口校验，仅供参考）"
+    return True, "存在（未做接口校验）"
+
+
+def check_cookie_valid(platform: str) -> tuple[bool, str]:
+    """
+    校验平台 cookie 是否有效，调用平台特定 auth API。
+    返回 (is_valid, message)。
+    """
+    cookies = load_cookies(platform)
+    if not cookies:
+        return False, "文件不存在或为空"
+
+    if platform == "视频号":
+        return _check_video_account_valid(cookies)
+
+    if platform in ("抖音", "B站", "快手", "小红书"):
+        return _check_platform_stub(platform, cookies)
+
+    return False, f"不支持的平台: {platform}"
+
+
+def get_valid_cookies(platform: str) -> dict[str, str] | None:
+    """加载并校验 cookies，若过期或无效返回 None"""
+    is_valid, _ = check_cookie_valid(platform)
+    if not is_valid:
+        return None
+    return load_cookies(platform)
+
+
+def _format_expiry(cookies_raw: list[dict]) -> str:
+    """从 storage_state 的 cookies 中提取最近过期时间"""
+    now = time.time()
+    expiries = [c.get("expires", 0) for c in cookies_raw if isinstance(c.get("expires"), (int, float))]
+    if not expiries:
+        return "未知"
+    max_exp = max(e for e in expiries if e > 0) if any(e > 0 for e in expiries) else 0
+    if max_exp <= 0:
+        return "Session"
+    remaining = (max_exp - now) / 3600
+    if remaining < 0:
+        return "已过期"
+    if remaining < 24:
+        return f"{remaining:.1f}h"
+    return f"{remaining / 24:.1f}天"
+
+
+def cookie_summary() -> str:
+    """返回各平台 cookie 状态摘要（存在/有效/过期）"""
+    lines = ["=" * 50, "  多平台 Cookie 状态", "=" * 50, f"存储目录: {COOKIE_STORE_DIR}", ""]
+    for platform in SUPPORTED_PLATFORMS:
+        # 用 load_cookies 触发迁移（视频号从旧路径）
+        cookies_dict = load_cookies(platform)
+        if not cookies_dict:
+            lines.append(f"  [○] {platform}: 未登录")
             continue
         try:
-            mgr = CookieManager(path, domain)
-            results[name] = mgr.check_expiry()
+            path = get_cookie_path(platform)
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            cookies_arr = data.get("cookies", [])
+            expiry = _format_expiry(cookies_arr)
+            is_valid, msg = check_cookie_valid(platform)
+            icon = "✓" if is_valid else "✗"
+            lines.append(f"  [{icon}] {platform}: {msg} | 过期: {expiry}")
         except Exception as e:
-            results[name] = {"status": "error", "message": str(e)}
-    return results
+            lines.append(f"  [✗] {platform}: 解析失败 - {e}")
+    return "\n".join(lines)
 
 
 if __name__ == "__main__":
-    base = Path(__file__).parent.parent.parent
-    print("=" * 50)
-    print("  多平台 Cookie 状态检查")
-    print("=" * 50)
-    results = check_all_cookies(base)
-    for platform, info in results.items():
-        icon = {"ok": "✓", "warning": "⚠", "expiring_soon": "⚠", "expired": "✗", "missing": "○", "error": "✗"}
-        print(f"  [{icon.get(info['status'], '?')}] {platform}: {info['message']}")
+    _ensure_cookie_dir()
+    print(cookie_summary())

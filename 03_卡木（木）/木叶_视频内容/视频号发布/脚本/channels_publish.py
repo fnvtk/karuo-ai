@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-视频号发布 v2 — API 响应拦截 + 列表验证 + 小程序挂载
-- 不再仅靠页面跳转判断成功；拦截 cgi-bin 响应 + 内容列表复核
-- 支持扩展链接挂载小程序
+视频号发布 v3 — headless Playwright + 描述写入修复 + 统一 Cookie
+- API 响应拦截 + 列表验证双重确认
+- 描述通过 clipboard/insertText 写入（不依赖 contenteditable.fill）
+- 所有描述追加 #小程序 卡若创业派对
 """
 import asyncio
 import json
@@ -23,9 +24,7 @@ UA = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
 )
 
-MINIPROGRAM_APPID = "wxb8bbb2b10dec74aa"
-MINIPROGRAM_TITLE = "Soul创业派对"
-MINIPROGRAM_PAGE = "pages/read/read?mid=119"
+DESC_SUFFIX = " #小程序 卡若创业派对"
 
 TITLES = {
     "早起不是为了开派对，是不吵老婆睡觉.mp4":
@@ -130,60 +129,8 @@ async def _verify_on_list(page, title_keyword: str) -> tuple[bool, str]:
         return False, f"验证异常: {str(e)[:60]}"
 
 
-async def _try_add_miniprogram(page) -> bool:
-    """Attempt to attach miniprogram via the publish-page UI."""
-    try:
-        found = await page.evaluate("""() => {
-            const all = [...document.querySelectorAll('span, div, button, a, label')];
-            for (const el of all) {
-                const t = el.textContent.trim();
-                if ((t.includes('扩展链接') || t.includes('添加链接') || t === '短视频带货')
-                    && el.offsetParent !== null) {
-                    el.click();
-                    return 'clicked';
-                }
-            }
-            return 'not_found';
-        }""")
-        if found != "clicked":
-            print("  [小程序] 未找到「扩展链接」入口", flush=True)
-            return False
 
-        await asyncio.sleep(1.5)
 
-        mp_found = await page.evaluate("""() => {
-            const all = [...document.querySelectorAll('span, div, li, a')];
-            for (const el of all) {
-                if (el.textContent.trim() === '小程序' && el.offsetParent !== null) {
-                    el.click();
-                    return true;
-                }
-            }
-            return false;
-        }""")
-        if not mp_found:
-            print("  [小程序] 未找到「小程序」选项", flush=True)
-            return False
-
-        await asyncio.sleep(1.5)
-
-        await page.evaluate(f"""(appid) => {{
-            const inputs = document.querySelectorAll('input[type="text"]');
-            for (const inp of inputs) {{
-                if (inp.placeholder && (inp.placeholder.includes('AppID') || inp.placeholder.includes('appid')
-                    || inp.placeholder.includes('小程序'))) {{
-                    inp.value = appid;
-                    inp.dispatchEvent(new Event('input', {{bubbles:true}}));
-                    return;
-                }}
-            }}
-        }}""", MINIPROGRAM_APPID)
-        await asyncio.sleep(0.5)
-        print("  [小程序] 已尝试填入 AppID", flush=True)
-        return True
-    except Exception as e:
-        print(f"  [小程序] 异常: {str(e)[:60]}", flush=True)
-        return False
 
 
 # ---------------------------------------------------------------------------
@@ -256,12 +203,15 @@ async def publish_one(
             if "扫码" in body_text or "login" in page.url.lower():
                 await page.screenshot(path=ss("login"))
                 await browser.close()
-                return PublishResult(
+                r = PublishResult(
                     platform="视频号", video_path=video_path, title=title,
                     success=False, status="error",
                     message="Cookie 已过期（需重新扫码登录）",
                     screenshot=ss("login"),
+                    elapsed_sec=time.time() - t0,
                 )
+                print(f"  {r.log_line()}", flush=True)
+                return r
 
             await page.screenshot(path=ss("1_page"))
 
@@ -286,51 +236,46 @@ async def publish_one(
             if not upload_ok:
                 await page.screenshot(path=ss("upload_timeout"))
                 await browser.close()
-                return PublishResult(
+                r = PublishResult(
                     platform="视频号", video_path=video_path, title=title,
                     success=False, status="error",
                     message="视频上传超时 (3 min)",
                     screenshot=ss("upload_timeout"),
+                    elapsed_sec=time.time() - t0,
                 )
+                print(f"  {r.log_line()}", flush=True)
+                return r
 
             await asyncio.sleep(3)
             await page.screenshot(path=ss("2_uploaded"))
 
             # --- Step 3: fill description ---
-            print("  [3] 填写描述...", flush=True)
-            desc_filled = False
-            add_desc = page.locator("text=添加描述").first
-            if await add_desc.count() > 0:
-                await add_desc.click()
-                await asyncio.sleep(0.5)
-                active = page.locator('[contenteditable="true"]:visible').first
-                if await active.count() > 0:
-                    await active.fill("")
-                    await active.type(title, delay=15)
-                    desc_filled = True
-                else:
-                    await page.keyboard.type(title, delay=15)
-                    desc_filled = True
-            if not desc_filled:
-                await page.evaluate(
-                    """(title) => {
-                    const els = document.querySelectorAll('[contenteditable="true"]');
-                    for (const el of els) {
-                        if (el.offsetParent !== null) {
-                            el.focus();
-                            el.textContent = title;
-                            el.dispatchEvent(new Event('input', {bubbles:true}));
-                            return;
-                        }
-                    }
-                }""",
-                    title,
-                )
-            await asyncio.sleep(0.5)
+            full_desc = title + DESC_SUFFIX
+            print(f"  [3] 填写描述: {full_desc[:60]}...", flush=True)
 
-            # --- Step 3b: mini-program ---
-            print("  [3b] 尝试挂载小程序...", flush=True)
-            await _try_add_miniprogram(page)
+            editor = page.locator('.input-editor').first
+            if await editor.count() == 0:
+                editor = page.locator('[data-placeholder="添加描述"]').first
+
+            if await editor.count() > 0:
+                await editor.fill(full_desc)
+                await asyncio.sleep(0.5)
+                written = await editor.inner_text()
+                if full_desc[:15] in written:
+                    print(f"  [3] 描述已确认: {written[:50]}...", flush=True)
+                else:
+                    print(f"  [3] fill() 后验证失败, 尝试 click+type...", flush=True)
+                    await editor.click()
+                    await asyncio.sleep(0.3)
+                    await page.keyboard.press("Meta+A")
+                    await page.keyboard.press("Backspace")
+                    await page.keyboard.type(full_desc, delay=8)
+                    await asyncio.sleep(0.5)
+            else:
+                print("  [3] ⚠ 未找到描述编辑器 (.input-editor)", flush=True)
+
+            await asyncio.sleep(1)
+            await page.screenshot(path=ss("3_desc"))
 
             # --- Step 4: publish ---
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
@@ -462,12 +407,14 @@ async def main():
         t = TITLES.get(vp.name, f"{vp.stem} #Soul派对 #创业日记")
         r = await publish_one(str(vp), t, i + 1, len(videos))
         results.append(r)
+        # 即时保存（防止中途崩溃丢失记录）
+        if r.status != "skipped":
+            save_results([r])
         if i < len(videos) - 1:
             await asyncio.sleep(8)
 
     actual = [r for r in results if r.status != "skipped"]
     print_summary(actual)
-    save_results(actual)
     ok = sum(1 for r in actual if r.success)
     return 0 if ok == len(actual) else 1
 

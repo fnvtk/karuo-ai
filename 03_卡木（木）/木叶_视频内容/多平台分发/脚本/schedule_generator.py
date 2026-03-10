@@ -15,7 +15,7 @@ def generate_schedule(
     min_gap: int = 30,
     max_gap: int = 120,
     max_hours: float = 24.0,
-    first_delay: int = 5,
+    first_delay: int = 125,
     start_time: datetime = None,
 ) -> list[datetime]:
     """

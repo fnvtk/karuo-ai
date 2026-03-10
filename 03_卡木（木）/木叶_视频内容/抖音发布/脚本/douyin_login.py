@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""获取抖音 Cookie - 弹窗浏览器 → 扫码登录 → 保存 storage_state"""
+"""
+抖音创作者平台登录 — 弹窗浏览器扫码 → 自动检测登录 → 保存 storage_state
+扫码后无需手动操作，脚本自动检测登录状态并保存。
+"""
 import asyncio
 from pathlib import Path
 from playwright.async_api import async_playwright
@@ -8,8 +11,8 @@ COOKIE_FILE = Path(__file__).parent / "douyin_storage_state.json"
 
 
 async def main():
-    print("即将弹出浏览器，请用新抖音号扫码登录。")
-    print("登录成功后，在 Playwright Inspector 窗口中点击绿色 ▶ 按钮。\n")
+    print("即将弹出浏览器，请用抖音 APP 扫码登录。")
+    print("登录成功后脚本会自动保存 Cookie，无需手动操作。\n")
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=False)
@@ -26,7 +29,31 @@ async def main():
         """)
         page = await context.new_page()
         await page.goto("https://creator.douyin.com/", timeout=60000)
-        await page.pause()
+
+        print("[i] 等待扫码登录... (最长等待 120 秒)")
+        try:
+            await page.wait_for_url(
+                "**/creator-micro/home**",
+                timeout=120000,
+            )
+            print("[✓] 检测到登录成功！正在保存 Cookie...")
+        except Exception:
+            print("[i] 未检测到自动跳转，尝试检测 Cookie...")
+            for _ in range(30):
+                cookies = await context.cookies()
+                has_session = any(
+                    c["name"] in ("sessionid", "sessionid_ss", "passport_csrf_token")
+                    for c in cookies
+                    if "douyin.com" in c.get("domain", "")
+                )
+                if has_session:
+                    print("[✓] 检测到登录 Cookie！")
+                    break
+                await asyncio.sleep(2)
+            else:
+                print("[⚠] 超时，尝试保存当前状态...")
+
+        await asyncio.sleep(2)
         await context.storage_state(path=str(COOKIE_FILE))
         await context.close()
         await browser.close()
