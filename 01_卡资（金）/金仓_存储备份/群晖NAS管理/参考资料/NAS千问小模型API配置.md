@@ -60,6 +60,8 @@ export OLLAMA_BASE_URL="http://192.168.1.201:11434"
 
 外网需确保 **frp 服务端（42.194.245.239）已开放 11401 端口**；若无法访问，请在宝塔/安全组中放行 `11401/TCP`。
 
+**OpenClaw（如阿猫 Mac）使用千问**：已配置主模型为 `nas-qwen/qwen2.5:3b`，备选 `qwen2.5:1.5b` → `v0/v0-1.5-lg`。若该终端 **DNS 解析超时**（访问 `open.quwanzhi.com` 报 Resolving timed out），可改为 **IP 直连**：在 OpenClaw 的 nas-qwen 里将 `baseUrl` 设为 `http://42.194.245.239:11401/v1`（frp 同机 IP），改完后重启网关即可连通千问。
+
 ---
 
 ## 二、常用 API 端点
@@ -87,9 +89,9 @@ curl -s http://192.168.1.201:11434/api/tags | jq .
 ### 2. 文本生成（curl）
 
 ```bash
-# 外网示例（qwen2.5:1.5b）
+# 外网示例（推荐 qwen2.5:3b，也可用 qwen2.5:1.5b）
 curl -s http://open.quwanzhi.com:11401/api/generate -d '{
-  "model": "qwen2.5:1.5b",
+  "model": "qwen2.5:3b",
   "prompt": "用一句话介绍厦门",
   "stream": false
 }' | jq .
@@ -99,7 +101,7 @@ curl -s http://open.quwanzhi.com:11401/api/generate -d '{
 
 ```bash
 curl -s http://open.quwanzhi.com:11401/v1/chat/completions -d '{
-  "model": "qwen2.5:1.5b",
+  "model": "qwen2.5:3b",
   "messages": [{"role": "user", "content": "你好，请简短回复"}],
   "stream": false
 }' | jq .
@@ -130,7 +132,7 @@ import requests
 # 外网
 OLLAMA_BASE = os.environ.get("OLLAMA_BASE_URL", "http://open.quwanzhi.com:11401")
 
-def chat(text: str, model: str = "qwen2.5:1.5b") -> str:
+def chat(text: str, model: str = "qwen2.5:3b") -> str:
     r = requests.post(
         f"{OLLAMA_BASE}/api/generate",
         json={"model": model, "prompt": text, "stream": False},
@@ -153,7 +155,7 @@ client = OpenAI(
     api_key="ollama",  # Ollama 不校验，可随意
 )
 r = client.chat.completions.create(
-    model="qwen2.5:1.5b",
+    model="qwen2.5:3b",
     messages=[{"role": "user", "content": "你好"}],
 )
 print(r.choices[0].message.content)
@@ -165,7 +167,7 @@ print(r.choices[0].message.content)
 
 - **一键部署（本机执行）**：  
   `bash 群晖NAS管理/scripts/ollama/deploy_ollama_nas.sh`  
-  会完成：创建目录、上传 compose、启动容器、拉取 qwen2.5:1.5b、配置 frp 并重启 frpc。
+  会完成：创建目录、上传 compose、启动容器、拉取 qwen2.5:1.5b（及推荐 qwen2.5:3b）、配置 frp 并重启 frpc。
 
 - **NAS 上手动操作**：  
   - 编排目录：`/volume1/docker/ollama/`  

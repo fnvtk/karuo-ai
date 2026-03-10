@@ -963,56 +963,71 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     print(f"  ✓ 封面烧录", flush=True)
     
     # 5.2 烧录字幕
-    # 策略：先尝试单次 FFmpeg 通道（一次 pass 完成所有字幕叠加）；
-    #       若失败（filter 太长/输入太多）则自动分批（batch_size=40）兜底。
+    # 策略：concat 图片序列 + 单次 overlay（最快正确方案）
+    # 原理：
+    #   - -loop 1 + enable=between：每帧都要判断所有overlay节点，极慢（163条/270s需30min+）
+    #   - -ss/-t 对PNG：PNG只有1帧，seek到>0时返回空流，字幕消失
+    #   - concat 图片序列（每条字幕是精确时长的帧段）+单次overlay：一次pass，速度快几十倍
     if sub_images:
-        print(f"  [3/5] 字幕烧录中（{len(sub_images)} 条，随语音时间轴显示）…", flush=True)
+        print(f"  [3/5] 字幕烧录中（{len(sub_images)} 条，concat+overlay 单次 pass）…", flush=True)
 
-        # 字幕烧录：使用 -ss/-t 有限时长输入（非 -loop 1），FFmpeg 只在字幕有效段处理图像帧，速度大幅提升。
-        # 原理：-loop 1 会生成无限帧流（每帧都要合成），-ss start -t duration 生成有限帧，FFmpeg 自动优化。
-        # 每批 25 条 overlay（约 2-4 次 pass）。
-        batch_size = 25
-        total_batches = (len(sub_images) + batch_size - 1) // batch_size
-        for batch_idx in range(0, len(sub_images), batch_size):
-            batch = sub_images[batch_idx:batch_idx + batch_size]
-            inputs = ['-i', current_video]
-            for img in batch:
-                sub_start = max(img['start'], cover_duration)
-                sub_end = img['end']
-                sub_dur = max(0.05, sub_end - sub_start)  # 有限时长，至少 50ms
-                # -ss 偏移，-t 时长，-i 图片 → 有限帧数的图像输入
-                inputs.extend(['-ss', f'{sub_start:.3f}', '-t', f'{sub_dur:.3f}', '-i', img['path']])
-            fc_parts = []
-            last = '0:v'
-            for i, img in enumerate(batch):
-                idx = i + 1
-                out_n = f'vsub{i}'
-                sub_start = max(img['start'], cover_duration)
-                if sub_start < img['end']:
-                    # itsoffset 告诉 FFmpeg 从主视频哪个时刻开始叠加该输入
-                    fc_parts.append(
-                        f"[{last}][{idx}:v]overlay={overlay_pos}:enable='between(t,{sub_start:.3f},{img['end']:.3f})'[{out_n}]"
-                    )
-                else:
-                    fc_parts.append(f"[{last}]copy[{out_n}]")
-                last = out_n
-            fc = ';'.join(fc_parts)
-            batch_out = os.path.join(temp_dir, f'sub_batch_{batch_idx}.mp4')
-            cmd = [
-                'ffmpeg', '-y', *inputs,
-                '-filter_complex', fc,
-                '-map', f'[{last}]', '-map', '0:a',
-                '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
-                '-c:a', 'copy', '-shortest', batch_out
-            ]
-            r = subprocess.run(cmd, capture_output=True, text=True)
-            if r.returncode != 0:
-                print(f"  ⚠ 字幕批次 {batch_idx//batch_size+1} 失败: {(r.stderr or '')[-300:]}", file=sys.stderr)
-            if r.returncode == 0 and os.path.exists(batch_out):
-                current_video = batch_out
-            if total_batches > 1:
-                print(f"      字幕批次 {batch_idx//batch_size+1}/{total_batches} 完成", flush=True)
-        print(f"  ✓ 字幕烧录完成（{total_batches}批，{len(sub_images)} 条）", flush=True)
+        # 创建透明空白帧（RGBA 498x1080，所有像素透明）
+        blank_path = os.path.join(temp_dir, 'sub_blank.png')
+        if not os.path.exists(blank_path):
+            blank = Image.new('RGBA', (out_w, out_h), (0, 0, 0, 0))
+            blank.save(blank_path, 'PNG')
+
+        # 构建 concat 文件：把所有字幕帧描述为"时间段→图片"的序列
+        # concat demuxer 格式：
+        #   file 'path'
+        #   duration X.XXX
+        # 最后一行不写 duration（用于循环/截断防报错）
+        concat_lines = []
+        prev_end = cover_duration  # 字幕从封面结束后开始
+
+        for img in sub_images:
+            sub_start = max(img['start'], cover_duration)
+            sub_end = img['end']
+            if sub_start >= sub_end:
+                continue
+            # 空白段（上一条字幕结束 → 本条开始）
+            gap = sub_start - prev_end
+            if gap > 0.04:
+                concat_lines.append(f"file '{blank_path}'")
+                concat_lines.append(f"duration {gap:.3f}")
+            # 字幕段
+            concat_lines.append(f"file '{img['path']}'")
+            concat_lines.append(f"duration {sub_end - sub_start:.3f}")
+            prev_end = sub_end
+
+        # 末尾空白（最后一条字幕结束 → 视频结束）
+        tail = duration - prev_end
+        if tail > 0.04:
+            concat_lines.append(f"file '{blank_path}'")
+            concat_lines.append(f"duration {tail:.3f}")
+        concat_lines.append(f"file '{blank_path}'")  # concat demuxer 必须的结束帧
+
+        concat_file = os.path.join(temp_dir, 'sub_concat.txt')
+        with open(concat_file, 'w') as f:
+            f.write('\n'.join(concat_lines))
+
+        # 单次 FFmpeg overlay：-f concat 读图片序列 → overlay 到主视频
+        sub_out = os.path.join(temp_dir, 'with_subs.mp4')
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', current_video,
+            '-f', 'concat', '-safe', '0', '-i', concat_file,
+            '-filter_complex', f'[0:v][1:v]overlay={overlay_pos}[v]',
+            '-map', '[v]', '-map', '0:a',
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+            '-c:a', 'copy', sub_out
+        ]
+        r = subprocess.run(cmd, capture_output=True, text=True)
+        if r.returncode == 0 and os.path.exists(sub_out):
+            current_video = sub_out
+            print(f"  ✓ 字幕烧录完成（concat 单次 pass，{len(sub_images)} 条）", flush=True)
+        else:
+            print(f"  ⚠ 字幕烧录失败: {(r.stderr or '')[-400:]}", file=sys.stderr)
     else:
         if do_burn_subs and os.path.exists(transcript_path):
             print(f"  ⚠ 未烧录字幕：解析后无有效字幕（请用 MLX Whisper 重新生成 transcript.srt）", flush=True)
