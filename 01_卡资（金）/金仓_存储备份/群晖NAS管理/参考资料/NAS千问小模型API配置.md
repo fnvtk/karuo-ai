@@ -1,8 +1,53 @@
 # 公司 NAS 千问小模型 API 配置说明
 
 > 部署位置：公司 NAS Docker（ollama-nas 容器）  
-> 模型：qwen2.5:1.5b  
 > 内网/外网均可调用，无需 API Key
+
+---
+
+## 公司 NAS 配置与推荐模型
+
+| 项目 | 说明 |
+|------|------|
+| **型号** | Synology DS1825+ |
+| **CPU** | AMD Ryzen Embedded V1500B（4 核 8 线程） |
+| **内存** | 8GB；Ollama 容器限制 5GB |
+| **推荐模型** | **qwen2.5:3b**（效果更好，约 2GB，适合 5GB 内存） |
+| **备选模型** | qwen2.5:1.5b（更省内存，约 1GB） |
+
+已在 NAS 上安装 **qwen2.5:3b** 作为默认推荐，其他终端/应用直接选用该模型即可。
+
+---
+
+## 零、配置到其他地方的速查（复制即用）
+
+| 配置项 | 外网（推荐） | 内网（与 NAS 同网时） |
+|--------|--------------|------------------------|
+| **BASE URL** | `http://open.quwanzhi.com:11401` | `http://192.168.1.201:11434` |
+| **OpenAI 兼容 Base URL** | `http://open.quwanzhi.com:11401/v1` | `http://192.168.1.201:11434/v1` |
+| **API Key** | 无需，可填 `ollama` 占位 | 同上 |
+| **推荐模型** | `qwen2.5:3b` | 同上 |
+| **备选模型** | `qwen2.5:1.5b` | 同上 |
+
+- **进程**：Docker 容器名 `ollama-nas`，镜像 `ollama/ollama:latest`，端口 11434。
+- **编排路径**：`/volume1/docker/ollama/docker-compose.yml`。
+- **启动/重启**：NAS 上 `sudo docker compose -f /volume1/docker/ollama/docker-compose.yml up -d` 或 `sudo docker start ollama-nas`。
+
+### 在 OpenAI 兼容客户端中填写示例
+
+- **Base URL**：`http://open.quwanzhi.com:11401/v1`
+- **API Key**：`ollama`（或不填，Ollama 不校验）
+- **Model**：`qwen2.5:3b`（推荐）或 `qwen2.5:1.5b`
+
+### 环境变量（脚本/应用）
+
+```bash
+# 外网
+export OLLAMA_BASE_URL="http://open.quwanzhi.com:11401"
+
+# 内网
+export OLLAMA_BASE_URL="http://192.168.1.201:11434"
+```
 
 ---
 
@@ -138,5 +183,6 @@ print(r.choices[0].message.content)
 |------|-----|
 | 外网 Base URL | `http://open.quwanzhi.com:11401` |
 | 内网 Base URL | `http://192.168.1.201:11434` |
-| 默认模型 | `qwen2.5:1.5b` |
+| 推荐模型 | `qwen2.5:3b` |
+| 备选模型 | `qwen2.5:1.5b` |
 | 认证 | 无（内网服务，外网经 frp 暴露，按需在 frp 或上层加鉴权） |

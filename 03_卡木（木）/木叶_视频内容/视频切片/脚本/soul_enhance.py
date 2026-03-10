@@ -78,6 +78,40 @@ CORRECTIONS = {
     '私余': '私域', '统安': '同安', '信一下': '线上', '头里': '投入',
     '幅画': '负责', '施育': '私域', '经历论': '净利润', '成于': '乘以',
     '马的': '码的', '猜济': '拆解', '巨圣': '矩阵', '货客': '获客',
+    '甲为师': '（AI助手）', '小龙俠': '小龙虾', '小龍俠': '小龙虾',
+    '小龍蝦': '小龙虾', '龍蝦': '龙虾', '小龙虾': '深度AI',
+    '基因交狼': '技能包', '基因交流': '技能传授', '颗色': 'Cursor',
+    '蝌蚁': '科技AI', '千万': '千问', '吹': 'Claude', '豆包': 'AI工具',
+    '受伤命': '搜索引擎', '货客': '获客', '受上': 'Soul上',
+    '搜上': 'Soul上', '售上': 'Soul上', '寿上': 'Soul上',
+    '瘦上': 'Soul上', '亭上': 'Soul上', '这受': '这Soul',
+    '龙虾': '深度AI', '克劳德': 'Claude',
+}
+
+# 各平台违禁词 → 谐音/替代词（用于字幕、封面、文件名）
+# 原则：意思不变，表达更安全，避免平台限流/封号
+PLATFORM_VIOLATIONS = {
+    # 网络访问
+    '科学上网': '特殊网络访问',
+    '翻墙': '访问海外工具',
+    '梯子': '访问工具',
+    'VPN': '网络工具',
+    # 资金/收益（部分平台敏感）
+    '引流': '涌流',
+    '拉人': '邀请',
+    '加微信': '加联系方式',
+    '私聊': '后台联系',
+    # 内容规范
+    '炸房': '被限流',
+    '封号': '账号受限',
+    '洗稿': '参考改写',
+    # 灰色表述
+    '灰色': '特殊',
+    '黑产': '地下产业',
+    '套利': '差价空间',
+    # 平台专属敏感
+    'API': 'A接口',
+    'token消耗': '算力成本',
 }
 
 # 语助词列表（需清理，含常见口头禅）
@@ -234,6 +268,54 @@ def clean_filler_words(text):
     result = re.sub(r'\s*[,，]\s*', '，', result)
     result = re.sub(r'[,，]+', '，', result).strip(' ，,')
     return result
+
+
+def apply_platform_safety(text: str) -> str:
+    """将各平台违禁词/敏感词替换为安全谐音词，适用于字幕、封面、文件名。
+    
+    按词长降序替换，避免短词截断长词。
+    """
+    if not text:
+        return text
+    result = str(text)
+    # 先做 CORRECTIONS（转录错误修正），再做 VIOLATIONS（平台安全替换）
+    for w, c in sorted(CORRECTIONS.items(), key=lambda x: len(x[0]), reverse=True):
+        result = result.replace(w, c)
+    for w, c in sorted(PLATFORM_VIOLATIONS.items(), key=lambda x: len(x[0]), reverse=True):
+        result = result.replace(w, c)
+    return result
+
+
+def improve_subtitle_punctuation(text: str) -> str:
+    """为字幕句子补充标点，让意思更清晰。
+    
+    规则：
+    1. 疑问句（含疑问词）加问号
+    2. 感叹、强调语气加感叹号
+    3. 普通陈述句末加句号（如果长度 >= 5）
+    4. 修正多余标点
+    """
+    t = text.strip()
+    if not t:
+        return t
+    # 末尾已有标点则不重复加
+    if t and t[-1] in '，。？！,.:!?；':
+        return apply_platform_safety(t)
+    # 疑问词检测
+    question_words = ('吗', '吧', '呢', '么', '嘛', '什么', '怎么', '为什么',
+                      '哪', '哪里', '谁', '几', '多少', '是否', '可以吗', '对吗')
+    is_question = any(t.endswith(w) for w in question_words) or '?' in t or '？' in t
+    # 感叹语气
+    exclaim_patterns = ('太', '好', '真', '完全', '绝对', '必须', '一定', '非常', '超级')
+    is_exclaim = any(t.startswith(p) for p in exclaim_patterns) and len(t) >= 6
+    # 加标点
+    if is_question:
+        t = t + '？'
+    elif is_exclaim:
+        t = t + '！'
+    elif len(t) >= 5:
+        t = t + '。'
+    return apply_platform_safety(t)
 
 def parse_srt_for_clip(srt_path, start_sec, end_sec):
     """解析SRT，提取指定时间段的字幕"""
@@ -802,6 +884,8 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         if m:
             raw_title = m.group(1).strip()
     hook_text = _normalize_title_for_display(raw_title) or raw_title or '精彩切片'
+    # 封面文字同样做安全处理
+    hook_text = apply_platform_safety(hook_text)
     cover_duration = STYLE['cover']['duration']
     
     # 竖屏成片：封面/字幕按 498x1080 做，叠在裁切区域，文字与字幕在竖屏上完整且居中
@@ -847,7 +931,9 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
             print(f"  ✓ 字幕解析 ({len(subtitles)}条)，将烧录为随语音走动的字幕", flush=True)
         for i, sub in enumerate(subtitles):
             img_path = os.path.join(temp_dir, f'sub_{i:04d}.png')
-            create_subtitle_image(sub['text'], out_w, out_h, img_path)
+            # 应用违禁词替换 + 标点优化（让字幕更清晰、安全）
+            safe_text = improve_subtitle_punctuation(sub['text'])
+            create_subtitle_image(safe_text, out_w, out_h, img_path)
             sub_images.append({'path': img_path, 'start': sub['start'], 'end': sub['end']})
     if sub_images:
         print(f"  ✓ 字幕图片 ({len(sub_images)}张)", flush=True)
