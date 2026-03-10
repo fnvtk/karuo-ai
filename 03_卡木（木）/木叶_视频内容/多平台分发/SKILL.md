@@ -157,9 +157,40 @@ info = get_video_info("/path/to/video.mp4")
 
 ---
 
-## 八、依赖
+## 八、万推（Web 版视频分发系统）
+
+卡若AI 的多平台分发能力已整合到万推项目（`/Users/karuo/Documents/开发/3、自营项目/万推/`），提供 Web GUI + API 接口：
+
+| 组件 | 说明 |
+|------|------|
+| **万推后端** | FastAPI，`backend/main.py`，端口 8000 |
+| **万推前端** | Vue 3 毛玻璃风格，`frontend/index.html` |
+| **直连发布器** | `backend/direct_publisher.py`，Playwright 操作 5 平台创作者中心 |
+| **uploader 体系** | `backend/uploader/` 下 5 平台独立 uploader |
+| **Cookie 自动获取** | `backend/cookie_fetcher.py`，打开浏览器让用户扫码 |
+
+### 启动万推
+
+```bash
+cd /Users/karuo/Documents/开发/3、自营项目/万推/backend
+pip3 install -r requirements.txt
+playwright install chromium
+python3 main.py
+# 访问 http://localhost:8000
+```
+
+### 万推与卡若AI脚本的关系
+
+- 卡若AI `distribute_all.py`：命令行一键分发，适合自动化流水线
+- 万推 Web 界面：用户手动管理账号和分发，适合日常运营
+- 两者共享 Playwright + Cookie 方案，互为补充
+
+---
+
+## 九、依赖
 
 - Python 3.10+
-- httpx, playwright, cryptography, Pillow
+- httpx, playwright, playwright-stealth, cryptography, Pillow
+- biliup（B站上传 API）
 - ffmpeg/ffprobe（系统已安装）
 - Playwright chromium（`playwright install chromium`）
