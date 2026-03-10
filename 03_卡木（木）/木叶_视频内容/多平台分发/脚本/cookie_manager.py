@@ -64,37 +64,74 @@ class CookieManager:
                     return item["value"]
         return ""
 
+    # 各平台核心 session cookie（只检查这些的有效期，忽略短期追踪 cookie）
+    SESSION_COOKIES = {
+        "bilibili.com": ["SESSDATA", "bili_jct", "DedeUserID"],
+        "douyin.com": ["sessionid", "passport_csrf_token", "sid_guard"],
+        "weixin.qq.com": ["wedrive_session_id", "sess_key"],
+        "xiaohongshu.com": ["web_session", "a1", "webId"],
+        "kuaishou.com": ["kuaishou.server.web_st", "kuaishou.server.web_ph", "userId"],
+    }
+
     def check_expiry(self) -> dict:
-        """检查 Cookie 有效期，返回 {status, expires_at, remaining_hours}"""
+        """检查 Cookie 有效期（只看核心 session cookie，忽略短期追踪 cookie）"""
         now = time.time()
-        min_expires = float("inf")
-        expired_cookies = []
+
+        session_names = set()
+        for domain_key, names in self.SESSION_COOKIES.items():
+            if self.domain_filter and domain_key in self.domain_filter:
+                session_names.update(names)
+            elif not self.domain_filter:
+                session_names.update(names)
+
+        max_session_expires = 0
+        has_session_cookie = False
+        long_lived_expires = float("inf")
+
         for name, info in self._cookies.items():
             exp = info.get("expires", -1)
-            if exp <= 0:
-                continue
-            if exp < now:
-                expired_cookies.append(name)
-            elif exp < min_expires:
-                min_expires = exp
+            if name in session_names:
+                has_session_cookie = True
+                if exp > 0 and exp > max_session_expires:
+                    max_session_expires = exp
+            elif exp > 0 and (exp - now) > 3600:
+                if exp < long_lived_expires:
+                    long_lived_expires = exp
 
-        if expired_cookies:
-            return {
-                "status": "expired",
-                "expired_cookies": expired_cookies,
-                "message": f"Cookie 已过期: {', '.join(expired_cookies[:5])}",
-            }
-
-        if min_expires == float("inf"):
+        if has_session_cookie and max_session_expires > 0:
+            best_exp = max_session_expires
+        elif has_session_cookie:
             return {
                 "status": "ok",
-                "message": "Cookie 无明确过期时间（session cookie）",
+                "message": "Session cookie 存在（无明确过期时间）",
                 "remaining_hours": -1,
             }
+        elif long_lived_expires < float("inf"):
+            best_exp = long_lived_expires
+        else:
+            all_expires = [
+                info["expires"] for info in self._cookies.values()
+                if info.get("expires", -1) > now
+            ]
+            if all_expires:
+                best_exp = max(all_expires)
+            elif any(info.get("expires", -1) <= 0 for info in self._cookies.values()):
+                return {
+                    "status": "ok",
+                    "message": "Cookie 存在（session 类型，无明确过期时间）",
+                    "remaining_hours": -1,
+                }
+            else:
+                return {
+                    "status": "expired",
+                    "message": "Cookie 全部已过期",
+                }
 
-        remaining = (min_expires - now) / 3600
-        expires_at = datetime.fromtimestamp(min_expires).strftime("%Y-%m-%d %H:%M")
-        if remaining < 1:
+        remaining = (best_exp - now) / 3600
+        expires_at = datetime.fromtimestamp(best_exp).strftime("%Y-%m-%d %H:%M")
+        if remaining < 0:
+            status = "expired"
+        elif remaining < 1:
             status = "expiring_soon"
         elif remaining < 24:
             status = "warning"

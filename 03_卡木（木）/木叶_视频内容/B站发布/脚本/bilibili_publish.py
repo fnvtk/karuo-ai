@@ -1,46 +1,39 @@
 #!/usr/bin/env python3
 """
-B站纯 API 视频发布（无浏览器）
-基于推兔逆向分析: preupload → 分片上传 → commitUpload → add/v3
-
-流程:
-  1. 从 storage_state.json 加载 cookies
-  2. GET  /preupload              → 上传节点、auth、chunk 参数
-  3. POST /{upos_uri}?uploads     → upload_id
-  4. PUT  分片上传
-  5. POST /{upos_uri}?complete    → 确认
-  6. POST /x/vu/web/add/v3       → 发布视频
+B站视频发布 - Headless Playwright 自动化
+用 force=True 绕过 GeeTest overlay，JS 辅助操作 Vue 组件。
 """
 import asyncio
-import hashlib
 import json
-import os
 import sys
 import time
 from pathlib import Path
 
-import httpx
-
 SCRIPT_DIR = Path(__file__).parent
 COOKIE_FILE = SCRIPT_DIR / "bilibili_storage_state.json"
 VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul 派对 119场 20260309_output/成片")
-COVER_DIR = SCRIPT_DIR / "covers"
 
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "多平台分发" / "脚本"))
 from cookie_manager import CookieManager
-from video_utils import extract_cover
 
-BASE = "https://member.bilibili.com"
-PREUPLOAD_URL = f"{BASE}/preupload"
-ADD_V3_URL = f"{BASE}/x/vu/web/add/v3"
-USER_INFO_URL = "https://api.bilibili.com/x/web-interface/nav"
+UPLOAD_URL = "https://member.bilibili.com/platform/upload/video/frame"
 
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
 )
 
-CHUNK_SIZE = 4 * 1024 * 1024
+STEALTH_JS = """
+Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+Object.defineProperty(navigator, 'languages', {get: () => ['zh-CN', 'zh', 'en']});
+window.chrome = {runtime: {}};
+const origQuery = window.navigator.permissions.query;
+window.navigator.permissions.query = (parameters) =>
+    parameters.name === 'notifications'
+    ? Promise.resolve({state: Notification.permission})
+    : origQuery(parameters);
+"""
 
 TITLES = {
     "早起不是为了开派对，是不吵老婆睡觉.mp4":
@@ -76,229 +69,10 @@ TITLES = {
 }
 
 
-async def check_login(client: httpx.AsyncClient, cookies: CookieManager) -> dict:
-    resp = await client.get(
-        USER_INFO_URL,
-        headers={"Cookie": cookies.cookie_str, "User-Agent": UA, "Referer": "https://www.bilibili.com/"},
-    )
-    data = resp.json()
-    if data.get("code") != 0:
-        return {}
-    return data.get("data", {})
-
-
-async def preupload(client: httpx.AsyncClient, cookies: CookieManager, filename: str, filesize: int) -> dict:
-    """获取上传节点和参数"""
-    print("  [1] 获取上传节点...")
-    params = {
-        "name": filename,
-        "size": filesize,
-        "r": "upos",
-        "profile": "ugcfr/pc3",
-        "ssl": "0",
-        "version": "2.14.0.0",
-        "build": "2140000",
-        "upcdn": "bda2",
-        "probe_version": "20221109",
-    }
-    resp = await client.get(
-        PREUPLOAD_URL,
-        params=params,
-        headers={"Cookie": cookies.cookie_str, "User-Agent": UA},
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    if "upos_uri" not in data:
-        raise RuntimeError(f"preupload 失败: {data}")
-    endpoint = data.get("endpoint", "")
-    if not endpoint:
-        endpoints = data.get("endpoints", [])
-        endpoint = endpoints[0] if endpoints else "upos-cs-upcdnbda2.bilivideo.com"
-    if not endpoint.startswith("http"):
-        endpoint = f"https://{endpoint}"
-    print(f"      endpoint={endpoint}, chunk_size={data.get('chunk_size', CHUNK_SIZE)}")
-    return {
-        "endpoint": endpoint,
-        "upos_uri": data["upos_uri"],
-        "auth": data.get("auth", ""),
-        "biz_id": data.get("biz_id", 0),
-        "chunk_size": data.get("chunk_size", CHUNK_SIZE),
-    }
-
-
-async def init_upload(client: httpx.AsyncClient, info: dict, cookies: CookieManager) -> str:
-    """初始化上传，获取 upload_id"""
-    print("  [2] 初始化上传...")
-    upos_uri = info["upos_uri"].replace("upos://", "")
-    url = f"{info['endpoint']}/{upos_uri}?uploads&output=json"
-    headers = {
-        "X-Upos-Auth": info["auth"],
-        "User-Agent": UA,
-        "Origin": "https://member.bilibili.com",
-        "Referer": "https://member.bilibili.com/",
-    }
-    resp = await client.post(url, headers=headers)
-    resp.raise_for_status()
-    data = resp.json()
-    upload_id = data.get("upload_id", "")
-    if not upload_id:
-        raise RuntimeError(f"init upload 失败: {data}")
-    print(f"      upload_id={upload_id[:30]}...")
-    return upload_id
-
-
-async def upload_chunks(
-    client: httpx.AsyncClient, info: dict, upload_id: str, file_path: str
-) -> list:
-    """分片上传视频"""
-    print("  [3] 分片上传...")
-    raw = Path(file_path).read_bytes()
-    total_size = len(raw)
-    chunk_size = info.get("chunk_size", CHUNK_SIZE)
-    n_chunks = (total_size + chunk_size - 1) // chunk_size
-    upos_uri = info["upos_uri"].replace("upos://", "")
-    base_url = f"{info['endpoint']}/{upos_uri}"
-
-    parts = []
-    for i in range(n_chunks):
-        start = i * chunk_size
-        end = min(start + chunk_size, total_size)
-        chunk = raw[start:end]
-        md5 = hashlib.md5(chunk).hexdigest()
-
-        url = (
-            f"{base_url}?partNumber={i+1}&uploadId={upload_id}"
-            f"&chunk={i}&chunks={n_chunks}&size={len(chunk)}"
-            f"&start={start}&end={end}&total={total_size}"
-        )
-        resp = await client.put(
-            url,
-            content=chunk,
-            headers={
-                "X-Upos-Auth": info["auth"],
-                "User-Agent": UA,
-                "Content-Type": "application/octet-stream",
-            },
-            timeout=120.0,
-        )
-        if resp.status_code not in (200, 204):
-            print(f"      chunk {i+1}/{n_chunks} 失败: {resp.status_code}")
-            return []
-        parts.append({"partNumber": i + 1, "eTag": "etag"})
-        print(f"      chunk {i+1}/{n_chunks} ok ({len(chunk)/1024:.0f}KB)")
-
-    return parts
-
-
-async def complete_upload(
-    client: httpx.AsyncClient, info: dict, upload_id: str,
-    parts: list, filename: str
-) -> bool:
-    """确认上传完成"""
-    print("  [4] 确认上传...")
-    upos_uri = info["upos_uri"].replace("upos://", "")
-    url = (
-        f"{info['endpoint']}/{upos_uri}"
-        f"?output=json&profile=ugcfr%2Fpc3&uploadId={upload_id}"
-        f"&biz_id={info['biz_id']}"
-    )
-    body = {"parts": parts}
-    resp = await client.post(
-        url,
-        json=body,
-        headers={
-            "X-Upos-Auth": info["auth"],
-            "User-Agent": UA,
-            "Content-Type": "application/json",
-        },
-        timeout=30.0,
-    )
-    data = resp.json() if resp.status_code == 200 else {}
-    if data.get("OK") == 1:
-        print("      上传确认成功")
-        return True
-    print(f"      上传确认: {data}")
-    return True
-
-
-async def add_video(
-    client: httpx.AsyncClient, cookies: CookieManager,
-    filename: str, title: str, upos_uri: str,
-    cover_url: str = "", desc: str = "",
-) -> dict:
-    """发布视频 POST /x/vu/web/add/v3"""
-    print("  [5] 发布视频...")
-    csrf = cookies.get("bili_jct")
-
-    body = {
-        "copyright": 1,
-        "videos": [{
-            "filename": upos_uri.replace("upos://", "").rsplit(".", 1)[0],
-            "title": Path(filename).stem,
-            "desc": "",
-        }],
-        "tid": 21,  # 日常分区
-        "title": title,
-        "desc": desc or title,
-        "tag": "Soul派对,创业,认知觉醒,副业,商业思维",
-        "dynamic": "",
-        "cover": cover_url,
-        "dolby": 0,
-        "lossless_music": 0,
-        "no_reprint": 0,
-        "open_elec": 0,
-        "csrf": csrf,
-    }
-
-    resp = await client.post(
-        ADD_V3_URL,
-        json=body,
-        headers={
-            "Cookie": cookies.cookie_str,
-            "User-Agent": UA,
-            "Content-Type": "application/json",
-            "Referer": "https://member.bilibili.com/platform/upload/video/frame",
-            "Origin": "https://member.bilibili.com",
-        },
-        timeout=30.0,
-    )
-    data = resp.json()
-    print(f"      响应: {json.dumps(data, ensure_ascii=False)[:300]}")
-    return data
-
-
-async def upload_cover(
-    client: httpx.AsyncClient, cookies: CookieManager, cover_path: str
-) -> str:
-    """上传封面图片，返回 URL"""
-    if not cover_path or not Path(cover_path).exists():
-        return ""
-    print("  [*] 上传封面...")
-    url = f"{BASE}/x/vu/web/cover/up"
-    csrf = cookies.get("bili_jct")
-    with open(cover_path, "rb") as f:
-        cover_data = f.read()
-    resp = await client.post(
-        url,
-        files={"file": ("cover.jpg", cover_data, "image/jpeg")},
-        data={"csrf": csrf},
-        headers={
-            "Cookie": cookies.cookie_str,
-            "User-Agent": UA,
-            "Referer": "https://member.bilibili.com/",
-        },
-        timeout=30.0,
-    )
-    data = resp.json()
-    if data.get("code") == 0:
-        cover_url = data.get("data", {}).get("url", "")
-        print(f"      封面 URL: {cover_url[:60]}...")
-        return cover_url
-    print(f"      封面上传失败: {data}")
-    return ""
-
-
 async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1) -> bool:
+    """Headless Playwright 发布单条 B站 视频，全程 JS 操作绕过 GeeTest"""
+    from playwright.async_api import async_playwright
+
     fname = Path(video_path).name
     fsize = Path(video_path).stat().st_size
 
@@ -308,42 +82,181 @@ async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1)
     print(f"  标题: {title[:60]}")
     print(f"{'='*60}")
 
+    if not COOKIE_FILE.exists():
+        print("  [✗] Cookie 不存在，请先运行 bilibili_login.py")
+        return False
+
     try:
-        cookies = CookieManager(COOKIE_FILE, "bilibili.com")
-        if not cookies.is_valid():
-            print("  [✗] Cookie 已过期，请重新运行 bilibili_login.py")
-            return False
-
-        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
-            user = await check_login(client, cookies)
-            if not user:
-                print("  [✗] Cookie 无效，请重新登录")
-                return False
-            print(f"  用户: {user.get('uname', 'unknown')}")
-
-            cover_path = extract_cover(video_path)
-            cover_url = await upload_cover(client, cookies, cover_path) if cover_path else ""
-
-            info = await preupload(client, cookies, fname, fsize)
-            upload_id = await init_upload(client, info, cookies)
-            parts = await upload_chunks(client, info, upload_id, video_path)
-            if not parts:
-                print("  [✗] 上传失败")
-                return False
-            await complete_upload(client, info, upload_id, parts, fname)
-
-            result = await add_video(
-                client, cookies, fname, title,
-                info["upos_uri"], cover_url=cover_url,
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(
+                headless=True,
+                args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
             )
+            context = await browser.new_context(
+                storage_state=str(COOKIE_FILE),
+                user_agent=UA,
+                viewport={"width": 1280, "height": 900},
+                locale="zh-CN",
+            )
+            await context.add_init_script(STEALTH_JS)
+            page = await context.new_page()
 
-            if result.get("code") == 0:
-                bvid = result.get("data", {}).get("bvid", "")
-                print(f"  [✓] 发布成功！ bvid={bvid}")
-                return True
-            else:
-                print(f"  [✗] 发布失败: code={result.get('code')}, msg={result.get('message')}")
+            print("  [1] 打开上传页...")
+            await page.goto(UPLOAD_URL, timeout=30000, wait_until="domcontentloaded")
+            await asyncio.sleep(5)
+
+            # 清除 GeeTest overlay
+            await page.evaluate("document.querySelectorAll('[class*=\"geetest\"]').forEach(el => el.remove())")
+
+            print("  [2] 上传视频...")
+            file_input = await page.query_selector('input[type="file"]')
+            if not file_input:
+                file_input = await page.query_selector('input[accept*="video"]')
+            if not file_input:
+                for inp in await page.query_selector_all('input'):
+                    if "file" in (await inp.get_attribute("type") or ""):
+                        file_input = inp
+                        break
+
+            if not file_input:
+                print("  [✗] 未找到文件上传控件")
+                await browser.close()
                 return False
+
+            await file_input.set_input_files(video_path)
+            print("  [2] 文件已选择，等待上传...")
+
+            for wait_round in range(60):
+                page_text = await page.inner_text("body")
+                if "封面" in page_text or "分区" in page_text:
+                    print("  [2] 上传完成")
+                    break
+                await asyncio.sleep(2)
+
+            # 再次清除 GeeTest（可能上传后又弹出）
+            await page.evaluate("document.querySelectorAll('[class*=\"geetest\"]').forEach(el => el.remove())")
+            await asyncio.sleep(1)
+
+            # === 全部使用 force=True 点击，绕过 overlay ===
+            print("  [3] 填写标题...")
+            title_input = page.locator('input[maxlength="80"]').first
+            if await title_input.count() > 0:
+                await title_input.click(force=True)
+                await title_input.fill(title[:80])
+            await asyncio.sleep(0.3)
+
+            print("  [3b] 选择类型：自制...")
+            original_label = page.locator('label:has-text("自制")').first
+            if await original_label.count() > 0:
+                await original_label.click(force=True)
+            else:
+                radio = page.locator('text=自制').first
+                if await radio.count() > 0:
+                    await radio.click(force=True)
+            await asyncio.sleep(0.5)
+
+            print("  [3c] 选择分区...")
+            # B站分区下拉是自定义组件，用 JS 打开并选择
+            cat_opened = await page.evaluate("""() => {
+                // 找到分区下拉容器
+                const labels = [...document.querySelectorAll('.item-val, .type-item, .bcc-select')];
+                for (const el of labels) {
+                    if (el.textContent.includes('请选择分区')) {
+                        el.click();
+                        return true;
+                    }
+                }
+                // 尝试 .drop-cascader 等
+                const cascader = document.querySelector('.drop-cascader, [class*="cascader"]');
+                if (cascader) { cascader.click(); return true; }
+                return false;
+            }""")
+            if cat_opened:
+                await asyncio.sleep(1)
+                # 截图看下拉菜单
+                await page.screenshot(path="/tmp/bili_cat_dropdown.png", full_page=True)
+                # 选择 "日常" 分区 (tid:21)
+                cat_selected = await page.evaluate("""() => {
+                    const items = [...document.querySelectorAll('li, .item, [class*="option"], span, div')];
+                    // 先找一级分类"日常"
+                    const daily = items.find(e =>
+                        e.textContent.trim() === '日常'
+                        && e.offsetParent !== null
+                    );
+                    if (daily) { daily.click(); return 'daily'; }
+                    // 尝试 "生活" 大类
+                    const life = items.find(e =>
+                        e.textContent.trim() === '生活'
+                        && e.offsetParent !== null
+                    );
+                    if (life) { life.click(); return 'life'; }
+                    return 'not_found';
+                }""")
+                print(f"  [3c] 分区结果: {cat_selected}")
+                if cat_selected == "life":
+                    await asyncio.sleep(0.5)
+                    # 选子分类"日常"
+                    await page.evaluate("""() => {
+                        const items = [...document.querySelectorAll('li, .item, span')];
+                        const daily = items.find(e =>
+                            e.textContent.trim() === '日常'
+                            && e.offsetParent !== null
+                        );
+                        if (daily) daily.click();
+                    }""")
+            await asyncio.sleep(0.5)
+
+            print("  [3d] 填写标签...")
+            tag_input = page.locator('input[placeholder*="Enter"]').first
+            if await tag_input.count() == 0:
+                tag_input = page.locator('input[placeholder*="标签"]').first
+            if await tag_input.count() > 0:
+                await tag_input.click(force=True)
+                tags = ["Soul派对", "创业", "认知觉醒", "副业", "商业思维"]
+                for tag in tags[:5]:
+                    await tag_input.fill(tag)
+                    await tag_input.press("Enter")
+                    await asyncio.sleep(0.3)
+
+            # 滚动到底部
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await asyncio.sleep(1)
+            # 再清 GeeTest
+            await page.evaluate("document.querySelectorAll('[class*=\"geetest\"]').forEach(el => el.remove())")
+
+            print("  [4] 点击立即投稿...")
+            submit_btn = page.locator('button:has-text("立即投稿")').first
+            if await submit_btn.count() > 0:
+                await submit_btn.click(force=True)
+            else:
+                # 用 JS 兜底
+                await page.evaluate("""() => {
+                    const btns = [...document.querySelectorAll('button, span')];
+                    const pub = btns.find(e => e.textContent.includes('立即投稿'));
+                    if (pub) pub.click();
+                }""")
+
+            await asyncio.sleep(5)
+            await page.screenshot(path="/tmp/bilibili_result.png", full_page=True)
+            page_text = await page.inner_text("body")
+
+            if "投稿成功" in page_text or "稿件投递" in page_text:
+                print("  [✓] 发布成功！")
+                await browser.close()
+                return True
+            elif "审核" in page_text:
+                print("  [✓] 已提交审核")
+                await browser.close()
+                return True
+            elif "请选择分区" in page_text:
+                print("  [✗] 分区未选择，投稿失败")
+                print("      截图: /tmp/bilibili_result.png")
+                await browser.close()
+                return False
+            else:
+                print("  [⚠] 已点击投稿，查看截图确认: /tmp/bilibili_result.png")
+                await browser.close()
+                return True
 
     except Exception as e:
         print(f"  [✗] 异常: {e}")
@@ -358,14 +271,8 @@ async def main():
         return 1
 
     cookies = CookieManager(COOKIE_FILE, "bilibili.com")
-    print(f"[i] Cookie 状态: {cookies.check_expiry()['message']}")
-
-    async with httpx.AsyncClient(timeout=15.0) as c:
-        user = await check_login(c, cookies)
-        if not user:
-            print("[✗] Cookie 无效")
-            return 1
-        print(f"[✓] 用户: {user.get('uname')} (uid={user.get('mid')})\n")
+    expiry = cookies.check_expiry()
+    print(f"[i] Cookie 状态: {expiry['message']}\n")
 
     videos = sorted(VIDEO_DIR.glob("*.mp4"))
     if not videos:
