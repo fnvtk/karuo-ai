@@ -369,6 +369,7 @@ video_url = data["data"]["video_info"]["video_download_url"]
 1. cookie_minutes.txt 第一行  
 2. 环境变量 FEISHU_MINUTES_COOKIE  
 3. 本机浏览器（browser_cookie3：Safari/Chrome/Firefox/Edge；或 Doubao Cookie 解密）
+4. **Cursor 内置浏览器 Cookie**（SQLite 明文，路径 `~/Library/Application Support/Cursor/Partitions/cursor-browser/Cookies`，查询 `host_key LIKE '%feishu%'`，无需解密）— 当 1～3 均过期时，若 Cursor 浏览器曾访问过飞书妙记页面，可从此处提取有效 Cookie
 
 ---
 
