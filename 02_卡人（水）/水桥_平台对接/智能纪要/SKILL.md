@@ -389,6 +389,49 @@ python3 "$SCRIPT_DIR/feishu_minutes_download_video.py" obcnc53697q9mj6h1go6v25e 
 
 ---
 
+## 🔧 飞书统一认证工具（feishu_auth_helper.py）
+
+一个脚本统管所有飞书 Token / Cookie，替代手动操作：
+
+```bash
+SCRIPT_DIR="/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/智能纪要/脚本"
+
+# 获取 tenant_access_token（Open API 用）
+python3 "$SCRIPT_DIR/feishu_auth_helper.py" tenant
+
+# 自动获取最佳 Cookie（5 级 fallback，自动选最佳来源）
+python3 "$SCRIPT_DIR/feishu_auth_helper.py" cookie
+
+# 从 Cursor 浏览器刷新 cookie_minutes.txt
+python3 "$SCRIPT_DIR/feishu_auth_helper.py" refresh-cookie
+
+# 综合测试（tenant + Cookie 对指定妙记）
+python3 "$SCRIPT_DIR/feishu_auth_helper.py" test --token obcnc53697q9mj6h1go6v25e
+
+# 生成用户授权链接（重新授权 user_access_token）
+python3 "$SCRIPT_DIR/feishu_auth_helper.py" auth-url
+
+# 授权码换 token
+python3 "$SCRIPT_DIR/feishu_auth_helper.py" exchange --code AUTH_CODE
+```
+
+### 通用 Cookie 提取工具（cursor_cookie_util.py）
+
+可复用于任何需要从 Cursor 浏览器提取 Cookie 的场景：
+
+```bash
+python3 "$SCRIPT_DIR/cursor_cookie_util.py" feishu    # 飞书
+python3 "$SCRIPT_DIR/cursor_cookie_util.py" github    # GitHub
+python3 "$SCRIPT_DIR/cursor_cookie_util.py" --domain .example.com  # 自定义
+```
+
+```python
+from cursor_cookie_util import get_cursor_cookies
+cookie = get_cursor_cookies(domains=[".feishu.cn"])
+```
+
+---
+
 ## 📋 妙记文字 + 视频完整解决方案（一键表）
 
 | 需求 | 脚本 | 一键命令 |
