@@ -4,7 +4,7 @@
 Soul 切片一体化流水线
 视频制作（封面/Hook格式）+ 视频切片
 
-流程：转录 → 字幕转简体 → 高光识别(AI) → 批量切片 → 增强(封面+字幕+CTA)
+流程：转录 → 字幕转简体 → 高光识别(AI) → 批量切片 → 增强(封面+字幕+CTA) → 快速混剪（可选）
 """
 import argparse
 import atexit
@@ -116,6 +116,10 @@ def main():
     parser.add_argument("--two-folders", action="store_true", help="仅用两文件夹：切片、成片（默认 clips、clips_enhanced）")
     parser.add_argument("--slices-only", action="store_true", help="只做到切片（MLX 转录→高光→批量切片），不跑成片增强")
     parser.add_argument("--prefix", default="", help="切片文件名前缀，如 soul112")
+    parser.add_argument("--quick-montage", action="store_true", help="额外生成一条快速混剪视频")
+    parser.add_argument("--montage-source", choices=["auto", "clips", "finals"], default="auto", help="快速混剪使用切片还是成片")
+    parser.add_argument("--montage-max-clips", type=int, default=8, help="快速混剪最多取多少条片段")
+    parser.add_argument("--montage-seconds", type=float, default=4.0, help="快速混剪每条截取秒数")
     args = parser.parse_args()
 
     video_path = Path(args.video).resolve()
@@ -245,6 +249,19 @@ def main():
         sys.exit(1)
 
     if getattr(args, "slices_only", False):
+        if getattr(args, "quick_montage", False):
+            montage_output = base_dir / "快速混剪.mp4"
+            montage_cmd = [
+                sys.executable,
+                str(SCRIPT_DIR / "quick_montage.py"),
+                "--input-dir", str(clips_dir),
+                "--output", str(montage_output),
+                "--highlights", str(highlights_path),
+                "--source-kind", "clip",
+                "--max-clips", str(args.montage_max_clips),
+                "--seconds-per-clip", str(args.montage_seconds),
+            ]
+            run(montage_cmd, "生成快速混剪", timeout=600, check=False)
         print()
         print("=" * 60)
         print("✅ 切片阶段完成（--slices-only）")
@@ -277,12 +294,37 @@ def main():
         for f in sorted(clips_dir.glob("*.mp4")):
             shutil.copy(f, enhanced_dir / f.name)
 
+    if getattr(args, "quick_montage", False):
+        montage_output = base_dir / "快速混剪.mp4"
+        if args.montage_source == "clips":
+            montage_input = clips_dir
+            montage_kind = "clip"
+        elif args.montage_source == "finals":
+            montage_input = enhanced_dir
+            montage_kind = "final"
+        else:
+            montage_input = enhanced_dir if enhanced_count > 0 else clips_dir
+            montage_kind = "final" if enhanced_count > 0 else "clip"
+        montage_cmd = [
+            sys.executable,
+            str(SCRIPT_DIR / "quick_montage.py"),
+            "--input-dir", str(montage_input),
+            "--output", str(montage_output),
+            "--highlights", str(highlights_path),
+            "--source-kind", montage_kind,
+            "--max-clips", str(args.montage_max_clips),
+            "--seconds-per-clip", str(args.montage_seconds),
+        ]
+        run(montage_cmd, "生成快速混剪", timeout=600, check=False)
+
     print()
     print("=" * 60)
     print("✅ 流水线完成")
     print("=" * 60)
     print(f"  切片: {clips_dir}")
     print(f"  成片: {enhanced_dir}")
+    if getattr(args, "quick_montage", False):
+        print(f"  混剪: {base_dir / '快速混剪.mp4'}")
     print(f"  清单: {base_dir / 'clips_manifest.json'}")
 
 
