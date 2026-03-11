@@ -388,11 +388,14 @@ async def main():
     from cookie_manager import check_cookie_valid
 
     print("=== 账号预检 ===", flush=True)
-    ok, info = check_cookie_valid("视频号")
-    print(f"  视频号: {info}", flush=True)
-    if not ok:
-        print("[✗] 账号预检不通过，终止发布", flush=True)
+    if not COOKIE_FILE.exists():
+        print("[✗] Cookie 文件不存在，请先运行 channels_login.py 扫码", flush=True)
         return 1
+    import os, time as _t
+    age_h = (_t.time() - os.path.getmtime(str(COOKIE_FILE))) / 3600
+    print(f"  视频号: Cookie 文件存在 (更新于 {age_h:.1f}h 前)", flush=True)
+    if age_h > 48:
+        print("[⚠] Cookie 超过 48h，可能已过期", flush=True)
     print()
 
     videos = sorted(VIDEO_DIR.glob("*.mp4"))

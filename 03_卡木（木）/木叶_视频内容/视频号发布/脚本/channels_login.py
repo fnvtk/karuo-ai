@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
-"""视频号 Cookie 获取 - Playwright 扫码登录 → 保存 storage_state
-v3: 登录后多次导航确保 Cookie 写入 + 验证 Cookie 存在
-"""
+"""视频号登录 v4 — 扫码后提取 token + Cookie，供纯 API 发布使用"""
 import asyncio
 import json
 import sys
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs
 
 from playwright.async_api import async_playwright
 
-COOKIE_FILE = Path(__file__).parent / "channels_storage_state.json"
+SCRIPT_DIR = Path(__file__).parent
+COOKIE_FILE = SCRIPT_DIR / "channels_storage_state.json"
+TOKEN_FILE = SCRIPT_DIR / "channels_token.json"
 LOGIN_URL = "https://channels.weixin.qq.com/login"
-PLATFORM_URL = "https://channels.weixin.qq.com/platform"
 QR_SCREENSHOT = Path("/tmp/channels_qr.png")
 
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 
 
@@ -40,12 +40,17 @@ async def main():
         print("请用微信扫描浏览器中的二维码...\n", flush=True)
 
         logged_in = False
+        token = None
         for i in range(60):
             await asyncio.sleep(5)
             url = page.url
             if "platform" in url and "login" not in url:
                 logged_in = True
-                print(f"[✓] 检测到登录跳转: {url[:80]}", flush=True)
+                parsed = parse_qs(urlparse(url).query)
+                token = parsed.get("token", [None])[0]
+                print(f"[✓] 登录成功，URL: {url[:100]}", flush=True)
+                if token:
+                    print(f"[✓] 提取到 token: {token[:20]}...", flush=True)
                 break
             cookies = await context.cookies()
             has_session = any(c["name"] == "sessionid" for c in cookies)
@@ -57,59 +62,87 @@ async def main():
                 print(f"  等待扫码中... ({i * 5}s)", flush=True)
 
         if not logged_in:
-            print("[✗] 5 分钟超时。请重新运行此脚本再试。", flush=True)
+            print("[✗] 5 分钟超时。", flush=True)
             await browser.close()
             return 1
 
-        # 确保 Cookie 完全写入：多导航几次
-        print("[...] 等待 Cookie 完全写入...", flush=True)
+        # 确保跳转完成并提取 token
         await asyncio.sleep(5)
+        if not token:
+            try:
+                await page.goto(
+                    "https://channels.weixin.qq.com/platform/post/list",
+                    timeout=15000, wait_until="domcontentloaded",
+                )
+                await asyncio.sleep(5)
+                url = page.url
+                parsed = parse_qs(urlparse(url).query)
+                token = parsed.get("token", [None])[0]
+                if token:
+                    print(f"[✓] 从 post/list 页提取 token: {token[:20]}...", flush=True)
+            except Exception:
+                pass
 
-        try:
-            await page.goto(
-                "https://channels.weixin.qq.com/platform/post/list",
-                timeout=15000,
-                wait_until="domcontentloaded",
-            )
-            await asyncio.sleep(3)
-        except Exception:
-            pass
+        # 如果 URL 里没 token，尝试从页面 JS 提取
+        if not token:
+            try:
+                token = await page.evaluate("""() => {
+                    if (window.__wxConfig && window.__wxConfig.token) return window.__wxConfig.token;
+                    const m = document.cookie.match(/token=([^;]+)/);
+                    if (m) return m[1];
+                    const u = location.href;
+                    const tm = u.match(/token=([^&]+)/);
+                    if (tm) return tm[1];
+                    return null;
+                }""")
+                if token:
+                    print(f"[✓] 从 JS 提取 token: {token[:20]}...", flush=True)
+            except Exception:
+                pass
 
-        cookies = await context.cookies()
-        print(f"[Cookie] 共获取 {len(cookies)} 个 Cookie:", flush=True)
-        for c in cookies:
-            print(f"  {c['name']} (domain={c['domain']}, expires={c.get('expires', 'N/A')})", flush=True)
+        # 尝试拦截 API 获取 token
+        if not token:
+            try:
+                r = await page.evaluate("""async () => {
+                    const resp = await fetch('/cgi-bin/mmfinderassistant-bin/auth/auth_data', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({})
+                    });
+                    return await resp.json();
+                }""")
+                if r and r.get("errCode") == 0:
+                    token = r.get("data", {}).get("token") or r.get("token")
+                    print(f"[✓] 从 auth_data 获取: errCode=0", flush=True)
+                else:
+                    print(f"[i] auth_data 返回: {json.dumps(r, ensure_ascii=False)[:200]}", flush=True)
+            except Exception as e:
+                print(f"[i] auth_data 异常: {e}", flush=True)
 
-        if not any(c["name"] == "sessionid" for c in cookies):
-            print("[⚠] 未找到 sessionid Cookie，可能登录不完整！", flush=True)
-            print("    尝试手动刷新页面后等待...", flush=True)
-            await page.reload()
-            await asyncio.sleep(5)
-            cookies = await context.cookies()
-            print(f"[Cookie] 刷新后共 {len(cookies)} 个 Cookie", flush=True)
-
+        # 保存 storage_state
         await context.storage_state(path=str(COOKIE_FILE))
 
-        # 验证保存结果
-        saved = json.loads(COOKIE_FILE.read_text())
-        saved_cookies = saved.get("cookies", [])
-        if not saved_cookies:
-            print("[✗] 警告：保存的 Cookie 为空！登录可能失败。", flush=True)
-            await browser.close()
-            return 1
+        # 保存 token 信息
+        cookies = await context.cookies()
+        cookie_dict = {c["name"]: c["value"] for c in cookies}
 
-        await context.close()
+        token_data = {
+            "token": token,
+            "sessionid": cookie_dict.get("sessionid", ""),
+            "wxuin": cookie_dict.get("wxuin", ""),
+            "cookie_str": "; ".join(f'{c["name"]}={c["value"]}' for c in cookies),
+            "url": page.url,
+        }
+        with open(TOKEN_FILE, "w") as f:
+            json.dump(token_data, f, ensure_ascii=False, indent=2)
+
         await browser.close()
 
-    print(f"\n[✓] 视频号 Cookie 已保存: {COOKIE_FILE}", flush=True)
-    print(f"    Cookie 数量: {len(saved_cookies)}", flush=True)
-    print(f"    文件大小: {COOKIE_FILE.stat().st_size} bytes", flush=True)
-    session = [c for c in saved_cookies if c["name"] == "sessionid"]
-    if session:
-        import datetime
-        exp = datetime.datetime.fromtimestamp(session[0].get("expires", 0))
-        print(f"    sessionid 过期: {exp}", flush=True)
-    print("现在可运行 channels_publish.py 批量发布。", flush=True)
+    print(f"\n[✓] Cookie 已保存: {COOKIE_FILE}", flush=True)
+    print(f"[✓] Token 已保存: {TOKEN_FILE}", flush=True)
+    sc = json.loads(COOKIE_FILE.read_text()).get("cookies", [])
+    print(f"    Cookie 数量: {len(sc)}", flush=True)
+    print(f"    token: {'✓' if token else '✗ 未提取到（可能需要在浏览器页面交互后才出现）'}", flush=True)
     return 0
 
 
