@@ -192,68 +192,129 @@ def get_today_tasks():
     
     return date_str, tasks
 
+def _tb(content, bold=False):
+    """构建纯文本 block（兼容性最强，不带 text_color/align）"""
+    elem = {'text_run': {'content': content}}
+    if bold:
+        elem['text_run']['text_element_style'] = {'bold': True}
+    return {'block_type': 2, 'text': {'elements': [elem], 'style': {}}}
+
+
+def _todo(content):
+    """待办块（不带 align，减少 field validation failed 风险）"""
+    return {'block_type': 17, 'todo': {'elements': [{'text_run': {'content': content}}], 'style': {'done': False}}}
+
+
 def build_blocks(date_str, tasks):
-    """构建飞书文档块（倒序：新日期在上）；callout 易触发 field validation failed，改用 text"""
-    blocks = [
-        {'block_type': 6, 'heading4': {'elements': [{'text_run': {'content': f'{date_str}  '}}], 'style': {'align': 1}}},
-        {'block_type': 2, 'text': {'elements': [{'text_run': {'content': '[执行]', 'text_element_style': {'bold': True}}}], 'style': {}}}
-    ]
-    
-    quadrant_colors = {"重要紧急": 5, "重要不紧急": 3, "不重要紧急": 6, "不重要不紧急": 4}
+    """构建飞书文档块（美观版 TNTWF 格式，不含易报错的 callout/text_color/align）"""
+    QUADRANT_ICONS = {
+        "重要紧急":    "🔴 重要紧急",
+        "重要不紧急":  "🟡 重要不紧急",
+        "不重要紧急":  "🔵 不重要紧急",
+        "不重要不紧急":"⚪ 不重要不紧急",
+    }
     quadrant_order = ["重要紧急", "重要不紧急", "不重要紧急", "不重要不紧急"]
-    
+
+    blocks = [
+        _tb(f'📅 {date_str}', bold=True),
+        _tb('▶ 执行'),
+        _tb(''),
+    ]
+
     for quadrant in quadrant_order:
         q_tasks = [t for t in tasks if t.get('quadrant') == quadrant]
         if not q_tasks:
             continue
-            
-        blocks.append({'block_type': 2, 'text': {'elements': [{'text_run': {'content': f'[{quadrant}]', 
-            'text_element_style': {'bold': True, 'text_color': quadrant_colors[quadrant]}}}], 'style': {'align': 1}}})
-        
+
+        blocks.append(_tb(f'  {QUADRANT_ICONS.get(quadrant, quadrant)}', bold=True))
+        blocks.append(_tb('  ' + '─' * 32))
+
         for task in q_tasks:
-            events = "、".join(task['events'])
-            blocks.append({'block_type': 17, 'todo': {'elements': [{'text_run': {'content': f"{task['person']}（{events}）"}}], 
-                'style': {'done': False, 'align': 1}}})
-            blocks.append({'block_type': 2, 'text': {'elements': [{'text_run': {'content': '{'}}], 'style': {}}})
-            
-            # TNTWF格式：仅 W(工作) F(反馈) 有复选框，T/N/T 为纯文本
+            events = ' · '.join(task.get('events', []))
+            blocks.append(_todo(f"{task.get('person', '')}（{events}）"))
+
             labels = [
-                ('T', 't_targets', '目标', False),
-                ('N', 'n_process', '过程', False),
-                ('T', 't_thoughts', '思考', False),
-                ('W', 'w_work', '工作', True),
-                ('F', 'f_feedback', '反馈', True)
+                ('T', 't_targets', '目标'),
+                ('N', 'n_process', '过程'),
+                ('T', 't_thoughts', '思考'),
+                ('W', 'w_work', '工作'),
+                ('F', 'f_feedback', '反馈'),
             ]
-            for label, key, name, use_todo in labels:
+            for label, key, name in labels:
                 items = task.get(key, [])
-                if items:
-                    blocks.append({'block_type': 2, 'text': {'elements': [{'text_run': {'content': f'{label} ({name})', 'text_element_style': {'bold': True}}}], 'style': {}}})
-                    for item in items:
-                        if use_todo:
-                            blocks.append({'block_type': 17, 'todo': {'elements': [{'text_run': {'content': item}}], 'style': {'done': False}}})
-                        else:
-                            blocks.append({'block_type': 2, 'text': {'elements': [{'text_run': {'content': item}}], 'style': {}}})
-            
-            blocks.append({'block_type': 2, 'text': {'elements': [{'text_run': {'content': '}'}}], 'style': {}}})
-        blocks.append({'block_type': 2, 'text': {'elements': [{'text_run': {'content': ''}}], 'style': {}}})
-    
+                if not items:
+                    continue
+                blocks.append(_tb(f'    {label} {name}', bold=True))
+                for item in items:
+                    if label in ('W', 'F'):
+                        blocks.append(_todo(f'      {item}'))
+                    else:
+                        blocks.append(_tb(f'      · {item}'))
+
+            blocks.append(_tb(''))
+
+        blocks.append(_tb(''))
+
     return blocks
 
 
-def _text_block_simple(content):
-    """极简文本块，兼容 field validation 严格校验"""
+def _tb_s(content):
+    """极简文本块（fallback 专用）"""
     return {'block_type': 2, 'text': {'elements': [{'text_run': {'content': content}}], 'style': {}}}
 
 
 def _build_blocks_simple(date_str, tasks):
-    """极简块（仅纯文本），用于 field validation failed 时回退"""
-    blocks = [_text_block_simple(f'{date_str}  '), _text_block_simple('[执行]')]
-    for task in tasks:
-        events = '、'.join(task.get('events', []))
-        blocks.append(_text_block_simple(f"{task.get('person', '')}（{events}）"))
-        for key in ('t_targets', 'n_process', 't_thoughts', 'w_work', 'f_feedback'):
-            for item in task.get(key, []):
-                blocks.append(_text_block_simple(f"  {item}"))
+    """极简块（纯文本美观版），field validation failed 时自动回退"""
+    QUAD_ICONS = {
+        "重要紧急": "🔴 重要紧急",
+        "重要不紧急": "🟡 重要不紧急",
+        "不重要紧急": "🔵 不重要紧急",
+        "不重要不紧急": "⚪ 不重要不紧急",
+    }
+    quadrant_order = ["重要紧急", "重要不紧急", "不重要紧急", "不重要不紧急"]
+    LINE = '─' * 34
+
+    blocks = [
+        _tb_s(f'┌{'─' * 36}┐'),
+        _tb_s(f'│  📅 {date_str}   ▶ 执行' + ' ' * max(0, 30 - len(date_str)) + '│'),
+        _tb_s(f'└{'─' * 36}┘'),
+        _tb_s(''),
+    ]
+
+    for quadrant in quadrant_order:
+        q_tasks = [t for t in tasks if t.get('quadrant') == quadrant]
+        if not q_tasks:
+            continue
+
+        blocks.append(_tb_s(f'  {QUAD_ICONS.get(quadrant, quadrant)}'))
+        blocks.append(_tb_s(f'  {LINE}'))
+
+        for task in q_tasks:
+            events = ' · '.join(task.get('events', []))
+            blocks.append(_tb_s(f'  ☑  {task.get("person", "")}（{events}）'))
+            blocks.append(_tb_s(f'  ┌{LINE}'))
+
+            label_map = [
+                ('T', 't_targets', '目标'),
+                ('N', 'n_process', '过程'),
+                ('T', 't_thoughts', '思考'),
+                ('W', 'w_work', '工作'),
+                ('F', 'f_feedback', '反馈'),
+            ]
+            for label, key, name in label_map:
+                items = task.get(key, [])
+                if not items:
+                    continue
+                blocks.append(_tb_s(f'  │  【{label}】{name}'))
+                for item in items:
+                    prefix = '  │    □ ' if label in ('W', 'F') else '  │    · '
+                    blocks.append(_tb_s(f'{prefix}{item}'))
+
+            blocks.append(_tb_s(f'  └{LINE}'))
+            blocks.append(_tb_s(''))
+
+        blocks.append(_tb_s(''))
+
     return blocks
 
 
@@ -466,23 +527,31 @@ def write_log(token, date_str=None, tasks=None, wiki_token=None, overwrite=False
         to_del = _find_date_section_block_ids(blocks, date_str, doc_id)
         if to_del:
             try:
-                for i in range(0, len(to_del), 20):
-                    batch = to_del[i:i+20]
-                    body = {"requests": [{"block_id": bid} for bid in batch]}
-                    rd = requests.post(f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/batch_delete",
-                        headers=headers, json=body, timeout=30)
+                # 找根级别 block 的索引（飞书批删需要 start_index/end_index）
+                root_blocks = [b for b in blocks if b.get('parent_id') == doc_id]
+                root_ids = [b.get('block_id') for b in root_blocks]
+                indices = sorted([root_ids.index(bid) for bid in to_del if bid in root_ids])
+                if indices:
+                    start_idx = indices[0]
+                    end_idx = indices[-1] + 1  # 飞书 end_index 是 exclusive
+                    rd = requests.delete(
+                        f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{doc_id}/children/batch_delete",
+                        headers=headers,
+                        json={"start_index": start_idx, "end_index": end_idx},
+                        timeout=30
+                    )
                     try:
                         j = rd.json()
                     except Exception:
                         j = {}
                     if j.get('code') != 0:
-                        print(f"⚠️ 覆盖删除失败: {j.get('msg', rd.text[:80])}，请手动删飞书中 {date_str} 后重试")
-                        break
-                else:
-                    r = requests.get(f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks", 
-                        headers=headers, params={'document_revision_id': -1, 'page_size': 500}, timeout=30)
-                    blocks = r.json().get('data', {}).get('items', [])
-                    exists = False
+                        print(f"⚠️ 覆盖删除失败: {j.get('msg', rd.text[:120])}，请手动删飞书中 {date_str} 后重试")
+                    else:
+                        r2 = requests.get(f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks",
+                            headers=headers, params={'document_revision_id': -1, 'page_size': 500}, timeout=30)
+                        blocks = r2.json().get('data', {}).get('items', [])
+                        exists = False
+                        print(f"✅ 已删除 {date_str} 旧块（{end_idx - start_idx} 个），准备重写新格式")
             except Exception as e:
                 print(f"⚠️ 覆盖删除异常: {e}，请手动删飞书中 {date_str} 后重试")
     
@@ -500,22 +569,22 @@ def write_log(token, date_str=None, tasks=None, wiki_token=None, overwrite=False
                     insert_index = i + 1
                     break
     
-    # 写入（倒序：新日期在上）；field validation failed 时尝试极简纯文本块
-    content_blocks = build_blocks(date_str, tasks)
-    payload = {'children': content_blocks, 'index': insert_index}
-    r = requests.post(f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{doc_id}/children",
-        headers=headers, json=payload, timeout=30)
-    if r.json().get('code') != 0 and 'field validation failed' in (r.json().get('msg') or '').lower():
-        content_blocks = _build_blocks_simple(date_str, tasks)
-        payload = {'children': content_blocks, 'index': insert_index}
+    # 写入（倒序：新日期在上）；分批写入（飞书单次上限 50 块）
+    content_blocks = _build_blocks_simple(date_str, tasks)
+    BATCH_SIZE = 48  # 安全值：低于 50
+    offset = 0
+    for i in range(0, len(content_blocks), BATCH_SIZE):
+        batch = content_blocks[i:i + BATCH_SIZE]
+        payload = {'children': batch, 'index': insert_index + offset}
         r = requests.post(f"https://open.feishu.cn/open-apis/docx/v1/documents/{doc_id}/blocks/{doc_id}/children",
             headers=headers, json=payload, timeout=30)
-    if r.json().get('code') == 0:
-        print(f"✅ {date_str} 日志写入成功 -> {doc_title}")
-        return True
-    else:
-        print(f"❌ 写入失败: {r.json().get('msg')}")
-        return False
+        rj = r.json()
+        if rj.get('code') != 0:
+            print(f"❌ 写入失败(批次{i//BATCH_SIZE+1}): code={rj.get('code')} msg={rj.get('msg')}")
+            return False
+        offset += len(batch)
+    print(f"✅ {date_str} 日志写入成功 -> {doc_title}（共 {len(content_blocks)} 块，{(len(content_blocks)-1)//BATCH_SIZE+1} 批次）")
+    return True
 
 def open_result(wiki_token=None):
     """打开飞书查看结果"""
