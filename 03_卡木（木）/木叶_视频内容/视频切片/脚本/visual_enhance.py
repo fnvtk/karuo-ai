@@ -54,13 +54,33 @@ CYAN = (34, 211, 238, 255)
 ACCENTS = [BLUE, PURPLE, GREEN, GOLD, ORANGE, RED, CYAN]
 
 
-def font(size: int, bold: bool = False):
-    candidates = [
-        FONTS_DIR / ('SourceHanSansSC-Heavy.otf' if bold else 'SourceHanSansSC-Bold.otf'),
-        FONTS_DIR / 'SourceHanSansSC-Bold.otf',
-        FONTS_DIR / 'NotoSansCJK-Bold.ttc',
-        Path('/System/Library/Fonts/PingFang.ttc'),
-    ]
+def font(size: int, weight='medium'):
+    if isinstance(weight, bool):
+        weight = 'bold' if weight else 'medium'
+    font_map = {
+        'regular': [
+            FONTS_DIR / 'NotoSansCJK-Regular.ttc',
+            FONTS_DIR / 'SourceHanSansSC-Medium.otf',
+            Path('/System/Library/Fonts/PingFang.ttc'),
+        ],
+        'medium': [
+            FONTS_DIR / 'SourceHanSansSC-Medium.otf',
+            FONTS_DIR / 'NotoSansCJK-Regular.ttc',
+            Path('/System/Library/Fonts/PingFang.ttc'),
+        ],
+        'semibold': [
+            FONTS_DIR / 'SourceHanSansSC-Bold.otf',
+            FONTS_DIR / 'NotoSansCJK-Bold.ttc',
+            Path('/System/Library/Fonts/PingFang.ttc'),
+        ],
+        'bold': [
+            FONTS_DIR / 'SourceHanSansSC-Heavy.otf',
+            FONTS_DIR / 'SourceHanSansSC-Bold.otf',
+            FONTS_DIR / 'NotoSansCJK-Bold.ttc',
+            Path('/System/Library/Fonts/PingFang.ttc'),
+        ],
+    }
+    candidates = font_map.get(weight, font_map['medium'])
     for path in candidates:
         if path.exists():
             try:
@@ -175,7 +195,7 @@ def create_chip(text, accent, active=1.0):
     fill = (22, 28, 45, int(185 * active))
     border = accent[:3] + (int(155 * active),)
     rounded(d, (0, 0, w - 1, h - 1), 17, fill=fill, outline=border, width=1)
-    ff = font(14, True)
+    ff = font(14, 'medium')
     bbox = ff.getbbox(text)
     tw = bbox[2] - bbox[0]
     th = bbox[3] - bbox[1]
@@ -190,9 +210,9 @@ def create_metric_card(title, value, subtitle, accent, progress):
     fill = (18, 24, 38, 215)
     rounded(d, (0, 0, w - 1, h - 1), 18, fill=fill, outline=accent[:3] + (120,), width=1)
     d.rounded_rectangle((12, 14, 16, h - 14), radius=2, fill=accent[:3] + (220,))
-    d.text((24, 12), title, font=font(11, True), fill=TEXT_SUB)
-    d.text((24, 34), value, font=font(22, True), fill=accent)
-    d.text((24, 60), subtitle, font=font(10), fill=TEXT_MUTED)
+    d.text((24, 12), title, font=font(11, 'medium'), fill=TEXT_SUB)
+    d.text((24, 34), value, font=font(21, 'medium'), fill=accent)
+    d.text((24, 60), subtitle, font=font(10, 'regular'), fill=TEXT_MUTED)
     dot_r = 5 + int(2 * math.sin(progress * math.pi * 2))
     d.ellipse((w - 20 - dot_r, 12 - dot_r // 2, w - 20 + dot_r, 12 + dot_r), fill=accent[:3] + (200,))
     return img
@@ -289,8 +309,8 @@ def compose_panel(scene, scene_type, local_t, scene_progress):
     d = ImageDraw.Draw(base)
 
     rounded(d, (18, 16, 76, 40), 12, fill=(52, 211, 153, 210))
-    d.text((30, 22), 'AI', font=font(12, True), fill=WHITE)
-    d.text((90, 22), '卡若式视频增强', font=font(12, True), fill=TEXT_SUB)
+    d.text((30, 22), 'AI', font=font(12, 'medium'), fill=WHITE)
+    d.text((90, 22), '卡若式视频增强', font=font(12, 'medium'), fill=TEXT_SUB)
     base.alpha_composite(create_video_window(scene_type, local_t), (PANEL_W - 158, 18))
 
     if scene_type == 'title_card':
@@ -299,13 +319,13 @@ def compose_panel(scene, scene_type, local_t, scene_progress):
         typed_ratio = ease_out_cubic(min(1.0, local_t / 1.9))
         chars = max(1, int(len(question) * typed_ratio))
         q_text = question[:chars]
-        draw_wrap(d, q_text, font(22, True), 230, 24, 74, WHITE)
+        draw_wrap(d, q_text, font(21, 'medium'), 230, 24, 74, WHITE)
         if typed_ratio < 1:
             cursor_x = 24 + min(230, int(typed_ratio * 230))
-            d.text((cursor_x, 108), '▍', font=font(18, True), fill=BLUE)
+            d.text((cursor_x, 108), '▍', font=font(18, 'regular'), fill=BLUE)
         if local_t > 1.0:
             alpha = ease_out_cubic(min(1.0, (local_t - 1.0) / 1.0))
-            d.text((24, 144), subtitle, font=font(14), fill=(TEXT_SUB[0], TEXT_SUB[1], TEXT_SUB[2], int(255 * alpha)))
+            d.text((24, 144), subtitle, font=font(14, 'regular'), fill=(TEXT_SUB[0], TEXT_SUB[1], TEXT_SUB[2], int(255 * alpha)))
         chip_texts = ['传统行业', '远程安装', '副业服务']
         for i, txt in enumerate(chip_texts):
             ct = max(0.0, min(1.0, (local_t - 1.4 - i * 0.18) / 0.5))
@@ -314,22 +334,22 @@ def compose_panel(scene, scene_type, local_t, scene_progress):
                 base.alpha_composite(chip, (24 + i * 96, 270 - int((1 - ct) * 14)))
     elif scene_type == 'comparison_card':
         params = scene['params']
-        d.text((22, 70), params['title'], font=font(16, True), fill=WHITE)
+        d.text((22, 70), params['title'], font=font(15, 'medium'), fill=WHITE)
         rounded(d, (22, 102, 193, 286), 18, fill=(39, 19, 28, 200), outline=(248, 113, 113, 120), width=1)
         rounded(d, (205, 102, 396, 286), 18, fill=(18, 42, 31, 200), outline=(52, 211, 153, 120), width=1)
-        d.text((36, 116), params['left_title'], font=font(13, True), fill=RED)
-        d.text((220, 116), params['right_title'], font=font(13, True), fill=GREEN)
+        d.text((36, 116), params['left_title'], font=font(13, 'medium'), fill=RED)
+        d.text((220, 116), params['right_title'], font=font(13, 'medium'), fill=GREEN)
         for i, item in enumerate(params['left_items']):
             alpha = ease_out_cubic(min(1.0, max(0.0, (local_t - 0.4 - i * 0.15) / 0.5)))
             if alpha > 0:
-                d.text((34 - int((1 - alpha) * 14), 148 + i * 34), f'✕ {item}', font=font(13), fill=(248, 113, 113, int(220 * alpha)))
+                d.text((34 - int((1 - alpha) * 14), 148 + i * 34), f'✕ {item}', font=font(13, 'regular'), fill=(248, 113, 113, int(220 * alpha)))
         for i, item in enumerate(params['right_items']):
             alpha = ease_out_cubic(min(1.0, max(0.0, (local_t - 0.7 - i * 0.15) / 0.5)))
             if alpha > 0:
-                d.text((220 + int((1 - alpha) * 14), 148 + i * 34), f'✓ {item}', font=font(13), fill=(52, 211, 153, int(220 * alpha)))
+                d.text((220 + int((1 - alpha) * 14), 148 + i * 34), f'✓ {item}', font=font(13, 'regular'), fill=(52, 211, 153, int(220 * alpha)))
     elif scene_type == 'data_card':
         params = scene['params']
-        d.text((22, 70), params['title'], font=font(16, True), fill=WHITE)
+        d.text((22, 70), params['title'], font=font(15, 'medium'), fill=WHITE)
         positions = [(22, 102), (148, 102), (22, 196), (148, 196)]
         for i, item in enumerate(params['items']):
             card_t = ease_out_cubic(min(1.0, max(0.0, (local_t - 0.25 - i * 0.14) / 0.55)))
@@ -361,7 +381,7 @@ def compose_panel(scene, scene_type, local_t, scene_progress):
             base.alpha_composite(metric, (mx, my - int((1 - card_t) * 10)))
     elif scene_type == 'flow_chart':
         params = scene['params']
-        d.text((22, 70), params['title'], font=font(16, True), fill=WHITE)
+        d.text((22, 70), params['title'], font=font(15, 'medium'), fill=WHITE)
         start_y = 112
         for i, step in enumerate(params['steps']):
             st = ease_out_cubic(min(1.0, max(0.0, (local_t - 0.18 - i * 0.18) / 0.55)))
@@ -372,8 +392,8 @@ def compose_panel(scene, scene_type, local_t, scene_progress):
             cx = 38
             cy = y + 12
             d.ellipse((cx - 12, cy - 12, cx + 12, cy + 12), fill=(accent[0], accent[1], accent[2], 220))
-            d.text((cx - 4, cy - 8), str(i + 1), font=font(12, True), fill=(255, 255, 255, int(255 * st)))
-            d.text((64 + int((1 - st) * 18), y), step, font=font(15), fill=(TEXT[0], TEXT[1], TEXT[2], int(255 * st)))
+            d.text((cx - 4, cy - 8), str(i + 1), font=font(12, 'medium'), fill=(255, 255, 255, int(255 * st)))
+            d.text((64 + int((1 - st) * 18), y), step, font=font(14, 'regular'), fill=(TEXT[0], TEXT[1], TEXT[2], int(255 * st)))
             if i < len(params['steps']) - 1:
                 for dy in range(22, 40, 5):
                     d.ellipse((37, y + dy, 39, y + dy + 2), fill=(255, 255, 255, 45))
@@ -383,8 +403,8 @@ def compose_panel(scene, scene_type, local_t, scene_progress):
         center_t = ease_out_cubic(min(1.0, local_t / 0.8))
         r = 34 + int(3 * math.sin(local_t * 2))
         d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=(52, 211, 153, int(220 * center_t)))
-        bb = font(14, True).getbbox(params['center'])
-        d.text((cx - (bb[2] - bb[0]) // 2, cy - 8), params['center'], font=font(14, True), fill=WHITE)
+        bb = font(14, 'medium').getbbox(params['center'])
+        d.text((cx - (bb[2] - bb[0]) // 2, cy - 8), params['center'], font=font(14, 'medium'), fill=WHITE)
         branches = params['branches']
         for i, br in enumerate(branches):
             bt = ease_out_cubic(min(1.0, max(0.0, (local_t - 0.4 - i * 0.12) / 0.6)))
@@ -396,7 +416,7 @@ def compose_panel(scene, scene_type, local_t, scene_progress):
             by = cy + int(math.sin(ang) * dist)
             accent = ACCENTS[i]
             d.line((cx, cy, bx, by), fill=(accent[0], accent[1], accent[2], int(130 * bt)), width=2)
-            ff = font(11, True)
+            ff = font(11, 'medium')
             bbox = ff.getbbox(br)
             tw = bbox[2] - bbox[0]
             th = bbox[3] - bbox[1]
@@ -406,7 +426,7 @@ def compose_panel(scene, scene_type, local_t, scene_progress):
     else:
         params = scene['params']
         rounded(d, (22, 60, PANEL_W - 22, 114), 22, fill=(18, 27, 44, 220), outline=(96, 165, 250, 110), width=1)
-        draw_wrap_center(d, params['headline'], font(22, True), PANEL_W - 80, 74, WHITE, PANEL_W)
+        draw_wrap_center(d, params['headline'], font(21, 'medium'), PANEL_W - 80, 74, WHITE, PANEL_W)
         y = 132
         for i, item in enumerate(params['points']):
             alpha = ease_out_cubic(min(1.0, max(0.0, (local_t - 0.4 - i * 0.14) / 0.5)))
@@ -414,12 +434,12 @@ def compose_panel(scene, scene_type, local_t, scene_progress):
                 continue
             accent = ACCENTS[i]
             d.ellipse((30, y + i * 34 + 6, 38, y + i * 34 + 14), fill=(accent[0], accent[1], accent[2], int(220 * alpha)))
-            d.text((48 + int((1 - alpha) * 12), y + i * 34), item, font=font(14), fill=(TEXT[0], TEXT[1], TEXT[2], int(255 * alpha)))
+            d.text((48 + int((1 - alpha) * 12), y + i * 34), item, font=font(14, 'regular'), fill=(TEXT[0], TEXT[1], TEXT[2], int(255 * alpha)))
         cta_t = ease_out_cubic(min(1.0, max(0.0, (local_t - 1.2) / 0.5)))
         if cta_t > 0:
             rounded(d, (42, 286 - int((1 - cta_t) * 8), PANEL_W - 42, 316 - int((1 - cta_t) * 8)), 16,
                     fill=(52, 211, 153, int(220 * cta_t)))
-            draw_center(d, params['cta'], font(13, True), 293 - int((1 - cta_t) * 8), WHITE, PANEL_W)
+            draw_center(d, params['cta'], font(13, 'medium'), 293 - int((1 - cta_t) * 8), WHITE, PANEL_W)
 
     chips = [('AI安装', BLUE), ('远程交付', PURPLE), ('可变现', GREEN)]
     for i, (txt, accent) in enumerate(chips):
