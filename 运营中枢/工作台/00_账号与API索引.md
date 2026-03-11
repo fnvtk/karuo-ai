@@ -196,11 +196,27 @@
 
 ## 六、飞书 Token（明文）
 
+### 飞书权限获取统一策略（2026-03-11 更新）
+
+所有飞书操作**优先**按以下顺序获取权限：
+
+1. **APP_ID + APP_SECRET → tenant_access_token**（首选）
+   - `POST https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal`
+   - 适用于：文档、多维表格、日历、群聊、消息等 Open API
+   - 不适用于：妙记转写正文（返回 2091005 权限不足）
+2. **Cookie 自动获取链**（妙记专用）
+   - cookie_minutes.txt → 环境变量 → browser_cookie3 → **Cursor 浏览器 SQLite** → 手动兜底
+   - 适用于：`/minutes/api/export`（文字）、`/minutes/api/status`（视频链接）
+3. **user_access_token**（需定期授权刷新，当前已过期）
+
 | 项 | 值 |
 |----|-----|
-| access_token | `u-78RTHgrWN9np1RgBG_cWgo5lh9bk5kUjh20amN6001TM` |
-| refresh_token | `ur-6Wu3DdR8h4TGJErCFjTarE5lhbzk5kirpO0aiN6000SA` |
-| 说明 | 飞书用户，授权时间 2026-01-29；过期后需重新授权或刷新 |
+| **APP_ID** | `cli_a48818290ef8100d` |
+| **APP_SECRET** | `dhjU0qWd5AzicGWTf4cTqhCWJOrnuCk4` |
+| **获取 tenant_token** | `curl -X POST https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal -H 'Content-Type: application/json' -d '{"app_id":"cli_a48818290ef8100d","app_secret":"dhjU0qWd5AzicGWTf4cTqhCWJOrnuCk4"}'` |
+| access_token（已过期） | `u-78RTHgrWN9np1RgBG_cWgo5lh9bk5kUjh20amN6001TM` |
+| refresh_token（已用尽） | `ur-6Wu3DdR8h4TGJErCFjTarE5lhbzk5kirpO0aiN6000SA` |
+| 说明 | 用户 token 授权时间 2026-01-29，已过期；需重新授权。日常操作优先用 tenant_token |
 | **3月日志文档 wiki token** | 飞书「2026年3月 突破执行」文档地址栏 `wiki/` 后的一串；写入方式：`python3 02_卡人（水）/水桥_平台对接/飞书管理/脚本/feishu_token_cli.py set-march-token <token>` 或环境变量 `FEISHU_MARCH_WIKI_TOKEN` |
 
 ### 卡若AI 脚本如何取飞书 Token

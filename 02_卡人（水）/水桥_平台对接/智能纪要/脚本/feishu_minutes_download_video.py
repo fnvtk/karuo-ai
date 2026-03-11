@@ -39,7 +39,7 @@ USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36
 
 
 def _cookie_from_browser() -> str:
-    """从本机浏览器读取飞书 Cookie（与 feishu_minutes_export_github 一致）"""
+    """从本机浏览器读取飞书 Cookie：browser_cookie3 → Cursor 浏览器 SQLite"""
     for domain in ("cunkebao.feishu.cn", "feishu.cn", ".feishu.cn"):
         try:
             import browser_cookie3
@@ -53,6 +53,30 @@ def _cookie_from_browser() -> str:
                     continue
         except ImportError:
             break
+    return _cookie_from_cursor_browser()
+
+
+def _cookie_from_cursor_browser() -> str:
+    """从 Cursor 内置浏览器 SQLite 数据库提取飞书 Cookie（明文，无需解密）"""
+    try:
+        import sqlite3, shutil, tempfile
+        cookie_path = Path.home() / "Library/Application Support/Cursor/Partitions/cursor-browser/Cookies"
+        if not cookie_path.exists():
+            return ""
+        tmp = tempfile.mktemp(suffix=".db")
+        shutil.copy2(cookie_path, tmp)
+        conn = sqlite3.connect(tmp)
+        cur = conn.cursor()
+        cur.execute("SELECT name, value FROM cookies WHERE (host_key LIKE '%feishu%' OR host_key LIKE '%cunkebao%') AND value != ''")
+        rows = cur.fetchall()
+        conn.close()
+        Path(tmp).unlink(missing_ok=True)
+        if rows:
+            s = "; ".join([f"{name}={value}" for name, value in rows])
+            if len(s) > 100:
+                return s
+    except Exception:
+        pass
     return ""
 
 
@@ -165,7 +189,7 @@ def main() -> int:
         return 1
 
     url_or_token = None
-    output_dir = Path.home() / "Downloads"
+    output_dir = Path("/Users/karuo/Movies/soul视频/原视频")
     i = 1
     while i < len(sys.argv):
         if sys.argv[i] in ("-o", "--output") and i + 1 < len(sys.argv):

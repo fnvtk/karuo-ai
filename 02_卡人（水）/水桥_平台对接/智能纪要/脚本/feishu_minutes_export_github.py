@@ -52,6 +52,28 @@ def _cookie_from_browser() -> str:
                     continue
     except ImportError:
         pass
+    # Cursor 内置浏览器 Cookie（明文 SQLite，无需解密）
+    try:
+        import shutil as _shutil
+        import tempfile as _tmpmod
+        import sqlite3 as _sql3
+        cursor_cookie = Path.home() / "Library/Application Support/Cursor/Partitions/cursor-browser/Cookies"
+        if cursor_cookie.exists():
+            _tmp = _tmpmod.mktemp(suffix=".db")
+            _shutil.copy2(cursor_cookie, _tmp)
+            _conn = _sql3.connect(_tmp)
+            _cur = _conn.cursor()
+            _cur.execute("SELECT name, value FROM cookies WHERE (host_key LIKE '%feishu%' OR host_key LIKE '%cunkebao%') AND value != ''")
+            _rows = _cur.fetchall()
+            _conn.close()
+            Path(_tmp).unlink(missing_ok=True)
+            if _rows:
+                _s = "; ".join([f"{n}={v}" for n, v in _rows])
+                if len(_s) > 100:
+                    return _s
+    except Exception:
+        pass
+    # Doubao 浏览器 Cookie（需解密）
     try:
         import subprocess
         import shutil
@@ -227,7 +249,7 @@ def main() -> int:
     parser.add_argument("url_or_token", nargs="?", default="", help="妙记链接或 object_token")
     parser.add_argument("--cookie", "-c", default="", help="完整 Cookie（或从 cookie_minutes.txt 读取）")
     parser.add_argument("--object-token", "-t", default="", help="妙记 object_token")
-    parser.add_argument("--output", "-o", default="/Users/karuo/Documents/聊天记录/soul", help="输出目录")
+    parser.add_argument("--output", "-o", default="/Users/karuo/Documents/聊天记录/soul", help="输出目录（默认: 聊天记录/soul）")
     parser.add_argument("--title", default="", help="可选标题（否则用默认文件名）")
     parser.add_argument("--no-speaker", action="store_true", help="字幕不包含说话人")
     parser.add_argument("--timestamp", action="store_true", help="字幕包含时间戳")
