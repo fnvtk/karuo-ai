@@ -123,6 +123,23 @@ python3 脚本/soul_vertical_crop.py --dir "/path/to/clips_enhanced" --suffix "_
 
 ---
 
+## AI 生成与 LTX 可选集成
+
+在「已有录播 → 转录→高光→切片→成片」主流程外，可选用 **LTX**（GitHub: Lightricks/LTX-Video、LTX-2、LTX-Desktop-MPS）实现：
+
+| 能力 | 用途 |
+|------|------|
+| **Retake**（LTX-2 / LTX Desktop） | 对已有视频**某段时间**重生成，替换口误/补拍，再走成片流程 |
+| **Text/Image/Audio to video** | AI 生成口播替代、片头片尾、插播片段，生成 mp4 后进 `切片/` 或成片流程 |
+| **Video extension** | 片段前后自然延长，衔接切片 |
+| **自动 Prompt 增强** | 高光/标题文案 → 更易被生成模型理解，便于 I2V/Retake |
+
+**详细能力表与 API/本地/Desktop 接入**：见 `参考资料/LTX_能力与集成说明.md`。  
+**Soul 竖屏场景**：见 `Soul竖屏切片_SKILL.md` 第九节「AI 生成与 LTX 可选集成」。  
+**约定**：LTX 生成的片段统一经 soul_enhance（封面+字幕+竖屏）输出，与录播成片一致。
+
+---
+
 ## 📹 通用视频处理
 
 一键处理视频：转录 → 字幕清洗 → 视频增强 → 烧录字幕 → **输出单个成片**
@@ -261,6 +278,7 @@ python3 scripts/burn_subtitles_clean.py -i enhanced.mp4 -s clean.srt -o 成片.m
 | **soul_slice_pipeline.py** | Soul 切片一体化流水线 | ⭐⭐⭐ 最常用 |
 | **soul_enhance.py** | 封面+字幕(简体)+加速+去语气词 | ⭐⭐⭐ |
 | **soul_vertical_crop.py** | Soul 竖屏中段批量裁剪（横版→498×1080 去白边） | ⭐⭐⭐ |
+| **kill_ffmpeg_when_clip_done.py** | 剪辑结束后自动关掉 ffmpeg（监视剪映/PID 或立即杀） | ⭐ 按需 |
 | **scene_detect_to_highlights.py** | 镜头/场景检测 → highlights.json（PySceneDetect，可接 batch_clip） | ⭐⭐ |
 | chapter_themes_to_highlights.py | 按章节 .md 主题提取片段（本地模型→highlights.json） | ⭐⭐⭐ |
 | identify_highlights.py | 高光识别（API 优先→Ollama→规则，默认 gpt-4o） | ⭐⭐ |
@@ -322,6 +340,25 @@ pip3 install --break-system-packages moviepy Pillow opencc-python-reimplemented
 
 # 镜头切分（可选）：PySceneDetect
 pip3 install 'scenedetect[opencv]'
+```
+
+---
+
+## 🔧 剪辑结束后自动关 ffmpeg
+
+脚本 **soul_enhance**、**batch_clip**、**soul_slice_pipeline** 在退出时（含 Ctrl+C）会自动结束本进程启动的 ffmpeg 子进程，避免剪辑结束后仍占用 CPU。
+
+若使用 **剪映/VideoFusion** 等 GUI 剪辑，可先运行监视脚本，剪辑应用退出后自动杀 ffmpeg：
+
+```bash
+# 先启动监视，再打开剪映；关掉剪映后会自动结束 ffmpeg
+python3 脚本/kill_ffmpeg_when_clip_done.py --app VideoFusion
+
+# 或监视指定 PID
+python3 脚本/kill_ffmpeg_when_clip_done.py --pid 12345
+
+# 仅立即杀掉当前所有 ffmpeg
+python3 脚本/kill_ffmpeg_when_clip_done.py --kill-now
 ```
 
 ---

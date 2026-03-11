@@ -7,10 +7,27 @@ Soul 切片一体化流水线
 流程：转录 → 字幕转简体 → 高光识别(AI) → 批量切片 → 增强(封面+字幕+CTA)
 """
 import argparse
+import atexit
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
+
+
+def _kill_child_ffmpeg_on_exit():
+    """脚本退出时（含 Ctrl+C）杀死本进程启动的 ffmpeg 子进程。"""
+    try:
+        subprocess.run(
+            ["pkill", "-P", str(os.getpid()), "ffmpeg"],
+            capture_output=True,
+            timeout=2,
+        )
+    except Exception:
+        pass
+
+
+atexit.register(_kill_child_ffmpeg_on_exit)
 
 # 脚本所在目录
 SCRIPT_DIR = Path(__file__).resolve().parent

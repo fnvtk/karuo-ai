@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
 """
-视频号纯 API 发布 v3 — 零 Playwright，全 httpx
-协议: helper_upload_params → snsuploadbig 分片上传 → post_create
+视频号纯 API 发布 v5 — 零 Playwright，全 httpx
+协议: helper_upload_params → applyuploaddfs → uploadpartdfs → completepartuploaddfs → post_create
 
-需要 channels_login.py 先获取一次 Cookie（只在过期时用）
+关键发现 (2026-03-10):
+- BlockPartLength 必须是累计偏移量 [8MB, fileSize]，不是各分块大小
+- post_create 需要 finger-print-device-id 和 x-wechat-uin 自定义 headers
+- videoClipTaskId/urlCdnTaskId 需复用浏览器会话生成的值
+- post_create URL 需带 /micro/content/ 前缀和 _aid/_rid/_pageUrl 查询参数
 """
 import asyncio
 import hashlib
 import json
 import math
 import random
+import subprocess
 import sys
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 
@@ -30,9 +36,13 @@ UA = (
 )
 
 DESC_SUFFIX = " #小程序 卡若创业派对"
-CHUNK_SIZE = 1 * 1024 * 1024  # 1MB per chunk
-CDN_HOST = "finder.video.qq.com"
-CDN_REPLACE_HOST = f"https://{CDN_HOST}"
+CHUNK_SIZE = 8 * 1024 * 1024
+
+CDN_DOMAINS = [
+    "finderassistancea", "finderassistanceb",
+    "finderassistancec", "finderassistanced",
+]
+CDN_BASE = ".video.qq.com"
 
 TITLES = {
     "AI最大的缺点是上下文太短，这样来解决.mp4":
@@ -62,33 +72,74 @@ TITLES = {
 }
 
 
-def load_cookies() -> str | None:
+# ---------------------------------------------------------------------------
+# Storage helpers
+# ---------------------------------------------------------------------------
+
+def load_state() -> dict | None:
     if not COOKIE_FILE.exists():
-        print("[✗] Cookie 文件不存在，请先运行 channels_login.py", flush=True)
         return None
-    with open(COOKIE_FILE) as f:
-        state = json.load(f)
+    return json.loads(COOKIE_FILE.read_text())
+
+
+def get_cookie_str(state: dict) -> str:
     cookies = {c["name"]: c["value"] for c in state.get("cookies", [])}
-    if "sessionid" not in cookies:
-        print("[✗] Cookie 中无 sessionid", flush=True)
-        return None
     return "; ".join(f"{k}={v}" for k, v in cookies.items())
 
 
-def base_headers(cookie_str: str) -> dict:
+def get_local_storage(state: dict) -> dict:
+    ls = {}
+    for origin in state.get("origins", []):
+        for item in origin.get("localStorage", []):
+            ls[item["name"]] = item.get("value", "")
+    return ls
+
+
+# ---------------------------------------------------------------------------
+# Video helpers
+# ---------------------------------------------------------------------------
+
+def get_video_info(video_path: str) -> dict:
+    proc = subprocess.run(
+        ["ffprobe", "-v", "quiet", "-print_format", "json",
+         "-show_format", "-show_streams", video_path],
+        capture_output=True, text=True, timeout=15,
+    )
+    info = json.loads(proc.stdout)
+    vs = next(s for s in info["streams"] if s["codec_type"] == "video")
     return {
-        "Cookie": cookie_str,
-        "User-Agent": UA,
-        "Content-Type": "application/json",
-        "Referer": "https://channels.weixin.qq.com/platform/post/create",
-        "Origin": "https://channels.weixin.qq.com",
+        "duration": float(info["format"]["duration"]),
+        "width": int(vs["width"]),
+        "height": int(vs["height"]),
     }
 
 
-async def auth_check(client: httpx.AsyncClient) -> dict | None:
-    r = await client.post(
+def extract_thumbnail(video_path: str) -> Path:
+    thumb_path = Path(f"/tmp/ch_thumb_{Path(video_path).stem[:20]}.jpg")
+    subprocess.run(
+        ["ffmpeg", "-y", "-i", video_path, "-ss", "1", "-vframes", "1",
+         "-vf", "scale=720:-2", "-q:v", "5", str(thumb_path)],
+        capture_output=True, timeout=15,
+    )
+    return thumb_path
+
+
+def rewrite_cdn_url(url: str) -> str:
+    if "wxapp.tc.qq.com" in url:
+        return url.replace("http://wxapp.tc.qq.com", "https://finder.video.qq.com")
+    return url
+
+
+# ---------------------------------------------------------------------------
+# API calls
+# ---------------------------------------------------------------------------
+
+async def auth_check(cookie_str: str) -> dict | None:
+    r = httpx.post(
         "https://channels.weixin.qq.com/cgi-bin/mmfinderassistant-bin/auth/auth_data",
         json={},
+        headers={"Cookie": cookie_str, "User-Agent": UA, "Content-Type": "application/json"},
+        timeout=15,
     )
     data = r.json()
     if data.get("errCode") == 0:
@@ -96,136 +147,214 @@ async def auth_check(client: httpx.AsyncClient) -> dict | None:
     return None
 
 
-async def get_upload_params(client: httpx.AsyncClient) -> dict | None:
-    r = await client.post(
+async def get_upload_params(cookie_str: str, finder_id: str) -> dict | None:
+    r = httpx.post(
         "https://channels.weixin.qq.com/cgi-bin/mmfinderassistant-bin/helper/helper_upload_params",
-        json={"scene": 7, "force_login": False},
+        json={
+            "timestamp": str(int(time.time() * 1000)),
+            "_log_finder_id": finder_id,
+            "scene": 7,
+            "reqScene": 7,
+        },
+        headers={"Cookie": cookie_str, "User-Agent": UA, "Content-Type": "application/json"},
+        timeout=15,
     )
     data = r.json()
     if data.get("errCode") == 0:
         return data.get("data", {})
-    print(f"  [✗] upload_params: {data}", flush=True)
+    print(f"  [!] upload_params: {data}", flush=True)
     return None
 
 
-async def cdn_upload_video(cookie_str: str, up: dict, video_path: str) -> dict | None:
-    """分片上传视频到 CDN，返回 {fileurl, thumburl, ...}"""
-    fpath = Path(video_path)
-    fsize = fpath.stat().st_size
-    fname = fpath.name
-    file_uuid = str(uuid.uuid4()).replace("-", "")
+async def dfs_upload_file(
+    auth_key: str, file_data: bytes, up_params: dict,
+    file_type: int, file_key: str, label: str = "",
+) -> str | None:
+    file_size = len(file_data)
+    num_chunks = max(1, math.ceil(file_size / CHUNK_SIZE))
 
-    cdn_url = f"https://{CDN_HOST}/snsuploadbig"
-    total_chunks = math.ceil(fsize / CHUNK_SIZE)
+    cumulative = [min((i + 1) * CHUNK_SIZE, file_size) for i in range(num_chunks)]
+    cumulative[-1] = file_size
 
-    print(f"  [CDN] 上传 {fsize/1024/1024:.1f}MB，{total_chunks} 个分片", flush=True)
+    x_args = (
+        f"apptype={up_params['appType']}"
+        f"&filetype={file_type}"
+        f"&weixinnum={up_params['uin']}"
+        f"&filekey={quote(file_key)}"
+        f"&filesize={file_size}"
+        f"&taskid={uuid.uuid4()}"
+        f"&scene={up_params.get('scene', 2)}"
+    )
+    base_h = {
+        "Authorization": auth_key,
+        "User-Agent": UA,
+        "Referer": "https://channels.weixin.qq.com/",
+        "Accept": "application/json, text/plain, */*",
+        "Content-MD5": "null",
+        "X-Arguments": x_args,
+    }
+    base_url = f"https://{CDN_DOMAINS[0]}{CDN_BASE}"
 
-    with open(fpath, "rb") as f:
-        video_data = f.read()
+    async with httpx.AsyncClient(timeout=300) as c:
+        ar = await c.put(
+            f"{base_url}/applyuploaddfs",
+            json={"BlockSum": num_chunks, "BlockPartLength": cumulative},
+            headers={**base_h, "Content-Type": "application/json"},
+        )
+        aj = ar.json()
+        if "UploadID" not in aj:
+            print(f"  [!] {label} applyuploaddfs: {json.dumps(aj)[:100]}", flush=True)
+            return None
+        uid = aj["UploadID"]
 
-    last_response = None
-    async with httpx.AsyncClient(timeout=60) as cdn_client:
-        for chunk_idx in range(total_chunks):
-            start = chunk_idx * CHUNK_SIZE
-            end = min(start + CHUNK_SIZE, fsize)
-            chunk = video_data[start:end]
-            chunk_md5 = hashlib.md5(chunk).hexdigest()
+        etags = []
+        prev = 0
+        for i in range(num_chunks):
+            chunk = file_data[prev:cumulative[i]]
+            prev = cumulative[i]
+            host = CDN_DOMAINS[(i + 1) % len(CDN_DOMAINS)]
 
-            form_data = {
-                "ver": "1",
-                "seq": str(random.random() + time.time()),
-                "weixinnum": str(up["uin"]),
-                "apptype": str(up["appType"]),
-                "filetype": str(up["videoFileType"]),
-                "authkey": up["authKey"],
-                "hasthumb": "0",
-                "filekey": fname,
-                "totalsize": str(fsize),
-                "fileuuid": file_uuid,
-                "rangestart": str(start),
-                "rangeend": str(end),
-                "blockmd5": chunk_md5,
-                "forcetranscode": "0",
-            }
-
-            files = {"filedata": (fname, chunk, "application/octet-stream")}
-
-            retry = 0
-            while retry < 3:
+            for retry in range(3):
                 try:
-                    r = await cdn_client.post(
-                        cdn_url,
-                        data=form_data,
-                        files=files,
-                        headers={
-                            "User-Agent": UA,
-                            "Cookie": cookie_str,
-                        },
+                    ur = await c.put(
+                        f"https://{host}{CDN_BASE}/uploadpartdfs?PartNumber={i+1}&UploadID={uid}",
+                        content=chunk,
+                        headers={**base_h, "Content-Type": "application/octet-stream"},
                     )
-                    resp = r.json()
-                    last_response = resp
-
-                    if resp.get("retcode") and resp["retcode"] != 0:
-                        print(f"  [CDN] 分片 {chunk_idx+1} 失败: retcode={resp['retcode']}", flush=True)
-                        retry += 1
-                        await asyncio.sleep(2)
-                        continue
-
-                    if chunk_idx % 5 == 0 or chunk_idx == total_chunks - 1:
-                        finish = "✓" if resp.get("uploadfinish") else f"{chunk_idx+1}/{total_chunks}"
-                        print(f"  [CDN] {finish}", flush=True)
-
-                    if resp.get("uploadfinish"):
-                        fileurl = resp.get("fileurl", "")
-                        if "wxapp.tc.qq.com" in fileurl:
-                            fileurl = fileurl.replace("http://wxapp.tc.qq.com", CDN_REPLACE_HOST)
-                        resp["httpsUrl"] = fileurl
-                        return resp
-
+                    rj = ur.json()
+                    if rj.get("X-Errno", 0) != 0:
+                        print(f"  [!] {label} part {i+1}: {rj}", flush=True)
+                        return None
+                    etags.append({
+                        "PartNumber": i + 1,
+                        "ETag": rj.get("ETag", f'"{hashlib.sha1(chunk).hexdigest()}"'),
+                    })
                     break
                 except Exception as e:
-                    retry += 1
-                    print(f"  [CDN] 分片 {chunk_idx+1} 异常: {e}", flush=True)
-                    if retry >= 3:
+                    if retry == 2:
+                        print(f"  [!] {label} part {i+1} failed: {e}", flush=True)
                         return None
                     await asyncio.sleep(2)
 
-    return last_response
+        cr = await c.post(
+            f"{base_url}/completepartuploaddfs?UploadID={uid}",
+            json={"TransFlag": "0_0", "PartInfo": etags},
+            headers={**base_h, "Content-Type": "application/json"},
+        )
+        cj = cr.json()
+        if "DownloadURL" not in cj:
+            print(f"  [!] {label} complete: {json.dumps(cj)[:100]}", flush=True)
+            return None
+        return rewrite_cdn_url(cj["DownloadURL"])
 
 
-async def create_post(client: httpx.AsyncClient, desc: str, cdn_resp: dict, video_path: str) -> dict:
-    """调用 post_create 发表"""
-    fileurl = cdn_resp.get("httpsUrl") or cdn_resp.get("fileurl", "")
-    thumburl = cdn_resp.get("thumburl", "")
-
-    fpath = Path(video_path)
-
-    media_item = {
-        "mediaType": 4,
-        "url": fileurl,
-        "thumbUrl": thumburl if thumburl else "",
-        "fileSize": str(fpath.stat().st_size),
-    }
-
+async def create_post(
+    cookie_str: str,
+    desc: str,
+    video_url: str,
+    thumb_url: str,
+    video_info: dict,
+    file_size: int,
+    finder_id: str,
+    wechat_uin: str,
+    finger_print: str,
+    aid: str,
+    task_id: str,
+    upload_cost: int,
+) -> dict:
     payload = {
-        "objectDesc": {
-            "description": desc,
-            "mediaList": [media_item],
+        "objectType": 0,
+        "longitude": 0, "latitude": 0, "feedLongitude": 0, "feedLatitude": 0,
+        "originalFlag": 0,
+        "topics": [],
+        "isFullPost": 1,
+        "handleFlag": 2,
+        "videoClipTaskId": task_id,
+        "traceInfo": {
+            "traceKey": f"FPT_{int(time.time())}_{random.randint(10**8, 10**10 - 1)}",
+            "uploadCdnStart": int(time.time()) - max(1, upload_cost // 1000),
+            "uploadCdnEnd": int(time.time()),
         },
-        "postType": 9,
+        "objectDesc": {
+            "mpTitle": "",
+            "description": desc,
+            "extReading": {},
+            "mediaType": 4,
+            "location": {"latitude": 0, "longitude": 0, "city": "", "poiClassifyId": ""},
+            "topic": {"finderTopicInfo": ""},
+            "event": {},
+            "mentionedUser": [],
+            "media": [{
+                "url": video_url,
+                "fileSize": file_size,
+                "thumbUrl": thumb_url,
+                "fullThumbUrl": thumb_url,
+                "mediaType": 4,
+                "videoPlayLen": video_info["duration"],
+                "width": video_info["width"],
+                "height": video_info["height"],
+                "md5sum": str(uuid.uuid4()),
+                "coverUrl": thumb_url,
+                "fullCoverUrl": thumb_url,
+                "urlCdnTaskId": task_id,
+            }],
+            "member": {},
+        },
+        "report": {
+            "clipKey": task_id,
+            "draftId": task_id,
+            "height": video_info["height"],
+            "width": video_info["width"],
+            "duration": video_info["duration"],
+            "fileSize": file_size,
+            "uploadCost": upload_cost,
+        },
+        "postFlag": 0,
+        "mode": 1,
+        "clientid": str(uuid.uuid4()),
+        "timestamp": str(int(time.time() * 1000)),
+        "_log_finder_uin": "",
+        "_log_finder_id": finder_id,
+        "rawKeyBuff": None,
+        "pluginSessionId": None,
         "scene": 7,
+        "reqScene": 7,
     }
 
-    r = await client.post(
-        "https://channels.weixin.qq.com/cgi-bin/mmfinderassistant-bin/post/post_create",
-        json=payload,
+    headers = {
+        "Cookie": cookie_str,
+        "User-Agent": UA,
+        "Content-Type": "application/json",
+        "Referer": "https://channels.weixin.qq.com/micro/content/post/create",
+        "Origin": "https://channels.weixin.qq.com",
+        "Accept-Language": "zh-CN",
+        "finger-print-device-id": finger_print,
+        "x-wechat-uin": wechat_uin,
+    }
+
+    rid = f"{uuid.uuid4().hex[:8]}-{uuid.uuid4().hex[:8]}"
+    url = (
+        f"https://channels.weixin.qq.com/micro/content/cgi-bin/"
+        f"mmfinderassistant-bin/post/post_create"
+        f"?_aid={aid}&_rid={rid}"
+        f"&_pageUrl=https%3A%2F%2Fchannels.weixin.qq.com%2Fmicro%2Fcontent%2Fpost%2Fcreate"
     )
+
+    r = httpx.post(url, json=payload, headers=headers, timeout=30)
     return r.json()
 
 
+# ---------------------------------------------------------------------------
+# Publish one video
+# ---------------------------------------------------------------------------
+
 async def publish_one(
-    client: httpx.AsyncClient,
     cookie_str: str,
+    finder_id: str,
+    wechat_uin: str,
+    finger_print: str,
+    aid: str,
+    task_id: str,
     up_params: dict,
     video_path: str,
     title: str,
@@ -236,7 +365,7 @@ async def publish_one(
     fsize = Path(video_path).stat().st_size
     t0 = time.time()
 
-    print(f"\n[{idx}/{total}] {fname} ({fsize/1024/1024:.1f}MB)", flush=True)
+    print(f"\n[{idx}/{total}] {fname} ({fsize / 1024 / 1024:.1f}MB)", flush=True)
     print(f"  标题: {title[:60]}", flush=True)
 
     if is_published("视频号", video_path):
@@ -246,103 +375,233 @@ async def publish_one(
             success=True, status="skipped", message="去重跳过",
         )
 
-    # Step 1: CDN 上传
-    cdn_resp = await cdn_upload_video(cookie_str, up_params, video_path)
-    if not cdn_resp or not cdn_resp.get("uploadfinish"):
+    try:
+        vinfo = get_video_info(video_path)
+        thumb_path = extract_thumbnail(video_path)
+
+        print("  上传缩略图...", flush=True)
+        thumb_url = await dfs_upload_file(
+            up_params["authKey"], thumb_path.read_bytes(), up_params,
+            up_params["pictureFileType"],
+            f"thumb_{uuid.uuid4().hex[:8]}.jpg", "thumb",
+        )
+        if not thumb_url:
+            return PublishResult(
+                platform="视频号", video_path=video_path, title=title,
+                success=False, status="error", message="缩略图上传失败",
+                elapsed_sec=time.time() - t0,
+            )
+
+        print(f"  上传视频 ({fsize / 1024 / 1024:.1f}MB)...", flush=True)
+        v_start = time.time()
+        video_url = await dfs_upload_file(
+            up_params["authKey"], Path(video_path).read_bytes(), up_params,
+            up_params["videoFileType"],
+            f"video_{uuid.uuid4().hex[:8]}.mp4", "video",
+        )
+        upload_cost = int((time.time() - v_start) * 1000)
+        if not video_url:
+            return PublishResult(
+                platform="视频号", video_path=video_path, title=title,
+                success=False, status="error", message="视频上传失败",
+                elapsed_sec=time.time() - t0,
+            )
+
+        desc_full = title + DESC_SUFFIX
+        print(f"  发表...", flush=True)
+        post_resp = await create_post(
+            cookie_str, desc_full, video_url, thumb_url, vinfo, fsize,
+            finder_id, wechat_uin, finger_print, aid, task_id, upload_cost,
+        )
+        elapsed = time.time() - t0
+
+        err = post_resp.get("errCode", -1)
+        if err == 0:
+            result = PublishResult(
+                platform="视频号", video_path=video_path, title=title,
+                success=True, status="published",
+                message=f"纯 API 发布成功 ({elapsed:.1f}s)",
+                elapsed_sec=elapsed,
+            )
+        else:
+            result = PublishResult(
+                platform="视频号", video_path=video_path, title=title,
+                success=False, status="error",
+                message=f"post_create errCode={err} {post_resp.get('errMsg', '')}",
+                elapsed_sec=elapsed,
+            )
+
+        print(f"  {result.log_line()}", flush=True)
+        return result
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return PublishResult(
             platform="视频号", video_path=video_path, title=title,
             success=False, status="error",
-            message=f"CDN 上传失败: {json.dumps(cdn_resp or {}, ensure_ascii=False)[:100]}",
+            message=f"异常: {str(e)[:80]}",
             elapsed_sec=time.time() - t0,
         )
 
-    fileurl = cdn_resp.get("httpsUrl") or cdn_resp.get("fileurl", "")
-    print(f"  [✓] CDN 上传完成: {fileurl[:80]}...", flush=True)
 
-    # Step 2: 发表
-    desc_full = title + DESC_SUFFIX
-    post_resp = await create_post(client, desc_full, cdn_resp, video_path)
-    elapsed = time.time() - t0
+# ---------------------------------------------------------------------------
+# distribute_all.py 兼容层
+# ---------------------------------------------------------------------------
 
-    err = post_resp.get("errCode", -1)
-    if err == 0:
-        result = PublishResult(
-            platform="视频号", video_path=video_path, title=title,
-            success=True, status="published",
-            message=f"纯 API 发布成功 ({elapsed:.1f}s)",
-            elapsed_sec=elapsed,
-        )
-    else:
-        msg = post_resp.get("errMsg", "")
-        result = PublishResult(
-            platform="视频号", video_path=video_path, title=title,
-            success=False, status="error",
-            message=f"post_create 失败: errCode={err} {msg} | resp={json.dumps(post_resp, ensure_ascii=False)[:150]}",
-            elapsed_sec=elapsed,
-        )
+_ctx: dict = {}
 
-    print(f"  {result.log_line()}", flush=True)
+
+async def _ensure_ctx() -> dict:
+    """延迟初始化认证上下文（首次调用或 Cookie 失效时）"""
+    if _ctx.get("ready"):
+        return _ctx
+
+    state = load_state()
+    if not state:
+        raise RuntimeError("Cookie 文件不存在，请先运行 channels_login.py")
+
+    cookie_str = get_cookie_str(state)
+    ls = get_local_storage(state)
+    finger_print = ls.get("_finger_print_device_id", "")
+    aid = ls.get("__ml::aid", "").strip('"')
+    if not finger_print or not aid:
+        raise RuntimeError("localStorage 缺少 finger_print_device_id 或 __ml::aid")
+
+    auth = await auth_check(cookie_str)
+    if not auth:
+        raise RuntimeError("Cookie 无效，请重新运行 channels_login.py")
+
+    fu = auth.get("finderUser", {})
+    finder_id = fu["finderUsername"]
+
+    up_params = await get_upload_params(cookie_str, finder_id)
+    if not up_params:
+        raise RuntimeError("获取 upload_params 失败")
+
+    task_id_file = SCRIPT_DIR / "channels_task_id.txt"
+    task_id = task_id_file.read_text().strip() if task_id_file.exists() else str(random.randint(10**19, 2**63))
+    if not task_id_file.exists():
+        task_id_file.write_text(task_id)
+
+    _ctx.update({
+        "ready": True,
+        "cookie_str": cookie_str,
+        "finder_id": finder_id,
+        "wechat_uin": str(up_params["uin"]),
+        "finger_print": finger_print,
+        "aid": aid,
+        "task_id": task_id,
+        "up_params": up_params,
+    })
+    return _ctx
+
+
+async def publish_one_compat(
+    video_path: str, title: str, idx: int, total: int,
+    scheduled_time=None,
+) -> PublishResult:
+    """distribute_all.py 调用的简化接口"""
+    ctx = await _ensure_ctx()
+    result = await publish_one(
+        ctx["cookie_str"], ctx["finder_id"], ctx["wechat_uin"],
+        ctx["finger_print"], ctx["aid"], ctx["task_id"],
+        ctx["up_params"], video_path, title, idx, total,
+    )
+    if result.success:
+        new_p = await get_upload_params(ctx["cookie_str"], ctx["finder_id"])
+        if new_p:
+            ctx["up_params"] = new_p
     return result
 
 
-async def main():
-    print("=== 视频号纯 API 发布 ===\n", flush=True)
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
 
-    cookie_str = load_cookies()
-    if not cookie_str:
+async def main():
+    print("=== 视频号纯 API 发布 (v5 — DFS + post_create) ===\n", flush=True)
+
+    state = load_state()
+    if not state:
+        print("[!] Cookie 文件不存在，请先运行 channels_login.py", flush=True)
         return 1
+
+    cookie_str = get_cookie_str(state)
+    ls = get_local_storage(state)
+
+    finger_print = ls.get("_finger_print_device_id", "")
+    aid = ls.get("__ml::aid", "").strip('"')
+    if not finger_print or not aid:
+        print("[!] localStorage 缺少 finger_print_device_id 或 __ml::aid", flush=True)
+        print("    请先运行 channels_login.py 或用浏览器访问视频号助手", flush=True)
+        return 1
+
+    auth = await auth_check(cookie_str)
+    if not auth:
+        print("[!] Cookie 无效，请重新运行 channels_login.py", flush=True)
+        return 1
+
+    fu = auth.get("finderUser", {})
+    finder_id = fu["finderUsername"]
+    print(f"  账号: {fu.get('nickname', '?')} | 粉丝: {fu.get('fansCount', 0)} | 作品: {fu.get('feedsCount', 0)}", flush=True)
+    print(f"  finger_print: {finger_print[:16]}...", flush=True)
+    print(f"  aid: {aid[:16]}...", flush=True)
+
+    up_params = await get_upload_params(cookie_str, finder_id)
+    if not up_params:
+        return 1
+    wechat_uin = str(up_params["uin"])
+    print(f"  wechat_uin: {wechat_uin}", flush=True)
+
+    task_id_file = SCRIPT_DIR / "channels_task_id.txt"
+    if task_id_file.exists():
+        task_id = task_id_file.read_text().strip()
+    else:
+        task_id = str(random.randint(10**19, 2**63))
+        task_id_file.write_text(task_id)
+        print(f"  [!] 生成新 videoClipTaskId: {task_id}", flush=True)
+        print(f"      如果发布失败，请用 Playwright 访问一次发布页获取有效 ID", flush=True)
+    print(f"  taskId: {task_id}\n", flush=True)
 
     videos = sorted(VIDEO_DIR.glob("*.mp4"))
     if not videos:
-        print("[✗] 未找到视频", flush=True)
+        print("[!] 未找到视频", flush=True)
         return 1
 
     need_pub = [v for v in videos if not is_published("视频号", str(v))]
     print(f"共 {len(videos)} 条视频，{len(need_pub)} 条待发布\n", flush=True)
     if not need_pub:
-        print("[✓] 全部已发布", flush=True)
+        print("[OK] 全部已发布", flush=True)
         return 0
 
-    headers = base_headers(cookie_str)
+    results = []
+    consecutive_fail = 0
 
-    async with httpx.AsyncClient(headers=headers, timeout=30) as client:
-        # 1. 验证身份
-        auth = await auth_check(client)
-        if not auth:
-            print("[✗] Cookie 无效，请重新运行 channels_login.py", flush=True)
-            return 1
-        fu = auth.get("finderUser", {})
-        print(f"  账号: {fu.get('nickname', '?')} | 粉丝: {fu.get('fansCount', 0)} | 作品: {fu.get('feedsCount', 0)}", flush=True)
+    for i, vp in enumerate(need_pub):
+        t = TITLES.get(vp.name, f"{vp.stem} #Soul派对 #创业日记")
+        r = await publish_one(
+            cookie_str, finder_id, wechat_uin, finger_print, aid, task_id,
+            up_params, str(vp), t, i + 1, len(need_pub),
+        )
+        results.append(r)
+        if r.status != "skipped":
+            save_results([r])
 
-        # 2. 获取上传参数
-        up_params = await get_upload_params(client)
-        if not up_params:
-            return 1
-        print(f"  上传参数: authKey={up_params['authKey'][:20]}... uin={up_params['uin']} appType={up_params['appType']}\n", flush=True)
+        if r.success:
+            consecutive_fail = 0
+            if i < len(need_pub) - 1:
+                new_p = await get_upload_params(cookie_str, finder_id)
+                if new_p:
+                    up_params = new_p
+        else:
+            consecutive_fail += 1
+            if consecutive_fail >= 3:
+                print("\n[!] 连续 3 次失败，终止", flush=True)
+                break
 
-        # 3. 逐条发布
-        results = []
-        consecutive_fail = 0
-
-        for i, vp in enumerate(videos):
-            t = TITLES.get(vp.name, f"{vp.stem} #Soul派对 #创业日记")
-            r = await publish_one(client, cookie_str, up_params, str(vp), t, i + 1, len(videos))
-            results.append(r)
-            if r.status != "skipped":
-                save_results([r])
-
-            if r.status == "skipped":
-                consecutive_fail = 0
-            elif r.success:
-                consecutive_fail = 0
-            else:
-                consecutive_fail += 1
-                if consecutive_fail >= 2:
-                    print("\n[!] 连续 2 次失败，终止", flush=True)
-                    break
-
-            if i < len(videos) - 1 and r.status != "skipped":
-                await asyncio.sleep(8)
+        if i < len(need_pub) - 1 and r.status != "skipped":
+            await asyncio.sleep(8)
 
     actual = [r for r in results if r.status != "skipped"]
     print_summary(actual)

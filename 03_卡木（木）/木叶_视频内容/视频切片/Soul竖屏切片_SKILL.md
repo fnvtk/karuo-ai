@@ -1,7 +1,7 @@
 ---
 name: Soul竖屏切片
-description: Soul 派对视频→竖屏成片（498×1080），剪辑→成片两文件夹，MLX 转录→高光识别→batch_clip→soul_enhance（封面+字幕+去语助词）。支持基因胶囊打包。
-triggers: Soul竖屏切片、视频切片、热点切片、竖屏成片、派对切片
+description: Soul 派对视频→竖屏成片（498×1080），剪辑→成片两文件夹，MLX 转录→高光识别→batch_clip→soul_enhance（封面+字幕+去语助词）。可选 LTX（AI 生成内容、Retake 重剪）衔接成片流程。支持基因胶囊打包。
+triggers: Soul竖屏切片、视频切片、热点切片、竖屏成片、派对切片、LTX、AI生成视频、Retake重剪
 owner: 木叶
 group: 木
 version: "1.0"
@@ -131,7 +131,23 @@ xxx_output/
 
 ---
 
-## 九、基因胶囊
+## 九、AI 生成与 LTX 可选集成
+
+在「已有录播 → 转录→高光→切片→成片」之外，可选用 **LTX** 系能力，实现 **AI 生成视频内容** 与 **在已有视频上轻松重剪**，成片仍走本 Skill 的封面+字幕+竖屏规范。
+
+| 场景 | 推荐能力 | 说明 |
+|------|----------|------|
+| **已有视频某段要重剪/替换** | LTX-2 **RetakePipeline**、LTX Desktop「Video edit (Retake)」 | 只重生成指定时间段，替换原片段后再走 soul_enhance |
+| **用文案/脚本生成新片段** | LTX **Text-to-video**、LTX-Studio / Fal / Replicate API | 生成 mp4 后放入 `切片/` 或直接进成片流程 |
+| **封面/金句图动起来** | LTX **Image-to-video** | 3～10 秒动效，再与切片合成 |
+| **音视频同步生成** | LTX-2 **A2V**、音视频同步生成 | 配音/旁白 → 对应画面，补全缺失画面 |
+
+**能力与集成细节**：见 `参考资料/LTX_能力与集成说明.md`（含 Retake、Video extension、多关键帧、Prompt 增强、API/本地/Desktop 接入方式）。  
+**流程约定**：凡 LTX 生成的片段，统一按成片规范（竖屏 498×1080、封面、字幕）经 soul_enhance 输出，与录播切片一致。
+
+---
+
+## 十、基因胶囊
 
 本 Skill 可打包为基因胶囊，供其他 Agent/项目继承：
 

@@ -20,6 +20,17 @@
 
 ## 二、GitHub 开源方案（可借鉴）
 
+### 0. LTX 系（AI 生成视频 + 剪辑/Retake，已吸收进 Skill）
+
+| 项目 | 说明 | 与切片 Skill 的衔接 |
+|------|------|---------------------|
+| **[Lightricks/LTX-Video](https://github.com/Lightricks/LTX-Video)** | DiT 视频生成：文/图/视频→视频、关键帧、前后扩展、ComfyUI/Diffusers | 生成片段后可当「原视频」走转录→高光→切片→成片；或做 Video-to-video 风格化 |
+| **[Lightricks/LTX-2](https://github.com/Lightricks/LTX-2)** | 音视频同步生成、**RetakePipeline**（重生成某段时间）、A2V、多关键帧、LoRA | **Retake** 用于已有录播「改一段」；生成内容进现有成片流程 |
+| **[audiohacking/LTX-Desktop-MPS](https://github.com/audiohacking/LTX-Desktop-MPS)** | 桌面应用：Text/Image/Audio to video、**Video edit (Retake)**，Apple MPS | 桌面重剪/生成后，导出 mp4 进 `切片/` 或 `成片/`，用 soul_enhance 统一封面+字幕+竖屏 |
+
+**详细能力与集成方式**：见 [LTX_能力与集成说明.md](./LTX_能力与集成说明.md)。  
+**在线试玩**：https://app.ltx.studio
+
 ### 1. 简洁可集成
 
 | 项目 | 语言 | 说明 | 集成难度 |

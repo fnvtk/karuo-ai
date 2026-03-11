@@ -30,10 +30,10 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
 BASE_DIR = SCRIPT_DIR.parent.parent
-DEFAULT_VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul 派对 119场 20260309_output/成片")
+DEFAULT_VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul 派对 120场 20260320_output/成片")
 
 sys.path.insert(0, str(SCRIPT_DIR))
-from cookie_manager import CookieManager, check_all_cookies
+from cookie_manager import check_cookie_valid, load_cookies, SUPPORTED_PLATFORMS
 from publish_result import (PublishResult, print_summary, save_results,
                             load_published_set, load_failed_tasks)
 from title_generator import generate_title
@@ -53,10 +53,10 @@ PLATFORM_CONFIG = {
         "module": "bilibili_publish",
     },
     "视频号": {
-        "script": BASE_DIR / "视频号发布" / "脚本" / "channels_publish.py",
+        "script": BASE_DIR / "视频号发布" / "脚本" / "channels_api_publish.py",
         "cookie": BASE_DIR / "视频号发布" / "脚本" / "channels_storage_state.json",
         "domain": "weixin.qq.com",
-        "module": "channels_publish",
+        "module": "channels_api_publish",
     },
     "小红书": {
         "script": BASE_DIR / "小红书发布" / "脚本" / "xiaohongshu_publish.py",
@@ -80,24 +80,20 @@ def check_cookies_with_alert() -> tuple[list[str], list[str]]:
     print("=" * 60)
     print("  多平台 Cookie 状态")
     print("=" * 60)
-    results = check_all_cookies(BASE_DIR)
     available = []
     alerts = []
-    for platform, info in results.items():
-        icons = {"ok": "✓", "warning": "⚠", "expiring_soon": "⚠",
-                 "expired": "✗", "missing": "○", "error": "✗"}
-        icon = icons.get(info["status"], "?")
-        print(f"  [{icon}] {platform}: {info['message']}")
-        if info["status"] in ("ok", "warning"):
+    for platform in PLATFORM_CONFIG:
+        is_valid, msg = check_cookie_valid(platform)
+        icon = "✓" if is_valid else "✗"
+        print(f"  [{icon}] {platform}: {msg}")
+        if is_valid:
             available.append(platform)
-        if info["status"] == "expiring_soon":
-            alerts.append(f"⚠ {platform} Cookie 即将过期: {info['message']}")
-        elif info["status"] == "expired":
-            alerts.append(f"✗ {platform} Cookie 已过期，需重新登录")
-        elif info["status"] == "warning":
-            hrs = info.get("remaining_hours", -1)
-            if 0 < hrs < 12:
-                alerts.append(f"⚠ {platform} Cookie 剩余 {hrs}h，建议刷新")
+        else:
+            cookies = load_cookies(platform)
+            if cookies is None:
+                alerts.append(f"○ {platform} 未登录")
+            else:
+                alerts.append(f"✗ {platform} Cookie 已过期: {msg}")
     print(f"\n  可用平台: {', '.join(available) if available else '无'}")
     if alerts:
         print(f"\n  ⚠ Cookie 预警:")
@@ -150,23 +146,12 @@ async def distribute_to_platform(
     print(f"  [{platform}] 开始分发")
     print(f"{'#'*60}")
 
-    cookie_path = config["cookie"]
-    if not cookie_path.exists():
-        print(f"  [{platform}] ✗ 未登录，跳过")
+    is_valid, msg = check_cookie_valid(platform)
+    if not is_valid:
+        print(f"  [{platform}] ✗ {msg}，跳过")
         return [PublishResult(platform=platform, video_path=str(v), title="",
                              success=False, status="error",
-                             message="未登录", error_code="NOT_LOGGED_IN") for v in videos]
-
-    try:
-        cm = CookieManager(cookie_path, config["domain"])
-        if not cm.is_valid():
-            print(f"  [{platform}] ✗ Cookie 已过期，跳过")
-            return [PublishResult(platform=platform, video_path=str(v), title="",
-                                 success=False, status="error",
-                                 message="Cookie过期", error_code="COOKIE_EXPIRED") for v in videos]
-    except Exception as e:
-        return [PublishResult(platform=platform, video_path=str(v), title="",
-                             success=False, status="error", message=str(e)) for v in videos]
+                             message=msg, error_code="COOKIE_INVALID") for v in videos]
 
     module = load_platform_module(platform, config)
     if not module:
@@ -203,11 +188,12 @@ async def distribute_to_platform(
             publish_schedule = generate_schedule(len(to_publish))
 
     total = len(to_publish)
+    pub_fn = getattr(module, "publish_one_compat", None) or module.publish_one
     for i, vp in enumerate(to_publish):
         title = generate_title(vp.name, titles_dict)
         stime = publish_schedule[i] if publish_schedule else None
         try:
-            r = await module.publish_one(str(vp), title, i + 1, total, scheduled_time=stime)
+            r = await pub_fn(str(vp), title, i + 1, total, scheduled_time=stime)
             if isinstance(r, PublishResult):
                 results.append(r)
             else:
@@ -294,8 +280,9 @@ async def retry_failed() -> list[PublishResult]:
             continue
 
         print(f"\n  [{platform}] 重试: {Path(video_path).name}")
+        pub_fn = getattr(module, "publish_one_compat", None) or module.publish_one
         try:
-            r = await module.publish_one(video_path, title, 1, 1)
+            r = await pub_fn(video_path, title, 1, 1)
             if isinstance(r, PublishResult):
                 results.append(r)
             else:

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""视频号登录 v4 — 扫码后提取 token + Cookie，供纯 API 发布使用"""
+"""视频号登录 v6 — 等待完整登录流程完成后提取 Cookie + rawKeyBuff"""
 import asyncio
 import json
 import sys
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
 
 from playwright.async_api import async_playwright
 
@@ -19,9 +18,30 @@ UA = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 
+REQUIRED_LS_KEYS = [
+    "finder_raw", "finder_username", "finder_uin",
+    "finder_login_token", "finder_external_key",
+]
+
+
+async def extract_ls(page, keys):
+    try:
+        return await page.evaluate("""(keys) => {
+            const out = {};
+            for (const k of keys) {
+                const v = localStorage.getItem(k);
+                if (v) out[k] = v;
+            }
+            return out;
+        }""", keys)
+    except Exception as e:
+        print(f"  [!] localStorage 提取异常: {e}", flush=True)
+        return {}
+
 
 async def main():
     print("即将弹出浏览器，请用微信扫码登录视频号助手。", flush=True)
+    print("登录后请等待页面跳转到「内容管理」页面，不要手动关闭浏览器。\n", flush=True)
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=False)
@@ -39,111 +59,103 @@ async def main():
         print(f"[QR] 二维码截图已保存: {QR_SCREENSHOT}", flush=True)
         print("请用微信扫描浏览器中的二维码...\n", flush=True)
 
+        # 只等待 URL 跳转到平台页面（不提前因 cookie 退出循环）
         logged_in = False
-        token = None
-        for i in range(60):
-            await asyncio.sleep(5)
-            url = page.url
+        for i in range(120):
+            await asyncio.sleep(3)
+            try:
+                url = page.url
+            except Exception:
+                break
+
             if "platform" in url and "login" not in url:
                 logged_in = True
-                parsed = parse_qs(urlparse(url).query)
-                token = parsed.get("token", [None])[0]
-                print(f"[✓] 登录成功，URL: {url[:100]}", flush=True)
-                if token:
-                    print(f"[✓] 提取到 token: {token[:20]}...", flush=True)
+                print(f"[✓] 登录成功，已跳转到: {url[:100]}", flush=True)
                 break
-            cookies = await context.cookies()
-            has_session = any(c["name"] == "sessionid" for c in cookies)
-            if has_session:
-                logged_in = True
-                print("[✓] 检测到 sessionid Cookie！", flush=True)
-                break
-            if i % 6 == 0:
-                print(f"  等待扫码中... ({i * 5}s)", flush=True)
+
+            if i % 10 == 0:
+                print(f"  等待扫码并跳转中... ({i * 3}s)", flush=True)
 
         if not logged_in:
-            print("[✗] 5 分钟超时。", flush=True)
+            print("[✗] 6 分钟超时。", flush=True)
             await browser.close()
             return 1
 
-        # 确保跳转完成并提取 token
-        await asyncio.sleep(5)
-        if not token:
+        # 等待页面 JS 执行完成（微前端加载、localStorage 写入）
+        print("[i] 等待平台 JS 加载完成...", flush=True)
+        await asyncio.sleep(10)
+
+        # 提取 localStorage
+        ls_vals = {}
+        for attempt in range(60):
+            ls_vals = await extract_ls(page, REQUIRED_LS_KEYS)
+            if ls_vals.get("finder_raw"):
+                print(f"[✓] rawKeyBuff 已就绪 (等待 {attempt}s)", flush=True)
+                break
+            await asyncio.sleep(1)
+            if attempt % 15 == 14:
+                print(f"  等待 localStorage 写入... ({attempt + 1}s)", flush=True)
+
+        # 如果 finder_raw 还是空，尝试点击内容管理触发加载
+        if not ls_vals.get("finder_raw"):
+            print("[i] rawKeyBuff 未出现，尝试访问内容列表页...", flush=True)
             try:
                 await page.goto(
                     "https://channels.weixin.qq.com/platform/post/list",
                     timeout=15000, wait_until="domcontentloaded",
                 )
-                await asyncio.sleep(5)
-                url = page.url
-                parsed = parse_qs(urlparse(url).query)
-                token = parsed.get("token", [None])[0]
-                if token:
-                    print(f"[✓] 从 post/list 页提取 token: {token[:20]}...", flush=True)
-            except Exception:
-                pass
-
-        # 如果 URL 里没 token，尝试从页面 JS 提取
-        if not token:
-            try:
-                token = await page.evaluate("""() => {
-                    if (window.__wxConfig && window.__wxConfig.token) return window.__wxConfig.token;
-                    const m = document.cookie.match(/token=([^;]+)/);
-                    if (m) return m[1];
-                    const u = location.href;
-                    const tm = u.match(/token=([^&]+)/);
-                    if (tm) return tm[1];
-                    return null;
-                }""")
-                if token:
-                    print(f"[✓] 从 JS 提取 token: {token[:20]}...", flush=True)
-            except Exception:
-                pass
-
-        # 尝试拦截 API 获取 token
-        if not token:
-            try:
-                r = await page.evaluate("""async () => {
-                    const resp = await fetch('/cgi-bin/mmfinderassistant-bin/auth/auth_data', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({})
-                    });
-                    return await resp.json();
-                }""")
-                if r and r.get("errCode") == 0:
-                    token = r.get("data", {}).get("token") or r.get("token")
-                    print(f"[✓] 从 auth_data 获取: errCode=0", flush=True)
-                else:
-                    print(f"[i] auth_data 返回: {json.dumps(r, ensure_ascii=False)[:200]}", flush=True)
+                await asyncio.sleep(8)
+                for _ in range(30):
+                    ls_vals = await extract_ls(page, REQUIRED_LS_KEYS)
+                    if ls_vals.get("finder_raw"):
+                        print("[✓] 导航后 rawKeyBuff 已就绪", flush=True)
+                        break
+                    await asyncio.sleep(1)
             except Exception as e:
-                print(f"[i] auth_data 异常: {e}", flush=True)
+                print(f"[!] 导航异常: {e}", flush=True)
+
+        # 显示提取结果
+        print("\n[i] localStorage 提取结果:", flush=True)
+        for k in REQUIRED_LS_KEYS:
+            v = ls_vals.get(k, "")
+            status = "✓" if v else "✗"
+            display = f"{v[:60]}..." if len(v) > 60 else (v or "(空)")
+            print(f"    {status} {k}: {display}", flush=True)
 
         # 保存 storage_state
-        await context.storage_state(path=str(COOKIE_FILE))
+        try:
+            await context.storage_state(path=str(COOKIE_FILE))
+        except Exception as e:
+            print(f"[!] 保存 storage_state 异常: {e}", flush=True)
 
         # 保存 token 信息
         cookies = await context.cookies()
         cookie_dict = {c["name"]: c["value"] for c in cookies}
 
         token_data = {
-            "token": token,
             "sessionid": cookie_dict.get("sessionid", ""),
             "wxuin": cookie_dict.get("wxuin", ""),
             "cookie_str": "; ".join(f'{c["name"]}={c["value"]}' for c in cookies),
+            "finder_raw": ls_vals.get("finder_raw", ""),
+            "finder_username": ls_vals.get("finder_username", ""),
+            "finder_uin": ls_vals.get("finder_uin", ""),
+            "finder_login_token": ls_vals.get("finder_login_token", ""),
             "url": page.url,
         }
-        with open(TOKEN_FILE, "w") as f:
-            json.dump(token_data, f, ensure_ascii=False, indent=2)
+        TOKEN_FILE.write_text(json.dumps(token_data, ensure_ascii=False, indent=2))
 
         await browser.close()
 
     print(f"\n[✓] Cookie 已保存: {COOKIE_FILE}", flush=True)
     print(f"[✓] Token 已保存: {TOKEN_FILE}", flush=True)
-    sc = json.loads(COOKIE_FILE.read_text()).get("cookies", [])
-    print(f"    Cookie 数量: {len(sc)}", flush=True)
-    print(f"    token: {'✓' if token else '✗ 未提取到（可能需要在浏览器页面交互后才出现）'}", flush=True)
-    return 0
+    try:
+        sc = json.loads(COOKIE_FILE.read_text()).get("cookies", [])
+        print(f"    Cookie 数量: {len(sc)}", flush=True)
+    except Exception:
+        pass
+    raw = ls_vals.get("finder_raw", "")
+    print(f"    rawKeyBuff: {'✓ ' + raw[:30] + '...' if raw else '✗ 未提取到'}", flush=True)
+    return 0 if ls_vals.get("finder_raw") else 1
 
 
 if __name__ == "__main__":

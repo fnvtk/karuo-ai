@@ -10,6 +10,7 @@ Soul切片增强脚本 v2.0
 """
 
 import argparse
+import atexit
 import json
 import os
 import re
@@ -19,6 +20,21 @@ import sys
 import tempfile
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
+
+
+def _kill_child_ffmpeg_on_exit():
+    """脚本退出时（含 Ctrl+C）杀死本进程启动的 ffmpeg 子进程，避免剪辑结束后仍占用 CPU。"""
+    try:
+        subprocess.run(
+            ["pkill", "-P", str(os.getpid()), "ffmpeg"],
+            capture_output=True,
+            timeout=2,
+        )
+    except Exception:
+        pass
+
+
+atexit.register(_kill_child_ffmpeg_on_exit)
 
 # ============ 配置（可被命令行覆盖）============
 
