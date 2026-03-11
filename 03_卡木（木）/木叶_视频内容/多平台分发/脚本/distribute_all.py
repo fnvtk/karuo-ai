@@ -38,6 +38,7 @@ from publish_result import (PublishResult, print_summary, save_results,
                             load_published_set, load_failed_tasks)
 from title_generator import generate_title
 from schedule_generator import generate_schedule, format_schedule
+from video_metadata import VideoMeta
 
 PLATFORM_CONFIG = {
     "抖音": {
@@ -190,7 +191,8 @@ async def distribute_to_platform(
     total = len(to_publish)
     pub_fn = getattr(module, "publish_one_compat", None) or module.publish_one
     for i, vp in enumerate(to_publish):
-        title = generate_title(vp.name, titles_dict)
+        vmeta = VideoMeta.from_filename(str(vp))
+        title = vmeta.title(platform)
         stime = publish_schedule[i] if publish_schedule else None
         try:
             r = await pub_fn(str(vp), title, i + 1, total, scheduled_time=stime)

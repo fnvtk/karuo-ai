@@ -35,6 +35,12 @@ UA = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
 
+sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "多平台分发" / "脚本"))
+try:
+    from video_metadata import VideoMeta
+except ImportError:
+    VideoMeta = None
+
 DESC_SUFFIX = " #小程序 卡若创业派对"
 CHUNK_SIZE = 8 * 1024 * 1024
 
@@ -407,7 +413,11 @@ async def publish_one(
                 elapsed_sec=time.time() - t0,
             )
 
-        desc_full = title + DESC_SUFFIX
+        if VideoMeta:
+            vmeta = VideoMeta.from_filename(video_path)
+            desc_full = vmeta.description("视频号")
+        else:
+            desc_full = title + DESC_SUFFIX
         print(f"  发表...", flush=True)
         post_resp = await create_post(
             cookie_str, desc_full, video_url, thumb_url, vinfo, fsize,

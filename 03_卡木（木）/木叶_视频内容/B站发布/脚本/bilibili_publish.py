@@ -76,23 +76,11 @@ async def _api_publish(video_path: str, title: str, scheduled_time=None) -> Publ
     cover_path = extract_cover(video_path)
     print(f"  [API] 封面已提取: {cover_path}", flush=True)
 
-    tags = "Soul派对,创业,认知觉醒,副业,商业思维"
-    meta = {
-        "copyright": 1,
-        "source": "",
-        "desc": title,
-        "desc_format_id": 0,
-        "dynamic": "",
-        "interactive": 0,
-        "open_elec": 0,
-        "no_reprint": 1,
-        "subtitles": {"lan": "", "open": 0},
-        "tag": tags,
-        "tid": 160,  # 生活 > 日常
-        "title": title[:80],
-        "up_close_danmaku": False,
-        "up_close_reply": False,
-    }
+    from video_metadata import VideoMeta
+    vmeta = VideoMeta.from_filename(video_path)
+    meta = vmeta.bilibili_meta()
+    meta["title"] = title[:80]
+    meta["desc"] = vmeta.description("B站")
 
     if scheduled_time:
         dtime = int(scheduled_time.timestamp())
