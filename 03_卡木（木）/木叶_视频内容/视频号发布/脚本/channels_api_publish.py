@@ -25,7 +25,7 @@ import httpx
 
 SCRIPT_DIR = Path(__file__).parent
 COOKIE_FILE = SCRIPT_DIR / "channels_storage_state.json"
-VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul 派对 120场 20260320_output/成片")
+VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul 派对 120场 20260320_output/成片_大师版")
 
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "多平台分发" / "脚本"))
 from publish_result import PublishResult, is_published, save_results, print_summary
@@ -42,6 +42,7 @@ except ImportError:
     VideoMeta = None
 
 DESC_SUFFIX = " #小程序 卡若创业派对"
+MINI_PROGRAM_LINK = "#小程序://卡若创业派对/gF4V8Vo4Ws4IiJa"
 CHUNK_SIZE = 8 * 1024 * 1024
 
 CDN_DOMAINS = [
@@ -415,9 +416,9 @@ async def publish_one(
 
         if VideoMeta:
             vmeta = VideoMeta.from_filename(video_path)
-            desc_full = vmeta.description("视频号")
+            desc_full = vmeta.description("视频号") + "\n" + MINI_PROGRAM_LINK
         else:
-            desc_full = title + DESC_SUFFIX
+            desc_full = title + DESC_SUFFIX + "\n" + MINI_PROGRAM_LINK
         print(f"  发表...", flush=True)
         post_resp = await create_post(
             cookie_str, desc_full, video_url, thumb_url, vinfo, fsize,

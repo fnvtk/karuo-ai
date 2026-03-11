@@ -30,7 +30,7 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).parent
 BASE_DIR = SCRIPT_DIR.parent.parent
-DEFAULT_VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul 派对 120场 20260320_output/成片")
+DEFAULT_VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul 派对 120场 20260320_output/成片_大师版")
 
 sys.path.insert(0, str(SCRIPT_DIR))
 from cookie_manager import check_cookie_valid, load_cookies, SUPPORTED_PLATFORMS
