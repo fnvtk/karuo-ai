@@ -1,8 +1,9 @@
 # 飞书 JSON 格式全手册
 
 > 基于项目 52 个 `.feishu.json` 实际文件 + 6 个脚本验证 + 飞书开放平台官方文档。  
-> **版本：2.0** | **更新：2026-03-12**  
-> 来源：卡若AI 水桥 · 飞书管理
+> **版本：2.1** | **更新：2026-02-22**  
+> 来源：卡若AI 水桥 · 飞书管理  
+> v2.1 新增：表格列宽自动适配 API、表格分割行 2+ 破折号兼容、code/callout 降级保底
 
 ---
 
@@ -125,6 +126,15 @@ python3 脚本/feishu_token_cli.py set-march-token <新token>
 
 > **原因**：bullet(12) 和 file(12) 可能存在 API 版本差异。当前生产代码中 block_type 12 = file，用于图片/文件上传，已验证稳定。列表统一用 text(2) + 前缀实现，确保兼容性。
 
+### 2.5 脚本写入行为（v2.1 更新）
+
+**sanitize_blocks 清洗**：写入前自动过滤：
+- 空 text(2) 块
+- 空 code(14) 块（elements 内容为空或空白）
+- 空 callout(19) 块
+
+**code/callout 降级保底**：`code(14)` 或 `callout(19)` 写入飞书 API 失败时，脚本自动将其内容降级为 `text(2)` 正文块写入，内容不丢失。
+
 ---
 
 ## 三、各 Block 类型详细 JSON 格式
@@ -220,20 +230,17 @@ python3 脚本/feishu_token_cli.py set-march-token <新token>
 }
 ```
 
-**language 枚举值**：
+**language 枚举值（脚本实测稳定值）**：
 
 | 值 | 语言 | 值 | 语言 |
 |:---|:---|:---|:---|
-| 1 | PlainText（流程图/ASCII 用此） | 2 | Python |
-| 3 | JavaScript | 4 | Java |
-| 5 | Go | 6 | Shell/Bash |
-| 7 | TypeScript | 8 | SQL |
-| 9 | C++ | 10 | C |
-| 11 | Ruby | 12 | Rust |
-| 13 | Swift | 14 | Kotlin |
-| 15 | PHP | 16 | CSS |
-| 17 | HTML | 18 | Markdown |
-| 19 | JSON | 20 | YAML |
+| 1 | PlainText（流程图/ASCII 推荐） | 2 | Python |
+| 3 | JavaScript / TypeScript | 6 | Shell / Bash |
+| 8 | SQL | 9 | JSON |
+| 11 | HTML / XML | 16 | Go |
+| 22 | Rust | — | — |
+
+> `md_to_feishu_json.py` 的 `LANG_MAP` 使用上表值，已验证可正确渲染。飞书 API 官方文档的枚举编号与实测值存在出入，以脚本 `LANG_MAP` 为准。
 
 ---
 
@@ -373,6 +380,42 @@ grid_block = {"block_type": 24, "grid": {"column_size": 2}}
 
 > 创建空表格，最大 9×9。创建后通过电子表格 API 写入单元格内容。  
 > **限制**：不能在创建时直接带内容。
+
+**写入单元格**：
+
+```
+PUT /sheets/v2/spreadsheets/{spreadsheet_token}/values
+Body: {"valueRange": {"range": "sheet1!A1:D5", "values": [[...], ...]}}
+```
+
+**列宽自动适配（v2.1 新增，强制在写完数据后执行）**：
+
+```
+PUT /sheets/v2/spreadsheets/{spreadsheet_token}/dimension_range
+Body:
+{
+  "dimension": {
+    "sheetId": "<sheet_id>",
+    "majorDimension": "COLUMNS",
+    "startIndex": 0,
+    "endIndex": 1
+  },
+  "dimensionProperties": {"pixelSize": 200}
+}
+```
+
+- 对每一列循环调用，pixelSize 按内容自动计算：中文 ≈ 20px/字、ASCII ≈ 9px/字 + 24px 内边距。  
+- 最小 80px，最大 400px。  
+- `feishu_publish_blocks_with_images.py` 中 `_auto_resize_sheet_columns()` 已封装此逻辑，写完单元格自动触发。
+
+**Markdown 表格分割行兼容（v2.1 修复）**：
+
+支持 2+ 破折号的分割行，不再要求最少 3 个：
+
+```
+|:--|:---| ✅ 有效（2 个破折号）
+|:---|:---| ✅ 有效（3 个破折号）
+```
 
 ---
 
@@ -560,6 +603,7 @@ Markdown 表格
 | **上传图片/文件** | POST | `drive/v1/medias/upload_all` |
 | 创建多维表格 | POST | `bitable/v1/apps` |
 | 写入电子表格单元格 | PUT | `sheets/v2/spreadsheets/{token}/values` |
+| **设置列宽** | PUT | `sheets/v2/spreadsheets/{token}/dimension_range` |
 
 **追加子块请求体**：
 ```json
@@ -594,8 +638,12 @@ Markdown 表格
 | 块数 > 50 写入失败 | 单次限制 50 块 | 分批写入，每批 ≤ 50 |
 | sheet 超 9×9 报错 | 电子表格创建上限 | 改用 TSV 正文(2) 回退 |
 | 写入串月 | wiki_token 路由错误 | 写前校验文档标题含目标月份 |
+| 表格列太窄挤压 | 默认列宽约 72px | 写完数据后调用 `PUT dimension_range` 或用 `_auto_resize_sheet_columns()` |
+| 表格未识别（显示 `｜文字｜`） | 分割行破折号不足 3 个（`:--`） | 脚本 v2.1 已修复，现接受 2+ 破折号 |
+| code(14)/callout(19) 写入失败 | API 1770001 | 脚本自动降级为 text(2) 正文块，内容保留 |
 
 ---
 
-**版本**：2.0 | **整理**：卡若AI 水桥 | **更新**：2026-03-12  
-**数据来源**：52 个 `.feishu.json` + 6 个脚本 + 飞书开放平台 API 文档
+**版本**：2.1 | **整理**：卡若AI 水桥 | **更新**：2026-02-22  
+**数据来源**：52 个 `.feishu.json` + 6 个脚本 + 飞书开放平台 API 文档  
+**v2.1 变更**：表格分割行接受 2+ 破折号；新增列宽自适应 `dimension_range` API；sanitize_blocks 扩展支持 code/callout；code/callout 写入失败自动降级为 text。

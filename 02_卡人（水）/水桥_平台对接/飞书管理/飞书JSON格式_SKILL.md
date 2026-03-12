@@ -1,11 +1,11 @@
 ---
 name: 飞书JSON格式
-description: 飞书文档 JSON 格式速查、编写、上传与翻译；各 block_type 格式写法、Markdown 转换对照、标准操作流程一站式参考
-triggers: 飞书json、飞书json格式、飞书block、飞书块格式、飞书文档格式、json上传飞书、飞书格式怎么写、block_type、飞书块类型、飞书写入格式、飞书上传json、飞书文档block、飞书高亮块、飞书代码块、飞书待办块、飞书标题块、飞书分割线、飞书callout、飞书多维表格json、飞书列表、飞书表格、飞书分栏、更新飞书JSON格式
+description: 飞书文档 JSON 格式速查、编写、上传与翻译；各 block_type 格式写法、Markdown 转换对照、表格列宽自适应、脚本 SOP 一站式参考
+triggers: 飞书json、飞书json格式、飞书block、飞书块格式、飞书文档格式、json上传飞书、飞书格式怎么写、block_type、飞书块类型、飞书写入格式、飞书上传json、飞书文档block、飞书高亮块、飞书代码块、飞书待办块、飞书标题块、飞书分割线、飞书callout、飞书多维表格json、飞书列表、飞书表格、飞书分栏、更新飞书JSON格式、飞书列宽、表格列宽
 owner: 水桥
 group: 水
-version: "2.0"
-updated: "2026-03-12"
+version: "2.1"
+updated: "2026-02-22"
 ---
 
 # 飞书 JSON 格式 Skill
@@ -176,7 +176,15 @@ Markdown 表格
 }}
 ```
 
-**language**：1=纯文本 2=Python 3=JS 4=Java 5=Go 6=Shell 7=TypeScript 8=SQL 19=JSON 20=YAML
+**language（脚本实测值，与 md_to_feishu_json.py LANG_MAP 对应）**：
+
+| 值 | 语言 | 值 | 语言 |
+|:--|:--|:--|:--|
+| 1 | PlainText / 流程图 / ASCII | 2 | Python |
+| 3 | JavaScript / TypeScript | 6 | Shell / Bash |
+| 8 | SQL | 9 | JSON |
+| 11 | HTML / XML | 16 | Go |
+| 22 | Rust | — | — |
 
 ### 5. 待办（block_type: 17）
 
@@ -221,7 +229,28 @@ POST drive/v1/medias/upload_all  (form-data: file_name, parent_type=docx_image, 
 {"block_type": 30, "sheet": {"row_size": 5, "column_size": 4}}
 ```
 
-> 最大 9×9，创建后通过 sheets API 写入单元格
+> 最大 9×9，创建后通过 sheets API 写入单元格。
+
+**表格列宽自动适配（强制执行，写完数据后立刻调用）**：
+
+```bash
+PUT /sheets/v2/spreadsheets/{spreadsheet_token}/dimension_range
+```
+
+```json
+{
+  "dimension": {
+    "sheetId": "<sheet_id>",
+    "majorDimension": "COLUMNS",
+    "startIndex": 0,
+    "endIndex": 1
+  },
+  "dimensionProperties": {"pixelSize": 200}
+}
+```
+
+- 中文字符 ≈ 20px/字，ASCII ≈ 9px/字，加 24px 内边距；最小 80px，最大 400px。  
+- 脚本 `feishu_publish_blocks_with_images.py` 的 `_auto_resize_sheet_columns()` 自动完成此步骤，无需手动调用。
 
 ### 10. 多维表格（block_type: 43）
 
@@ -257,7 +286,7 @@ POST drive/v1/medias/upload_all  (form-data: file_name, parent_type=docx_image, 
 | `1. 有序` | 2 | `1）` 前缀 | 正文块模拟 |
 | `- [ ]` | 17 | done=false | |
 | `- [x]` | 17 | done=true | |
-| 表格 ≤9×9 | 30 | sheet | |
+| 表格 ≤9×9 | 30 | sheet | 分割行接受 2+ 破折号（`:--` `:---`） |
 | 表格 >9×9 | 2 | TSV 正文 | 保底方案 |
 
 ---
@@ -287,6 +316,7 @@ POST drive/v1/medias/upload_all  (form-data: file_name, parent_type=docx_image, 
 | 创建 Wiki 子节点 | POST | `wiki/v2/spaces/{space_id}/nodes` |
 | 创建多维表格 | POST | `bitable/v1/apps` |
 | 写入表格单元格 | PUT | `sheets/v2/spreadsheets/{token}/values` |
+| **设置列宽** | PUT | `sheets/v2/spreadsheets/{token}/dimension_range` |
 
 **追加子块请求体**：`{"children": [块1, 块2, ...], "index": 0}`  
 > `index: 0` = 最前，不传 = 末尾。**单次 ≤ 50 块**
@@ -304,6 +334,8 @@ POST drive/v1/medias/upload_all  (form-data: file_name, parent_type=docx_image, 
 | 多维表格权限不足 | 未开通 bitable:app | `python3 脚本/feishu_force_reauth.py` |
 | 块数 > 50 | 单次写入上限 | 分批，每批 ≤ 50 |
 | sheet >9×9 | 电子表格上限 | 改用 TSV 正文(2) 回退 |
+| 表格列挤压 | sheet 默认列宽约 72px | `_auto_resize_sheet_columns()` 写完后自动调用 `PUT dimension_range` |
+| code/callout 写入失败 | 1770001 | 脚本自动降级为 text(2) 正文块，内容不丢失 |
 
 ---
 
