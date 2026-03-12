@@ -1,11 +1,11 @@
 ---
 name: 读书笔记
-description: 五行结构化读书笔记。触发词：拆解这本书、写入读书笔记、读书笔记、五行拆书、XMind笔记、卡读、金水木火土。使用金水木火土五行框架拆解书籍，自动写入XMind；本地默认存 2、我写的日记/读书笔记，写完后可同步发飞书知识库对应子目录。
+description: 五行结构化读书笔记。触发词：拆解这本书、写入读书笔记、读书笔记、五行拆书、XMind笔记、卡读、金水木火土。使用金水木火土五行框架拆解书籍，自动写入XMind（无则安装）；导出脑图图片插入MD；发飞书群 webhook + 飞书知识库。任何模型可用。
 group: 火
-triggers: 拆解这本书、五行拆书、读书笔记、读书笔记发飞书
+triggers: 拆解这本书、五行拆书、读书笔记、读书笔记发飞书、读书笔记发群
 owner: 火炬
-version: "1.1"
-updated: "2026-03-03"
+version: "1.2"
+updated: "2026-03-12"
 ---
 
 # 读书笔记
@@ -39,38 +39,91 @@ updated: "2026-03-03"
 
 `/Users/karuo/Documents/我的脑图/5 学习/读书笔记.xmind`
 
-## 完整工作流程
+## 完整工作流程（6 步，任何模型可执行）
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                        读书笔记完整流程                                   │
+│                读书笔记完整流程 v1.2（6步自动化）                          │
 ├─────────────────────────────────────────────────────────────────────────┤
 │                                                                         │
-│  1. 用户提供书籍内容                                                     │
-│     书籍文件 / 章节内容 / 核心摘要                                       │
+│  步骤1: 用户提供书籍内容                                                  │
+│     书籍文件 / 章节内容 / 核心摘要 / 对话讲稿                              │
 │         │                                                               │
 │         ▼                                                               │
-│  2. AI 使用卡读提示词拆解                                                │
-│     references/卡读提示词.md                                             │
+│  步骤2: AI 按卡读格式五行拆解 → 写 MD 文件                                │
+│     格式：金水木火土 + 总结 + 人物(MBTI/DISC/PDP) + 问题 + 金句           │
+│     存放：/Users/karuo/Documents/个人/2、我写的日记/读书笔记/             │
+│     文件名：书名_读书笔记.md                                              │
 │         │                                                               │
 │         ▼                                                               │
-│  3. 输出五行结构笔记                                                     │
-│     一句话总结 + 金水木火土 + 问答 + 人物 + 金句                         │
+│  步骤3: 检查并安装 XMind → 写入脑图                                       │
+│     先检查：ls /Applications/ | grep -i xmind                           │
+│     未安装：brew install --cask xmind  或  open https://xmind.app       │
+│     写入脚本：xmind_人选天选论_模板表.py（复用该模板格式）                  │
+│     规则：书名 sheet（tab=书名）+ 总结/描述/人物/问题/金句连书名            │
+│           金水木火土为独立节点（detached），位置对齐模板                    │
+│     XMind 路径：/Users/karuo/Documents/我的脑图/5 学习/读书笔记.xmind    │
 │         │                                                               │
 │         ▼                                                               │
-│  4. 确定分类                                                            │
-│     个人提升 / 人际关系 / 创业 / 商业思维 / 投资                         │
+│  步骤4: 导出脑图图片 → 插入 MD 文章                                       │
+│     ① 用 Python 生成脑图图像（GenerateImage 工具）                        │
+│       存放：卡若Ai的文件夹/图片/书名_读书笔记_思维导图.png                   │
+│       登记：卡若Ai的文件夹/图片/图片索引.md                                │
+│     ② 同时复制图片到 MD 同目录，在 MD 顶部插入图片引用                     │
+│       ![脑图](书名_读书笔记_思维导图.png)                                 │
 │         │                                                               │
 │         ▼                                                               │
-│  5. 写入 XMind                                                          │
-│     scripts/write_to_xmind.py 自动创建标签页和链接                       │
+│  步骤5: 发送到飞书群（webhook）                                           │
+│     脚本：reading_note_send_webhook.py                                  │
+│     发送：文章摘要（富文本）+ 脑图图片                                     │
+│     默认 webhook：                                                      │
+│       https://open.feishu.cn/open-apis/bot/v2/hook/                    │
+│       8b7f996e-2892-4075-989f-aa5593ea4fbc                             │
+│     命令：                                                               │
+│       python3 reading_note_send_webhook.py \                           │
+│         --md "/path/读书笔记.md" \                                      │
+│         --img "/path/脑图.png" \                                        │
+│         --webhook "https://..." \                                       │
+│         --title "书名"                                                  │
 │         │                                                               │
 │         ▼                                                               │
-│  6. 打开 XMind 确认                                                     │
-│     open "读书笔记.xmind"                                               │
+│  步骤6: 同步飞书知识库（wiki）                                            │
+│     父节点：QPyPwwUmtiweUOk6aTmcZLBxnIg（读书笔记目录）                   │
+│     脚本：bash 读书笔记_上传到飞书.sh（已有）                              │
+│     或：python3 feishu_article_unified_publish.py \                    │
+│           --parent QPyPwwUmtiweUOk6aTmcZLBxnIg \                      │
+│           --title "卡若读书笔记：书名" \                                  │
+│           --md "/path/读书笔记.md" \                                    │
+│           --json "/tmp/书名.json"                                       │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+### XMind 未安装时的处理
+
+```bash
+# 检查
+ls /Applications/ | grep -i xmind
+
+# 未安装：brew 安装（需要 Homebrew）
+brew install --cask xmind
+
+# 或手动下载
+open https://xmind.app/download/
+
+# 安装完毕后验证
+ls /Applications/Xmind.app
+```
+
+### 飞书群 webhook 配置
+
+| 配置项 | 值 |
+|:---|:---|
+| **默认群 webhook** | `https://open.feishu.cn/open-apis/bot/v2/hook/8b7f996e-2892-4075-989f-aa5593ea4fbc` |
+| **图片上传用 token** | tenant_access_token（用 APP_ID + APP_SECRET 获取，不需要用户授权） |
+| **脚本路径** | `02_卡人（水）/水桥_平台对接/飞书管理/脚本/reading_note_send_webhook.py` |
+
+> ⚠️ 上传图片必须用 `tenant_access_token`，不能用 `user_access_token`（会报 99991668）。
 
 ## 主导图分类
 

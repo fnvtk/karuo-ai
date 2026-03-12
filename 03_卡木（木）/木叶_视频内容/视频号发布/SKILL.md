@@ -120,3 +120,28 @@ python3 channels_api_publish.py
 | `脚本/channels_login.py` | Playwright 微信扫码登录 |
 | `脚本/channels_storage_state.json` | Cookie + localStorage 存储 |
 | `脚本/channels_task_id.txt` | videoClipTaskId 存储 |
+
+---
+
+## 六、腾讯官方 API 能力与授权边界（吸收自《视频号与腾讯相关 API 整理》）
+
+- **官方文档总入口**：`https://developers.weixin.qq.com/doc/channels/api/`
+- **通用基础接口**：`/cgi-bin/token`、`/cgi-bin/stable_token` 获取 `access_token`，`/cgi-bin/openapi/quota/*` 管理调用额度。
+- **视频号助手服务端能力**（官方、需 AppID / AppSecret 授权）主要覆盖：
+  - 直播记录与预约：`/channels/ec/finderlive/*`
+  - 橱窗商品管理：`/channels/ec/window/product/*`
+  - 留资组件与数据：`/channels/leads/*`
+  - 罗盘达人数据、本地生活团购等：详见官方文档模块列表。
+- **小程序联动**：`wx.getChannelsLiveInfo`、`wx.openChannelsLive`、`channel-live` 组件，用于获取/打开视频号直播，与短视频发布无关。
+
+**重要边界结论：**
+
+- 微信官方当前 **没有提供**「通过开放平台 API 直接上传 / 发布视频号短视频」的能力。
+- 短视频官方发布方式只有：
+  - `https://channels.weixin.qq.com` 视频号助手网页端；
+  - 微信客户端内手动发布。
+
+**本 Skill 的定位：**
+
+- 短视频发布：基于「视频号助手网页」的 **逆向协议**（`helper_upload_params` + DFS 分片上传 + `post_create`），封装在 `channels_api_publish.py` 中，供你在本机一键调用；协议细节与风险说明见同目录脚本内注释与《视频号与腾讯相关 API 整理》。
+- 官方 API：若未来微信开放短视频上传/发布接口，可在本 Skill 中新增「官方 API 模式」，与当前逆向模式并存；直播/橱窗/留资等场景建议在单独的官方 API Skill 中按业务拆分（如「视频号直播数据看板」「视频号橱窗管理」「视频号留资同步」等）。

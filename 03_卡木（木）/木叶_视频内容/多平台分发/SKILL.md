@@ -28,6 +28,10 @@ updated: "2026-03-11"
 | **快手** | Playwright headless 自动化 | UI 定时 | ~7-30 天 | Cookie 过期 |
 | **抖音** | 纯 API（VOD + bd-ticket-guard） | API `timing_ts` | ~2-4h | 账号封禁中 |
 
+> **关于视频号官方 API 边界**：  
+> 按《视频号与腾讯相关 API 整理》结论，微信官方目前**没有开放「短视频上传/发布」接口**；本 Skill 中的视频号发布能力，属于对 `https://channels.weixin.qq.com` 视频号助手网页协议的逆向封装（DFS 上传 + `post_create`），仅在你本机使用，需自行承担协议变更与合规风险。  
+> 官方可控能力（直播记录、橱窗、留资、罗盘数据、本地生活等）的服务端 API 入口为：`https://developers.weixin.qq.com/doc/channels/api/`，如需做直播/橱窗/留资集成，可基于该文档在单独 Skill 中扩展。
+
 ---
 
 ## 二、一键命令
