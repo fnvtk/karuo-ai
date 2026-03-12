@@ -530,13 +530,26 @@ async def publish_one_compat(
 # Main
 # ---------------------------------------------------------------------------
 
+def _run_login_then_retry():
+    """Cookie 无效时自动调起登录，写回 storage 后由调用方重试。"""
+    login_script = SCRIPT_DIR / "channels_login.py"
+    if not login_script.exists():
+        return False
+    print("[*] Cookie 无效，正在自动调起登录（浏览器将打开，请扫码）...", flush=True)
+    r = subprocess.run([sys.executable, str(login_script)], cwd=str(SCRIPT_DIR), timeout=300)
+    return r.returncode == 0
+
+
 async def main():
     print("=== 视频号纯 API 发布 (v5 — DFS + post_create) ===\n", flush=True)
 
     state = load_state()
     if not state:
-        print("[!] Cookie 文件不存在，请先运行 channels_login.py", flush=True)
-        return 1
+        if _run_login_then_retry():
+            state = load_state()
+        if not state:
+            print("[!] Cookie 文件不存在且登录未完成", flush=True)
+            return 1
 
     cookie_str = get_cookie_str(state)
     ls = get_local_storage(state)
@@ -544,14 +557,28 @@ async def main():
     finger_print = ls.get("_finger_print_device_id", "")
     aid = ls.get("__ml::aid", "").strip('"')
     if not finger_print or not aid:
-        print("[!] localStorage 缺少 finger_print_device_id 或 __ml::aid", flush=True)
-        print("    请先运行 channels_login.py 或用浏览器访问视频号助手", flush=True)
-        return 1
+        if _run_login_then_retry():
+            state = load_state()
+            cookie_str = get_cookie_str(state)
+            ls = get_local_storage(state)
+            finger_print = ls.get("_finger_print_device_id", "")
+            aid = ls.get("__ml::aid", "").strip('"')
+        if not finger_print or not aid:
+            print("[!] localStorage 缺少 finger_print_device_id 或 __ml::aid", flush=True)
+            return 1
 
     auth = await auth_check(cookie_str)
     if not auth:
-        print("[!] Cookie 无效，请重新运行 channels_login.py", flush=True)
-        return 1
+        if _run_login_then_retry():
+            state = load_state()
+            cookie_str = get_cookie_str(state)
+            ls = get_local_storage(state)
+            finger_print = ls.get("_finger_print_device_id", "")
+            aid = ls.get("__ml::aid", "").strip('"')
+            auth = await auth_check(cookie_str)
+        if not auth:
+            print("[!] Cookie 仍无效，请稍后重试发布", flush=True)
+            return 1
 
     fu = auth.get("finderUser", {})
     finder_id = fu["finderUsername"]
