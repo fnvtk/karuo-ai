@@ -116,6 +116,7 @@
 | M07 | PPT制作 | 木果 | **PPT、做PPT、制作PPT、演示文稿、汇报PPT** | `03_卡木（木）/木果_项目模板/PPT制作/SKILL.md` | python-pptx 创建/编辑 .pptx，输出到报告目录 |
 | M08 | Next AI Draw | 木果 | **next ai draw、AI画图、画图表、架构图、流程图** | `03_卡木（木）/木果_项目模板/Next AI Draw/SKILL.md` | AI 生成 draw.io 风格图、Mermaid 图表，与 PPT 联动 |
 | M09 | 卡若个人介绍 | 木果 | **卡若介绍、个人介绍、卡若人设、我是谁** | `03_卡木（木）/木果_项目模板/卡若个人介绍/SKILL.md` | 生成卡若个人介绍（PPT/短文/一页纸） |
+| M10 | **CLI万能化** | 木识 | **木识、CLI万能化、cli-anything、软件识形、让软件Agent化、任意软件CLI、给软件生成CLI、GUI转CLI、让软件可被AI控制** | `03_卡木（木）/木识_软件识形/CLI万能化/SKILL.md` | 任意软件→Agent可驱动CLI；7阶段全自动流水线；与木根联动 |
 
 ## 火组 · 卡火（技术研发优化）
 

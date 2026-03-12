@@ -326,18 +326,29 @@ def _get_text_content(block: dict) -> str:
     return (tr.get("content") or "")
 
 
+def _get_elements_content(elements: list) -> str:
+    if not elements:
+        return ""
+    return (elements[0].get("text_run") or {}).get("content", "") or ""
+
+
 def sanitize_blocks(blocks: list) -> list:
-    """
-    飞书 docx blocks 对“空段落/异常结构”会严格校验。
-    这里做一次轻量清洗：去掉纯空文本块，避免 invalid param。
-    """
+    """飞书 docx blocks 轻量清洗：去掉空文本/空代码块/空 callout，避免 invalid param。"""
     out = []
     for b in blocks:
         if not isinstance(b, dict):
             continue
-        if b.get("block_type") == 2:
-            c = _get_text_content(b)
-            if not c or not c.strip():
+        bt = b.get("block_type")
+        if bt == 2:
+            if not _get_text_content(b).strip():
+                continue
+        elif bt == 14:
+            elems = (b.get("code") or {}).get("elements") or []
+            if not _get_elements_content(elems).strip():
+                continue
+        elif bt == 19:
+            elems = (b.get("callout") or {}).get("elements") or []
+            if not _get_elements_content(elems).strip():
                 continue
         out.append(b)
     return out
@@ -438,6 +449,21 @@ def _write_batch_with_fallback(doc_token: str, headers: dict, batch: list, total
             if r1.get("code") == 0:
                 time.sleep(0.35)
                 continue
+            bt = b.get("block_type")
+            # code(14) 和 callout(19) 失败时降级为文本块
+            fallback_content = ""
+            if bt == 14:
+                elems = (b.get("code") or {}).get("elements") or []
+                fallback_content = _get_elements_content(elems)
+            elif bt == 19:
+                elems = (b.get("callout") or {}).get("elements") or []
+                fallback_content = _get_elements_content(elems)
+            if fallback_content:
+                r2 = _post_children(doc_token, headers, [{"block_type": 2, "text": {"elements": [{"text_run": {"content": fallback_content, "text_element_style": {}}}], "style": {}}}], None)
+                if r2.get("code") == 0:
+                    print(f"⚠️ block_type={bt} 降级为文本块写入")
+                    time.sleep(0.35)
+                    continue
             c = _get_text_content(b)
             preview = (c[:60] + "...") if c and len(c) > 60 else (c or "")
             print(f"⚠️ 跳过非法块: code={r1.get('code')} msg={r1.get('msg')} preview={preview!r}")
