@@ -381,6 +381,51 @@ def _col_letter(n: int) -> str:
     return s
 
 
+def _cell_px_width(text: str) -> int:
+    """估算单元格内容渲染宽度（px）：中文≈20px/字，ASCII≈9px/字，加内边距 24px。"""
+    w = 0
+    for c in text:
+        cp = ord(c)
+        if (0x4E00 <= cp <= 0x9FFF or 0x3000 <= cp <= 0x303F or
+                0xFF01 <= cp <= 0xFF60 or 0xFE30 <= cp <= 0xFE4F):
+            w += 20
+        else:
+            w += 9
+    return w + 24
+
+
+def _auto_resize_sheet_columns(
+    headers: dict, spreadsheet_token: str, sheet_id: str, values: list[list[str]]
+) -> None:
+    """根据内容宽度自动设置每列的列宽（调用飞书 Sheets dimension_range API）。"""
+    if not values or not spreadsheet_token or not sheet_id:
+        return
+    cols = max(len(r) for r in values) if values else 0
+    url = (
+        f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets"
+        f"/{spreadsheet_token}/dimension_range"
+    )
+    for j in range(cols):
+        max_w = max(
+            (_cell_px_width(row[j]) for row in values if j < len(row)),
+            default=80,
+        )
+        width = max(80, min(max_w, 400))
+        payload = {
+            "dimension": {
+                "sheetId": sheet_id,
+                "majorDimension": "COLUMNS",
+                "startIndex": j,
+                "endIndex": j + 1,
+            },
+            "dimensionProperties": {"pixelSize": width},
+        }
+        try:
+            requests.put(url, headers=headers, json=payload, timeout=10)
+        except Exception:
+            pass
+
+
 def _fill_sheet_block_values(headers: dict, sheet_block_token: str, values: list[list[str]]) -> bool:
     if not sheet_block_token or "_" not in sheet_block_token or not values:
         return False
@@ -402,6 +447,8 @@ def _fill_sheet_block_values(headers: dict, sheet_block_token: str, values: list
     if j.get("code") != 0:
         print(f"⚠️ 表格数据写入失败: {j.get('msg')} range={range_str}")
         return False
+    # 写完数据后自动适配列宽
+    _auto_resize_sheet_columns(headers, spreadsheet_token, sheet_id, values)
     return True
 
 

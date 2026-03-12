@@ -117,7 +117,7 @@ def _is_md_table_sep(line: str) -> bool:
     if s.endswith("|"):
         s = s[:-1]
     parts = [p.strip() for p in s.split("|")]
-    return bool(parts) and all(re.match(r"^:?-{3,}:?$", p or "") for p in parts)
+    return bool(parts) and all(re.match(r"^:?-{2,}:?$", p or "") for p in parts)
 
 
 def _clean_inline_markdown(text: str) -> str:
