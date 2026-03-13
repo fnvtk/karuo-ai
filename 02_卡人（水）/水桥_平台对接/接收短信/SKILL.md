@@ -97,8 +97,44 @@ SMS: [PUBG] code: 697881. Valid for 3 minutes.
 
 ---
 
-## 六、参考资料与扩展
+## 六、付费接码平台（SMSOnline · 推荐用于注册）
 
-- **流程史记**：`运营中枢/参考资料/giffgaff发短信收短信_流程史记.md`（giffgaff 发短信到临时号时的操作与保号）。
-- **接码操作说明**：`运营中枢/参考资料/receivesms收短信_操作.md`（命令行用法摘要）。
-- **扩展**：若需按「发件人名字」或关键词过滤短信，可在本目录下扩展脚本（解析 `from-link` 或短信内容），并在本 SKILL 更新「要获取的网站短信类型」说明。
+### 6.1 平台信息
+
+- **网站**：[premium.smsonline.cloud](https://premium.smsonline.cloud) / [smsonline.io](https://smsonline.io)
+- **API 参考**：`运营中枢/参考资料/smsonline_付费接码平台_API参考.md`
+- **API Key**：`2w9hva2mzvbubw5sj3vqwkuv9ib43ku29okhwyragkx4o2kgzw7eb9oy8pjh4gc3`
+
+### 6.2 脚本与用法
+
+```bash
+cd /Users/karuo/Documents/个人/卡若AI/运营中枢/scripts
+
+# 查看支持的国家
+python3 smsonline_receive_sms.py --list-countries
+
+# 查看支持的服务（Soul、bilibili 等）
+python3 smsonline_receive_sms.py --list-services
+
+# 查看某国+某服务的可用号码与价格
+python3 smsonline_receive_sms.py --country-id 1 --service-id 2 --products
+
+# 完整流程：取号 → 轮询收验证码（最多 2 分钟）→ 超时自动退费
+python3 smsonline_receive_sms.py --country-id 1 --service-id 2
+```
+
+### 6.3 防扣费规则（强制）
+
+1. 轮询 get-sms 最多 **120 秒**，超时 → 自动调 `change-status(status=4)` 取消退费。
+2. 收到验证码并使用后 → 调 `change-status(status=3)` 确认完成。
+3. 不重复获取同一号：先取消旧订单再取新号。
+4. 首次调试加 `&test=1` 不扣费。
+
+---
+
+## 七、参考资料与扩展
+
+- **giffgaff 流程史记**：`运营中枢/参考资料/giffgaff发短信收短信_流程史记.md`
+- **receivesms 免费接码**：`运营中枢/参考资料/receivesms收短信_操作.md`
+- **SMSOnline 付费接码 API**：`运营中枢/参考资料/smsonline_付费接码平台_API参考.md`
+- **扩展**：若需按「发件人名字」或关键词过滤短信，可在本目录下扩展脚本。
