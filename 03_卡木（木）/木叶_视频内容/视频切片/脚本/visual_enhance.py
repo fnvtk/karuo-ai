@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-视觉增强 v6：非固定结构的立体苹果毛玻璃舞台
+视觉增强 v7：苹果毛玻璃风格底部浮层
+设计规范来源：卡若AI 前端标准（神射手/毛狐狸）
 
-设计原则：
-1. 原视频完全不变，仅底部叠加动态舞台。
-2. 每条视频自动派生独立风格：配色、窗口位置、芯片布局、信息结构都不同。
-3. 强化黑色高级感、阴影、悬浮、玻璃高光与动态小视频窗。
-4. 所有信息模块与文字均为动态生成，不使用固定平面模板。
+核心设计原则：
+1. 无视频小窗 —— 彻底去掉，全宽用于内容展示
+2. 苹果毛玻璃 —— backdrop-blur + rgba深色底 + 白边 + 顶部高光条
+3. 图标体系 —— 每类内容有专属 Unicode 图标，可读性强
+4. 渐变强调 —— 蓝→紫主渐变，状态色 green/gold/red
+5. 两档字体 —— medium 标题，regular 正文，不堆叠字重
+6. 大留白 —— 元素少，每个元素有呼吸空间
+7. 底部芯片 —— 渐变边框胶囊，不做满色填充
 """
 import argparse
 import hashlib
@@ -22,107 +26,110 @@ from pathlib import Path
 try:
     from PIL import Image, ImageDraw, ImageFilter, ImageFont
 except ImportError:
-    sys.exit('需要 Pillow: pip3 install Pillow')
+    sys.exit("pip3 install Pillow")
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-FONTS_DIR = SCRIPT_DIR.parent / 'fonts'
+FONTS_DIR = SCRIPT_DIR.parent / "fonts"
 if not FONTS_DIR.exists():
-    FONTS_DIR = Path('/Users/karuo/Documents/个人/卡若AI/03_卡木（木）/木叶_视频内容/视频切片/fonts')
+    FONTS_DIR = Path("/Users/karuo/Documents/个人/卡若AI/03_卡木（木）/木叶_视频内容/视频切片/fonts")
 
 VW, VH = 498, 1080
-PANEL_W, PANEL_H = 422, 340
+PANEL_W, PANEL_H = 428, 330
 PANEL_X = (VW - PANEL_W) // 2
-PANEL_Y = VH - PANEL_H - 26
+PANEL_Y = VH - PANEL_H - 30
 FPS = 8
-CURRENT_VIDEO_SEED = 'default'
-WHITE = (248, 250, 255, 255)
-BLUE = (96, 165, 250, 255)
-PURPLE = (167, 139, 250, 255)
-GREEN = (52, 211, 153, 255)
-GOLD = (251, 191, 36, 255)
-ORANGE = (251, 146, 60, 255)
-RED = (248, 113, 113, 255)
-CYAN = (34, 211, 238, 255)
+CURRENT_SEED = "default"
 
-PALETTES = [
-    {
-        'name': 'obsidian-cyan',
-        'glass_top': (18, 25, 40, 212),
-        'glass_bottom': (10, 14, 28, 226),
-        'back_a': (35, 58, 120, 92),
-        'back_b': (24, 112, 168, 70),
-        'title': (246, 249, 255, 255),
-        'text': (223, 231, 244, 255),
-        'sub': (160, 178, 205, 255),
-        'muted': (103, 119, 148, 255),
-        'accents': [(98, 182, 255, 255), (46, 211, 238, 255), (139, 92, 246, 255), (250, 204, 21, 255)]
-    },
-    {
-        'name': 'midnight-violet',
-        'glass_top': (28, 22, 46, 214),
-        'glass_bottom': (14, 10, 26, 228),
-        'back_a': (88, 54, 156, 90),
-        'back_b': (44, 63, 113, 76),
-        'title': (248, 247, 255, 255),
-        'text': (233, 229, 248, 255),
-        'sub': (184, 169, 214, 255),
-        'muted': (118, 107, 144, 255),
-        'accents': [(167, 139, 250, 255), (96, 165, 250, 255), (244, 114, 182, 255), (251, 191, 36, 255)]
-    },
-    {
-        'name': 'graphite-gold',
-        'glass_top': (24, 24, 30, 212),
-        'glass_bottom': (10, 11, 16, 228),
-        'back_a': (92, 71, 29, 86),
-        'back_b': (46, 70, 115, 70),
-        'title': (250, 249, 245, 255),
-        'text': (235, 233, 225, 255),
-        'sub': (187, 180, 160, 255),
-        'muted': (123, 118, 102, 255),
-        'accents': [(251, 191, 36, 255), (245, 158, 11, 255), (96, 165, 250, 255), (52, 211, 153, 255)]
-    },
-    {
-        'name': 'ink-emerald',
-        'glass_top': (16, 30, 28, 212),
-        'glass_bottom': (9, 16, 18, 226),
-        'back_a': (26, 95, 78, 90),
-        'back_b': (34, 84, 131, 72),
-        'title': (244, 252, 249, 255),
-        'text': (218, 243, 236, 255),
-        'sub': (151, 194, 183, 255),
-        'muted': (103, 144, 136, 255),
-        'accents': [(52, 211, 153, 255), (45, 212, 191, 255), (96, 165, 250, 255), (251, 191, 36, 255)]
-    },
+# ── 前端规范色板（来自神射手/毛狐狸）────────────────────────────────
+
+# 深色毛玻璃底（模拟 bg-slate-900/88 + backdrop-blur）
+GLASS_FILL_TOP    = (14, 16, 28, 222)
+GLASS_FILL_BTM    = (10, 12, 22, 232)
+GLASS_BORDER      = (255, 255, 255, 30)   # border-white/12
+GLASS_INNER_EDGE  = (255, 255, 255, 14)   # inner inset
+GLASS_HIGHLIGHT   = (255, 255, 255, 28)   # top highlight strip
+
+# 前端规范色 —— 主渐变蓝→紫
+BLUE    = (96,  165, 250, 255)   # blue-400
+PURPLE  = (167, 139, 250, 255)   # violet-400
+CYAN    = (34,  211, 238, 255)   # cyan-400
+GREEN   = (52,  211, 153, 255)   # emerald-400
+GOLD    = (251, 191, 36,  255)   # amber-400
+ORANGE  = (251, 146, 60,  255)   # orange-400
+RED     = (248, 113, 113, 255)   # red-400
+PINK    = (244, 114, 182, 255)   # pink-400
+WHITE   = (248, 250, 255, 255)
+
+TEXT_PRIMARY = (240, 244, 255, 255)      # near-white, slightly blue tint
+TEXT_SECONDARY = (163, 177, 206, 255)    # slate-400 equivalent
+TEXT_MUTED   = (100, 116, 145, 255)     # slate-500
+
+# 渐变强调组（每条视频可用不同组）
+ACCENT_PALETTES = [
+    {"a": BLUE,   "b": PURPLE, "name": "blueprint"},
+    {"a": CYAN,   "b": BLUE,   "name": "oceanic"},
+    {"a": GREEN,  "b": CYAN,   "name": "emerald"},
+    {"a": GOLD,   "b": ORANGE, "name": "solar"},
+    {"a": PURPLE, "b": PINK,   "name": "lavender"},
 ]
 
+# ── 图标系统（Unicode，确保 CJK 字体支持）───────────────────────────
+ICONS = {
+    "question":    "?",   # question mark – bold rendition
+    "data":        "◆",
+    "flow":        "▸",
+    "compare":     "⇌",
+    "mind":        "◎",
+    "summary":     "✦",
+    "check":       "✓",
+    "cross":       "✕",
+    "bullet":      "·",
+    "arrow_right": "→",
+    "star":        "★",
+    "spark":       "✦",
+    "tag":         "⊕",
+    "globe":       "⊙",
+    "target":      "◎",
+    # 数字圈
+    "n1": "①", "n2": "②", "n3": "③", "n4": "④", "n5": "⑤",
+    "n6": "⑥", "n7": "⑦", "n8": "⑧",
+    # 类别前缀
+    "ai":     "A",
+    "money":  "¥",
+    "time":   "⏱",
+    "chart":  "≋",
+}
 
-def font(size: int, weight='medium'):
-    if isinstance(weight, bool):
-        weight = 'bold' if weight else 'medium'
+NUMBERED = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"]
+
+
+# ── 字体加载 ─────────────────────────────────────────────────────────
+
+def font(size: int, weight: str = "medium"):
     mapping = {
-        'regular': [
-            FONTS_DIR / 'NotoSansCJK-Regular.ttc',
-            FONTS_DIR / 'SourceHanSansSC-Medium.otf',
-            Path('/System/Library/Fonts/PingFang.ttc'),
+        "regular": [
+            FONTS_DIR / "NotoSansCJK-Regular.ttc",
+            FONTS_DIR / "SourceHanSansSC-Medium.otf",
+            Path("/System/Library/Fonts/PingFang.ttc"),
         ],
-        'medium': [
-            FONTS_DIR / 'SourceHanSansSC-Medium.otf',
-            FONTS_DIR / 'NotoSansCJK-Regular.ttc',
-            Path('/System/Library/Fonts/PingFang.ttc'),
+        "medium": [
+            FONTS_DIR / "SourceHanSansSC-Medium.otf",
+            FONTS_DIR / "NotoSansCJK-Regular.ttc",
+            Path("/System/Library/Fonts/PingFang.ttc"),
         ],
-        'semibold': [
-            FONTS_DIR / 'SourceHanSansSC-Bold.otf',
-            FONTS_DIR / 'NotoSansCJK-Bold.ttc',
-            Path('/System/Library/Fonts/PingFang.ttc'),
+        "semibold": [
+            FONTS_DIR / "SourceHanSansSC-Bold.otf",
+            FONTS_DIR / "NotoSansCJK-Bold.ttc",
+            Path("/System/Library/Fonts/PingFang.ttc"),
         ],
-        'bold': [
-            FONTS_DIR / 'SourceHanSansSC-Heavy.otf',
-            FONTS_DIR / 'SourceHanSansSC-Bold.otf',
-            FONTS_DIR / 'NotoSansCJK-Bold.ttc',
-            Path('/System/Library/Fonts/PingFang.ttc'),
+        "bold": [
+            FONTS_DIR / "SourceHanSansSC-Heavy.otf",
+            FONTS_DIR / "SourceHanSansSC-Bold.otf",
+            FONTS_DIR / "NotoSansCJK-Bold.ttc",
+            Path("/System/Library/Fonts/PingFang.ttc"),
         ],
     }
-    for path in mapping.get(weight, mapping['medium']):
+    for path in mapping.get(weight, mapping["medium"]):
         if path.exists():
             try:
                 return ImageFont.truetype(str(path), size)
@@ -131,561 +138,740 @@ def font(size: int, weight='medium'):
     return ImageFont.load_default()
 
 
+# ── 工具函数 ──────────────────────────────────────────────────────────
+
 def ease_out(t: float) -> float:
     t = max(0.0, min(1.0, t))
     return 1 - (1 - t) ** 3
 
 
-def blend(c1, c2, t):
-    return tuple(int(a + (b - a) * t) for a, b in zip(c1, c2))
+def ease_in_out(t: float) -> float:
+    t = max(0.0, min(1.0, t))
+    return 3 * t * t - 2 * t * t * t
 
 
-def hash_int(text: str) -> int:
-    return int(hashlib.md5(text.encode('utf-8')).hexdigest()[:8], 16)
+def blend_color(c1, c2, t: float):
+    return tuple(int(a + (b - a) * max(0, min(1, t))) for a, b in zip(c1, c2))
 
 
-def build_profile(scene, idx: int):
-    key = CURRENT_VIDEO_SEED + '|' + scene.get('type', '') + '|' + str(idx)
-    seed = hash_int(key)
-    palette = PALETTES[seed % len(PALETTES)]
-    return {
-        'seed': seed,
-        'palette': palette,
-        'window_variant': seed % 4,
-        'chip_variant': (seed // 7) % 4,
-        'content_variant': (seed // 13) % 3,
-        'tag_variant': (seed // 17) % 3,
-    }
+def hash_seed(text: str) -> int:
+    return int(hashlib.md5(text.encode()).hexdigest()[:8], 16)
 
 
-def rounded(draw, xy, radius, **kwargs):
-    draw.rounded_rectangle(xy, radius=radius, **kwargs)
+def get_palette(idx: int) -> dict:
+    seed = hash_seed(f"{CURRENT_SEED}|{idx}")
+    return ACCENT_PALETTES[seed % len(ACCENT_PALETTES)]
 
 
-def draw_center(draw, text, fnt, y, fill, width):
-    bbox = fnt.getbbox(text)
-    tw = bbox[2] - bbox[0]
-    draw.text(((width - tw) // 2, y), text, font=fnt, fill=fill)
+def text_bbox(fnt, text: str):
+    return fnt.getbbox(text)
 
 
-def draw_wrap(draw, text, fnt, max_w, x, y, fill, line_gap=6):
-    lines, cur = [], ''
+def text_width(fnt, text: str) -> int:
+    bb = text_bbox(fnt, text)
+    return bb[2] - bb[0]
+
+
+def text_height(fnt, text: str) -> int:
+    bb = text_bbox(fnt, text)
+    return bb[3] - bb[1]
+
+
+def draw_center(draw, text: str, fnt, y: int, fill, canvas_w: int = PANEL_W):
+    tw = text_width(fnt, text)
+    draw.text(((canvas_w - tw) // 2, y), text, font=fnt, fill=fill)
+
+
+def draw_wrapped(draw, text: str, fnt, max_w: int, x: int, y: int, fill, gap: int = 6) -> int:
+    lines, cur = [], ""
     for ch in text:
-        candidate = cur + ch
-        bbox = fnt.getbbox(candidate)
-        if bbox[2] - bbox[0] > max_w and cur:
+        test = cur + ch
+        if text_width(fnt, test) > max_w and cur:
             lines.append(cur)
             cur = ch
         else:
-            cur = candidate
+            cur = test
     if cur:
         lines.append(cur)
     for line in lines:
         draw.text((x, y), line, font=fnt, fill=fill)
-        bbox = fnt.getbbox(line)
-        y += (bbox[3] - bbox[1]) + line_gap
+        y += text_height(fnt, line) + gap
     return y
 
 
-def draw_wrap_center(draw, text, fnt, max_w, y, fill, width, line_gap=6):
-    lines, cur = [], ''
+def draw_wrapped_center(draw, text: str, fnt, max_w: int, y: int, fill, canvas_w: int = PANEL_W, gap: int = 6) -> int:
+    lines, cur = [], ""
     for ch in text:
-        candidate = cur + ch
-        bbox = fnt.getbbox(candidate)
-        if bbox[2] - bbox[0] > max_w and cur:
+        test = cur + ch
+        if text_width(fnt, test) > max_w and cur:
             lines.append(cur)
             cur = ch
         else:
-            cur = candidate
+            cur = test
     if cur:
         lines.append(cur)
     for line in lines:
-        bbox = fnt.getbbox(line)
-        tw = bbox[2] - bbox[0]
-        draw.text(((width - tw) // 2, y), line, font=fnt, fill=fill)
-        y += (bbox[3] - bbox[1]) + line_gap
+        draw_center(draw, line, fnt, y, fill, canvas_w)
+        y += text_height(fnt, line) + gap
     return y
 
 
-def create_shadow(size, blur_radius=24, alpha=138):
-    w, h = size
-    img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+# ── 面板底座 ─────────────────────────────────────────────────────────
+
+def _make_shadow(blur: int = 22, alpha: int = 145):
+    img = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((14, 20, w - 18, h - 4), radius=30, fill=(0, 0, 0, alpha))
-    d.rounded_rectangle((30, 36, w - 34, h - 16), radius=26, fill=(10, 20, 40, int(alpha * 0.25)))
-    return img.filter(ImageFilter.GaussianBlur(blur_radius))
+    d.rounded_rectangle((16, 22, PANEL_W - 18, PANEL_H - 4), radius=28, fill=(0, 0, 0, alpha))
+    d.rounded_rectangle((32, 40, PANEL_W - 36, PANEL_H - 18), radius=24,
+                         fill=(8, 14, 44, int(alpha * 0.22)))
+    return img.filter(ImageFilter.GaussianBlur(blur))
 
 
-def create_back_plate(profile, progress: float):
-    pal = profile['palette']
-    img = Image.new('RGBA', (PANEL_W, PANEL_H), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    pulse = 0.78 + 0.22 * math.sin(progress * math.pi * 2.0)
-    c1 = tuple(int(v * pulse) for v in pal['back_a'][:3]) + (pal['back_a'][3],)
-    c2 = tuple(int(v * pulse) for v in pal['back_b'][:3]) + (pal['back_b'][3],)
-    rounded(d, (18, 12, PANEL_W - 8, PANEL_H - 8), 30, fill=c1)
-    rounded(d, (10, 26, PANEL_W - 24, PANEL_H - 20), 26, fill=c2)
-    return img.filter(ImageFilter.GaussianBlur(1.5))
-
-
-def create_glass_panel(profile):
-    pal = profile['palette']
-    img = Image.new('RGBA', (PANEL_W, PANEL_H), (0, 0, 0, 0))
-    grad = Image.new('RGBA', (PANEL_W, PANEL_H), (0, 0, 0, 0))
+def _make_glass_panel():
+    """苹果毛玻璃面板：深色渐变 + 顶部高光 + 双层边框"""
+    img = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 0))
+    grad = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 0))
     gd = ImageDraw.Draw(grad)
     for y in range(PANEL_H):
         t = y / max(PANEL_H - 1, 1)
-        gd.line([(0, y), (PANEL_W, y)], fill=blend(pal['glass_top'], pal['glass_bottom'], t))
-    mask = Image.new('L', (PANEL_W, PANEL_H), 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, PANEL_W - 1, PANEL_H - 1), radius=30, fill=255)
+        gd.line([(0, y), (PANEL_W, y)], fill=blend_color(GLASS_FILL_TOP, GLASS_FILL_BTM, t))
+    mask = Image.new("L", (PANEL_W, PANEL_H), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, PANEL_W - 1, PANEL_H - 1), radius=28, fill=255)
     img = Image.composite(grad, img, mask)
     d = ImageDraw.Draw(img)
-    rounded(d, (0, 0, PANEL_W - 1, PANEL_H - 1), 30, outline=(255, 255, 255, 72), width=1)
-    rounded(d, (10, 12, PANEL_W - 10, PANEL_H - 10), 24, outline=(255, 255, 255, 24), width=1)
-    for y in range(26):
-        alpha = int(32 * (1 - y / 26))
-        d.line([(24, y + 4), (PANEL_W - 24, y + 4)], fill=(255, 255, 255, alpha))
+    # 外边框
+    d.rounded_rectangle((0, 0, PANEL_W - 1, PANEL_H - 1), radius=28,
+                         outline=GLASS_BORDER, width=1)
+    # 内描边（营造厚度感）
+    d.rounded_rectangle((3, 3, PANEL_W - 4, PANEL_H - 4), radius=26,
+                         outline=GLASS_INNER_EDGE, width=1)
+    # 顶部高光（模拟光泽）
+    for y in range(28):
+        alpha = int(GLASS_HIGHLIGHT[3] * (1 - y / 28) * 0.9)
+        d.line([(22, y + 4), (PANEL_W - 22, y + 4)], fill=(255, 255, 255, alpha))
     return img
 
 
-def create_chip(text, accent, fg, active=1.0):
-    w = max(68, 22 + len(text) * 14)
-    h = 34
-    img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+# ── 图标方块（inspired by lucide-react 功能入口卡片）────────────────
+
+def _icon_badge(icon: str, color_a, color_b, size: int = 34):
+    """渐变圆角图标方块，类似 from-blue-500 to-purple-500"""
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    rounded(d, (0, 0, w - 1, h - 1), 17, fill=(20, 24, 38, int(192 * active)), outline=accent[:3] + (int(150 * active),), width=1)
-    ff = font(13, 'medium')
-    bbox = ff.getbbox(text)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
-    d.text(((w - tw) // 2, (h - th) // 2 - 1), text, font=ff, fill=fg[:3] + (int(255 * active),))
+    # 渐变背景
+    for x in range(size):
+        t = x / max(size - 1, 1)
+        col = blend_color(color_a, color_b, t)[:3] + (230,)
+        d.line([(x, 0), (x, size)], fill=col)
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, size - 1, size - 1), radius=10, fill=255)
+    img = Image.composite(img, Image.new("RGBA", (size, size), (0, 0, 0, 0)), mask)
+    d2 = ImageDraw.Draw(img)
+    ff = font(size - 12, "semibold")
+    tw = text_width(ff, icon)
+    th = text_height(ff, icon)
+    d2.text(((size - tw) // 2, (size - th) // 2 - 2), icon, font=ff, fill=WHITE)
     return img
 
 
-def create_metric_card(title, value, subtitle, accent, profile, progress):
-    pal = profile['palette']
-    w, h = 118, 84
-    img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+# ── 底部芯片（glassmorphism button 风格）────────────────────────────
+
+def _chip(text: str, palette: dict, active: float = 1.0):
+    """渐变描边胶囊，模拟 glass-button 样式"""
+    pad_x = 14
+    ff = font(13, "medium")
+    tw = text_width(ff, text)
+    w = max(70, tw + pad_x * 2)
+    h = 32
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    rounded(d, (0, 0, w - 1, h - 1), 18, fill=(18, 24, 38, 220), outline=accent[:3] + (125,), width=1)
-    d.rounded_rectangle((12, 14, 16, h - 14), radius=2, fill=accent[:3] + (230,))
-    d.text((24, 12), title, font=font(11, 'medium'), fill=pal['sub'])
-    d.text((24, 34), value, font=font(21, 'medium'), fill=accent)
-    d.text((24, 60), subtitle, font=font(10, 'regular'), fill=pal['muted'])
-    dot_r = 5 + int(2 * math.sin(progress * math.pi * 2))
-    d.ellipse((w - 20 - dot_r, 12 - dot_r // 2, w - 20 + dot_r, 12 + dot_r), fill=accent[:3] + (200,))
+    # 底色（轻度填充）
+    d.rounded_rectangle((0, 0, w - 1, h - 1), radius=16,
+                         fill=(255, 255, 255, int(14 * active)))
+    # 渐变描边模拟：先画一个大圆角矩形再稍小覆盖
+    for i, col in enumerate([palette["a"], palette["b"]]):
+        x_pct = i / 1.0
+        bc = blend_color(palette["a"], palette["b"], x_pct)[:3] + (int(160 * active),)
+    # 用 a→b 在 x 轴渐变描边
+    for x in range(w):
+        t = x / max(w - 1, 1)
+        col = blend_color(palette["a"], palette["b"], t)[:3] + (int(150 * active),)
+        if x == 0 or x == w - 1:
+            d.line([(x, 8), (x, h - 8)], fill=col, width=1)
+    d.rounded_rectangle((0, 0, w - 1, h - 1), radius=16,
+                         outline=blend_color(palette["a"], palette["b"], 0.5)[:3] + (int(150 * active),),
+                         width=1)
+    # 文字
+    th = text_height(ff, text)
+    d.text((pad_x, (h - th) // 2 - 1), text, font=ff,
+           fill=(TEXT_PRIMARY[0], TEXT_PRIMARY[1], TEXT_PRIMARY[2], int(255 * active)))
     return img
 
 
-def create_video_window(scene_type: str, t: float, profile):
-    w, h = 142, 100
-    pal = profile['palette']
-    accents = pal['accents']
-    img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-    base = Image.new('RGBA', (w, h), (0, 0, 0, 0))
-    bd = ImageDraw.Draw(base)
-    top_bg = tuple(max(0, c - 12) for c in pal['glass_top'][:3]) + (255,)
-    bottom_bg = tuple(max(0, c - 8) for c in pal['glass_bottom'][:3]) + (255,)
-    for y in range(h):
-        ratio = y / max(h - 1, 1)
-        bd.line([(0, y), (w, y)], fill=blend(top_bg, bottom_bg, ratio))
-    mask = Image.new('L', (w, h), 0)
-    ImageDraw.Draw(mask).rounded_rectangle((0, 0, w - 1, h - 1), radius=18, fill=255)
-    img = Image.composite(base, img, mask)
-    d = ImageDraw.Draw(img)
-    rounded(d, (0, 0, w - 1, h - 1), 18, outline=(255, 255, 255, 64), width=1)
-
-    scan_x = int((math.sin(t * 1.7) * 0.5 + 0.5) * (w + 44)) - 22
-    for i in range(-6, 7):
-        alpha = max(0, 34 - abs(i) * 5)
-        d.line([(scan_x + i, 6), (scan_x + i - 18, h - 6)], fill=(255, 255, 255, alpha))
-
-    variant = profile['window_variant']
-    if variant == 0:
-        for idx in range(14):
-            phase = t * 1.4 + idx * 0.6
-            px = int((math.sin(phase * 1.2) * 0.45 + 0.5) * (w - 20)) + 10
-            py = int((math.cos(phase * 0.9 + idx) * 0.35 + 0.5) * (h - 24)) + 12
-            r = 2 + (idx % 2)
-            color = accents[idx % len(accents)][:3] + (160,)
-            d.ellipse((px - r, py - r, px + r, py + r), fill=color)
-    elif variant == 1:
-        for i in range(5):
-            bh = 10 + int((math.sin(t * 2 + i) * 0.5 + 0.5) * 30)
-            x = 16 + i * 22
-            d.rounded_rectangle((x, h - 16 - bh, x + 12, h - 16), radius=4, fill=accents[i % len(accents)][:3] + (190,))
-        d.line((12, 68, 42, 54, 70, 60, 100, 32, 132, 24), fill=accents[1][:3] + (220,), width=3)
-    elif variant == 2:
-        pts = [(20, 22), (42, 40), (68, 32), (92, 58), (116, 46)]
-        visible = 2 + int((math.sin(t * 1.1) * 0.5 + 0.5) * 3)
-        for i in range(len(pts) - 1):
-            c = accents[i % len(accents)][:3] + (180 if i < visible else 60,)
-            d.line((pts[i], pts[i + 1]), fill=c, width=3)
-        for i, (px, py) in enumerate(pts):
-            r = 5 + int(1.4 * math.sin(t * 2 + i))
-            color = accents[(i + 1) % len(accents)][:3] + (220 if i < visible + 1 else 90,)
-            d.ellipse((px - r, py - r, px + r, py + r), fill=color)
-    else:
-        cx, cy = 72, 52
-        d.ellipse((cx - 10, cy - 10, cx + 10, cy + 10), fill=accents[0][:3] + (220,))
-        for i in range(6):
-            ang = math.radians(i * 60 + t * 18)
-            px = cx + math.cos(ang) * 32
-            py = cy + math.sin(ang) * 24
-            d.line((cx, cy, px, py), fill=accents[(i + 1) % len(accents)][:3] + (120,), width=2)
-            d.ellipse((px - 5, py - 5, px + 5, py + 5), fill=accents[i % len(accents)][:3] + (210,))
-
-    d.ellipse((12, 10, 18, 16), fill=(255, 95, 86, 220))
-    d.ellipse((22, 10, 28, 16), fill=(255, 189, 46, 220))
-    d.ellipse((32, 10, 38, 16), fill=(39, 201, 63, 220))
-    return img
+def _place_chips(base: Image.Image, chips: list, palette: dict, anim_t: float):
+    """底部芯片行，从左到右居中排列"""
+    gap = 10
+    images = [_chip(c, palette) for c in chips]
+    total_w = sum(im.width for im in images) + gap * (len(images) - 1)
+    x = (PANEL_W - total_w) // 2
+    y = PANEL_H - 44
+    for i, (im, _) in enumerate(zip(images, chips)):
+        delay = i * 0.12
+        t = ease_out(max(0, min(1, (anim_t - 0.7 - delay) / 0.4)))
+        if t > 0:
+            offset = int((1 - t) * 10)
+            base.alpha_composite(im, (x, y + offset))
+        x += im.width + gap
 
 
-def place_video_window(base, window_img, profile):
-    positions = [
-        (PANEL_W - 158, 18),
-        (22, 44),
-        (PANEL_W - 158, 124),
-        (140, 18),
-    ]
-    base.alpha_composite(window_img, positions[profile['window_variant'] % len(positions)])
+# ── 头部状态行 ───────────────────────────────────────────────────────
 
-
-def place_chips(base, profile, chip_specs):
-    variant = profile['chip_variant']
-    if variant == 0:
-        coords = [(PANEL_W - 88 - i * 92, PANEL_H - 44) for i in range(len(chip_specs))]
-    elif variant == 1:
-        coords = [(22 + i * 94, PANEL_H - 44) for i in range(len(chip_specs))]
-    elif variant == 2:
-        coords = [(PANEL_W - 110, PANEL_H - 46 - i * 40) for i in range(len(chip_specs))]
-    else:
-        coords = [(24 + i * 82, PANEL_H - 50 - (i % 2) * 12) for i in range(len(chip_specs))]
-    for (txt, accent, fg), (x, y) in zip(chip_specs, coords):
-        chip = create_chip(txt, accent, fg, 0.96)
-        base.alpha_composite(chip, (x, y))
-
-
-def compose_panel(scene, scene_type, local_t, scene_progress, profile):
-    pal = profile['palette']
-    accents = pal['accents']
-    base = Image.new('RGBA', (PANEL_W, PANEL_H), (0, 0, 0, 0))
-    base.alpha_composite(create_shadow((PANEL_W, PANEL_H), blur_radius=26, alpha=142), (0, 0))
-    base.alpha_composite(create_back_plate(profile, scene_progress), (0, 0))
-    base.alpha_composite(create_glass_panel(profile), (0, 0))
+def _header_bar(base: Image.Image, label: str, subtitle: str, palette: dict, t: float):
     d = ImageDraw.Draw(base)
+    # 左侧图标 badge
+    badge = _icon_badge(ICONS["spark"], palette["a"], palette["b"], size=32)
+    badge_alpha = ease_out(min(1.0, t * 4))
+    if badge_alpha > 0.05:
+        bx, by = 20, 20
+        base.alpha_composite(badge, (bx, by))
 
-    # 顶部标签结构变化
-    tag_mode = profile['tag_variant']
-    if tag_mode == 0:
-        rounded(d, (18, 16, 76, 40), 12, fill=accents[2][:3] + (210,))
-        d.text((30, 22), 'AI', font=font(12, 'medium'), fill=WHITE)
-        d.text((90, 22), '卡若式视频增强', font=font(12, 'regular'), fill=pal['sub'])
-    elif tag_mode == 1:
-        rounded(d, (18, 16, 108, 40), 12, fill=(255, 255, 255, 20), outline=accents[0][:3] + (120,), width=1)
-        d.text((30, 22), 'DYNAMIC UI', font=font(11, 'medium'), fill=pal['text'])
-        d.text((130, 22), pal['name'], font=font(11, 'regular'), fill=pal['muted'])
-    else:
-        rounded(d, (18, 16, 84, 40), 12, fill=(20, 24, 38, 190), outline=accents[1][:3] + (120,), width=1)
-        d.text((28, 22), 'FLOW', font=font(12, 'medium'), fill=pal['text'])
-        rounded(d, (94, 16, 152, 40), 12, fill=(255, 255, 255, 15), outline=(255, 255, 255, 30), width=1)
-        d.text((109, 22), 'AUTO', font=font(12, 'medium'), fill=pal['sub'])
+    # 标签文字
+    fl = font(12, "medium")
+    label_a = ease_out(min(1.0, max(0, (t - 0.1) / 0.5)))
+    if label_a > 0:
+        d.text((60, 22), label, font=fl, fill=(TEXT_PRIMARY[0], TEXT_PRIMARY[1], TEXT_PRIMARY[2], int(210 * label_a)))
 
-    place_video_window(base, create_video_window(scene_type, local_t, profile), profile)
+    # 副标题
+    fs = font(11, "regular")
+    sub_a = ease_out(min(1.0, max(0, (t - 0.2) / 0.5)))
+    if sub_a > 0 and subtitle:
+        d.text((60, 38), subtitle, font=fs,
+               fill=(TEXT_SECONDARY[0], TEXT_SECONDARY[1], TEXT_SECONDARY[2], int(180 * sub_a)))
 
-    variant = profile['content_variant']
-    if scene_type == 'title_card':
-        question = scene['params']['question']
-        subtitle = scene['params'].get('subtitle', '')
-        typed_ratio = ease_out(min(1.0, local_t / 1.8))
-        chars = max(1, int(len(question) * typed_ratio))
-        q_text = question[:chars]
-        qx = 24 if variant != 1 else 34
-        qy = 74 if variant == 0 else 86
-        draw_wrap(d, q_text, font(21, 'medium'), 238, qx, qy, pal['title'])
-        if typed_ratio < 1:
-            cursor_x = qx + min(238, int(typed_ratio * 220))
-            d.text((cursor_x, qy + 36), '▍', font=font(16, 'regular'), fill=accents[0])
-        if local_t > 1.0:
-            alpha = ease_out(min(1.0, (local_t - 1.0) / 0.9))
-            d.text((qx, qy + 72), subtitle, font=font(13, 'regular'), fill=(pal['sub'][0], pal['sub'][1], pal['sub'][2], int(255 * alpha)))
-        chip_texts = ['全平台', '自动承接', '后端变现'] if '发视频' in subtitle or '全链路' in subtitle else ['传统行业', '远程安装', '副业服务']
-        chip_specs = [(txt, accents[i % len(accents)], pal['title']) for i, txt in enumerate(chip_texts)]
-        place_chips(base, profile, chip_specs)
-    elif scene_type == 'comparison_card':
-        params = scene['params']
-        d.text((22, 70), params['title'], font=font(15, 'medium'), fill=pal['title'])
-        if variant == 0:
-            left_box, right_box = (22, 102, 193, 286), (205, 102, 396, 286)
-        elif variant == 1:
-            left_box, right_box = (22, 118, 188, 292), (194, 94, 396, 278)
-        else:
-            left_box, right_box = (22, 104, 210, 270), (186, 128, 396, 294)
-        rounded(d, left_box, 18, fill=(39, 19, 28, 200), outline=(248, 113, 113, 120), width=1)
-        rounded(d, right_box, 18, fill=(18, 42, 31, 200), outline=(52, 211, 153, 120), width=1)
-        d.text((left_box[0] + 14, left_box[1] + 14), params['left_title'], font=font(13, 'medium'), fill=RED)
-        d.text((right_box[0] + 14, right_box[1] + 14), params['right_title'], font=font(13, 'medium'), fill=GREEN)
-        for i, item in enumerate(params['left_items']):
-            alpha = ease_out(min(1.0, max(0.0, (local_t - 0.35 - i * 0.15) / 0.5)))
-            if alpha > 0:
-                y = left_box[1] + 46 + i * 34
-                d.text((left_box[0] + 14 - int((1 - alpha) * 14), y), f'✕ {item}', font=font(13, 'regular'), fill=(248, 113, 113, int(220 * alpha)))
-        for i, item in enumerate(params['right_items']):
-            alpha = ease_out(min(1.0, max(0.0, (local_t - 0.65 - i * 0.15) / 0.5)))
-            if alpha > 0:
-                y = right_box[1] + 46 + i * 34
-                d.text((right_box[0] + 14 + int((1 - alpha) * 14), y), f'✓ {item}', font=font(13, 'regular'), fill=(52, 211, 153, int(220 * alpha)))
-    elif scene_type == 'data_card':
-        params = scene['params']
-        d.text((22, 70), params['title'], font=font(15, 'medium'), fill=pal['title'])
-        if variant == 0:
-            positions = [(22, 102), (148, 102), (22, 196), (148, 196)]
-        elif variant == 1:
-            positions = [(22, 110), (148, 94), (22, 204), (148, 188)]
-        else:
-            positions = [(30, 104), (164, 112), (22, 202), (156, 194)]
-        for i, item in enumerate(params['items']):
-            card_t = ease_out(min(1.0, max(0.0, (local_t - 0.22 - i * 0.12) / 0.52)))
-            if card_t <= 0:
-                continue
-            raw = str(item['number'])
-            value = raw
-            if '~' in raw:
-                try:
-                    lo, hi = raw.split('~')
-                    value = f"{int(int(lo) * card_t)}~{int(int(hi) * card_t)}"
-                except Exception:
-                    pass
-            elif raw.endswith('万+'):
-                try:
-                    num = int(raw[:-2])
-                    value = f"{max(1, int(num * card_t))}万+"
-                except Exception:
-                    pass
-            elif raw.endswith('分钟'):
-                try:
-                    num = int(raw[:-2])
-                    value = f"{max(1, int(num * card_t))}分钟"
-                except Exception:
-                    pass
-            metric = create_metric_card(item['label'], value, item['desc'], accents[i % len(accents)], profile, local_t)
-            mx, my = positions[i]
-            base.alpha_composite(metric, (mx, my - int((1 - card_t) * 10)))
-    elif scene_type == 'flow_chart':
-        params = scene['params']
-        d.text((22, 70), params['title'], font=font(15, 'medium'), fill=pal['title'])
-        start_y = 112 if variant != 2 else 102
-        step_gap = 42 if variant == 0 else 38
-        for i, step in enumerate(params['steps']):
-            st = ease_out(min(1.0, max(0.0, (local_t - 0.16 - i * 0.17) / 0.52)))
-            if st <= 0:
-                continue
-            y = start_y + i * step_gap
-            accent = accents[i % len(accents)]
-            cx = 38 if variant != 1 else 54
-            cy = y + 12
-            d.ellipse((cx - 12, cy - 12, cx + 12, cy + 12), fill=accent[:3] + (220,))
-            d.text((cx - 4, cy - 8), str(i + 1), font=font(12, 'medium'), fill=(255, 255, 255, int(255 * st)))
-            d.text((cx + 26 + int((1 - st) * 16), y), step, font=font(14, 'regular'), fill=(pal['text'][0], pal['text'][1], pal['text'][2], int(255 * st)))
-            if i < len(params['steps']) - 1:
-                for dy in range(22, step_gap - 2, 5):
-                    d.ellipse((cx - 1, y + dy, cx + 1, y + dy + 2), fill=(255, 255, 255, 46))
-    elif scene_type == 'mindmap_card':
-        params = scene['params']
-        cx, cy = (150, 188) if variant == 0 else ((124, 200) if variant == 1 else (140, 178))
-        center_t = ease_out(min(1.0, local_t / 0.8))
-        r = 32 + int(4 * math.sin(local_t * 2))
-        d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=accents[2][:3] + (int(220 * center_t),))
-        bb = font(14, 'medium').getbbox(params['center'])
-        d.text((cx - (bb[2] - bb[0]) // 2, cy - 8), params['center'], font=font(14, 'medium'), fill=WHITE)
-        branches = params['branches']
-        angle_step = 42 if variant == 0 else (34 if variant == 1 else 48)
-        start_angle = -100 if variant != 2 else -120
-        for i, br in enumerate(branches):
-            bt = ease_out(min(1.0, max(0.0, (local_t - 0.36 - i * 0.11) / 0.56)))
-            if bt <= 0:
-                continue
-            ang = math.radians(start_angle + i * angle_step)
-            dist = 92 * bt
-            bx = cx + int(math.cos(ang) * dist)
-            by = cy + int(math.sin(ang) * dist)
-            accent = accents[i % len(accents)]
-            d.line((cx, cy, bx, by), fill=(accent[0], accent[1], accent[2], int(130 * bt)), width=2)
-            ff = font(11, 'medium')
-            bbox = ff.getbbox(br)
-            tw = bbox[2] - bbox[0]
-            th = bbox[3] - bbox[1]
-            rounded(d, (bx - tw // 2 - 8, by - th // 2 - 6, bx + tw // 2 + 8, by + th // 2 + 6), 10,
-                    fill=(accent[0], accent[1], accent[2], 40), outline=(accent[0], accent[1], accent[2], 120), width=1)
-            d.text((bx - tw // 2, by - th // 2), br, font=ff, fill=(accent[0], accent[1], accent[2], 255))
-    else:
-        params = scene['params']
-        rounded(d, (22, 60, PANEL_W - 22, 114), 22, fill=(18, 27, 44, 220), outline=accents[0][:3] + (110,), width=1)
-        draw_wrap_center(d, params['headline'], font(21, 'medium'), PANEL_W - 80, 74, pal['title'], PANEL_W)
-        y = 132
-        for i, item in enumerate(params['points']):
-            alpha = ease_out(min(1.0, max(0.0, (local_t - 0.35 - i * 0.13) / 0.48)))
-            if alpha <= 0:
-                continue
-            accent = accents[i % len(accents)]
-            d.ellipse((30, y + i * 34 + 6, 38, y + i * 34 + 14), fill=(accent[0], accent[1], accent[2], int(220 * alpha)))
-            d.text((48 + int((1 - alpha) * 12), y + i * 34), item, font=font(14, 'regular'), fill=(pal['text'][0], pal['text'][1], pal['text'][2], int(255 * alpha)))
-        cta_t = ease_out(min(1.0, max(0.0, (local_t - 1.1) / 0.45)))
-        if cta_t > 0:
-            rounded(d, (42, 286 - int((1 - cta_t) * 8), PANEL_W - 42, 316 - int((1 - cta_t) * 8)), 16, fill=accents[2][:3] + (int(220 * cta_t),))
-            draw_center(d, params['cta'], font(13, 'medium'), 293 - int((1 - cta_t) * 8), WHITE, PANEL_W)
+    # 右侧状态点（脉冲）
+    dot_r = 4 + int(1.5 * math.sin(t * 3))
+    dot_color = palette["a"][:3] + (200,)
+    d.ellipse((PANEL_W - 30 - dot_r, 26 - dot_r,
+               PANEL_W - 30 + dot_r, 26 + dot_r), fill=dot_color)
+    # 发光圈
+    glow_r = dot_r + 4
+    d.ellipse((PANEL_W - 30 - glow_r, 26 - glow_r,
+               PANEL_W - 30 + glow_r, 26 + glow_r),
+              outline=dot_color[:3] + (60,), width=1)
 
-    chip_specs = [
-        ('内容引擎', accents[0], pal['title']),
-        ('自动分发', accents[1], pal['title']),
-        ('后端承接', accents[2], pal['title']),
-    ]
-    if '全链路' in json.dumps(scene.get('params', {}), ensure_ascii=False):
-        chip_specs = [('全平台', accents[0], pal['title']), ('小程序', accents[1], pal['title']), ('变现链路', accents[2], pal['title'])]
-    place_chips(base, profile, chip_specs)
+
+# ── 内容区域渲染器 ────────────────────────────────────────────────────
+
+def _section_title(draw, title: str, icon: str, palette: dict, y: int, t: float) -> int:
+    ta = ease_out(min(1.0, max(0, (t - 0.1) / 0.5)))
+    if ta <= 0:
+        return y
+    ff = font(14, "medium")
+    fi = font(14, "semibold")
+    # 图标（渐变色）
+    draw.text((20, y), icon, font=fi, fill=blend_color(palette["a"], palette["b"], 0.4)[:3] + (int(255 * ta),))
+    draw.text((42, y), title, font=ff, fill=(TEXT_PRIMARY[0], TEXT_PRIMARY[1], TEXT_PRIMARY[2], int(240 * ta)))
+    return y + text_height(ff, title) + 10
+
+
+def _render_title_card(base, params, t, palette):
+    d = ImageDraw.Draw(base)
+    question = params.get("question", "")
+    subtitle = params.get("subtitle", "")
+
+    y = 80
+    # 问号图标
+    fi = font(32, "bold")
+    badge = _icon_badge("?", palette["a"], palette["b"], size=40)
+    base.alpha_composite(badge, (20, y - 4))
+
+    # 主问句（打字机效果）
+    ff = font(22, "medium")
+    type_t = ease_out(min(1.0, t / 2.0))
+    chars = max(1, int(len(question) * type_t))
+    shown = question[:chars]
+    cursor = "▍" if type_t < 0.95 else ""
+    draw_wrapped(d, shown + cursor, ff, PANEL_W - 80, 72, y, TEXT_PRIMARY)
+
+    # 副标题
+    if subtitle and t > 1.2:
+        sub_a = ease_out(min(1.0, (t - 1.2) / 0.7))
+        fs = font(13, "regular")
+        y_sub = y + 56
+        d.text((70, y_sub), subtitle, font=fs,
+               fill=(TEXT_SECONDARY[0], TEXT_SECONDARY[1], TEXT_SECONDARY[2], int(200 * sub_a)))
+
+    # 芯片
+    chips = params.get("chips", ["AI 工具", "副业赛道", "立即可做"])
+    _place_chips(base, chips, palette, t)
+
+
+def _render_data_card(base, params, t, palette):
+    d = ImageDraw.Draw(base)
+    items = params.get("items", [])
+    section_t = ease_out(min(1.0, t * 3))
+    y = _section_title(d, params.get("title", ""), ICONS["data"], palette, 78, t)
+
+    col_w = (PANEL_W - 30) // 2
+    for i, item in enumerate(items[:4]):
+        delay = 0.2 + i * 0.12
+        card_t = ease_out(min(1.0, max(0, (t - delay) / 0.55)))
+        if card_t <= 0:
+            continue
+        row, col = i // 2, i % 2
+        cx = 16 + col * (col_w + 8)
+        cy = y + row * 78 - int((1 - card_t) * 12)
+
+        # 卡片背景（轻度毛玻璃）
+        d.rounded_rectangle((cx, cy, cx + col_w, cy + 68), radius=14,
+                             fill=(255, 255, 255, int(12 * card_t)))
+        d.rounded_rectangle((cx, cy, cx + col_w, cy + 68), radius=14,
+                             outline=blend_color(palette["a"], palette["b"], i / 3)[:3] + (int(100 * card_t),),
+                             width=1)
+        # 侧色带
+        ac = blend_color(palette["a"], palette["b"], i / 3)
+        d.rounded_rectangle((cx, cy, cx + 3, cy + 68), radius=2, fill=ac[:3] + (int(220 * card_t),))
+
+        # 数值（动态增长）
+        raw = str(item.get("number", ""))
+        value = raw
+        try:
+            if "~" in raw:
+                lo, hi = raw.split("~")
+                value = f"{int(int(lo) * card_t)}~{int(int(hi) * card_t)}"
+            elif raw.endswith("万+"):
+                num = int(raw[:-2])
+                value = f"{max(1, int(num * card_t))}万+"
+            elif raw.endswith("分钟"):
+                num = int(raw[:-2])
+                value = f"{max(1, int(num * card_t))}分"
+        except Exception:
+            pass
+        fv = font(20, "medium")
+        fc = ac[:3] + (int(255 * card_t),)
+        d.text((cx + 10, cy + 6), value, font=fv, fill=fc)
+        fl = font(11, "regular")
+        d.text((cx + 10, cy + 32), item.get("label", ""), font=fl,
+               fill=(TEXT_SECONDARY[0], TEXT_SECONDARY[1], TEXT_SECONDARY[2], int(200 * card_t)))
+        fd = font(10, "regular")
+        d.text((cx + 10, cy + 50), item.get("desc", ""), font=fd,
+               fill=(TEXT_MUTED[0], TEXT_MUTED[1], TEXT_MUTED[2], int(170 * card_t)))
+
+    _place_chips(base, params.get("chips", []), palette, t)
+
+
+def _render_flow_chart(base, params, t, palette):
+    d = ImageDraw.Draw(base)
+    steps = params.get("steps", [])
+    y = _section_title(d, params.get("title", ""), ICONS["flow"], palette, 78, t)
+    step_h = min(40, (PANEL_H - y - 54) // max(len(steps), 1))
+
+    for i, step in enumerate(steps):
+        delay = 0.15 + i * 0.14
+        st = ease_out(min(1.0, max(0, (t - delay) / 0.5)))
+        if st <= 0:
+            continue
+        sy = y + i * step_h
+
+        # 圆点（渐入弹出）
+        cx_dot = 32
+        ac = blend_color(palette["a"], palette["b"], i / max(len(steps) - 1, 1))
+        dot_r = int(12 * ease_out(min(1.0, (t - delay) / 0.3)))
+        if dot_r > 2:
+            d.ellipse((cx_dot - dot_r, sy + step_h // 2 - dot_r,
+                       cx_dot + dot_r, sy + step_h // 2 + dot_r),
+                      fill=ac[:3] + (220,))
+            # 数字
+            ni = NUMBERED[i] if i < len(NUMBERED) else str(i + 1)
+            fn = font(11, "semibold")
+            nw = text_width(fn, ni)
+            d.text((cx_dot - nw // 2 - 1, sy + step_h // 2 - 8), ni, font=fn,
+                   fill=(255, 255, 255, int(255 * st)))
+
+        # 步骤文字（右滑入）
+        slide_x = int((1 - st) * 20)
+        fs = font(14, "regular")
+        d.text((56 + slide_x, sy + step_h // 2 - 9), step, font=fs,
+               fill=(TEXT_PRIMARY[0], TEXT_PRIMARY[1], TEXT_PRIMARY[2], int(250 * st)))
+
+        # 虚线连接
+        if i < len(steps) - 1:
+            for dy in range(step_h // 2 + 10, step_h - 2, 5):
+                dc = ac[:3] + (int(55 * st),)
+                d.ellipse((cx_dot - 1, sy + dy, cx_dot + 1, sy + dy + 2), fill=dc)
+
+    _place_chips(base, params.get("chips", []), palette, t)
+
+
+def _render_comparison(base, params, t, palette):
+    d = ImageDraw.Draw(base)
+    y = _section_title(d, params.get("title", ""), ICONS["compare"], palette, 78, t)
+
+    mid = PANEL_W // 2
+    mx = 16
+    gap = 8
+
+    # 左侧框
+    la = ease_out(min(1.0, max(0, (t - 0.1) / 0.6)))
+    if la > 0:
+        d.rounded_rectangle((mx, y, mid - gap, PANEL_H - 54), radius=16,
+                             fill=(248, 113, 113, int(14 * la)),
+                             outline=(248, 113, 113, int(80 * la)), width=1)
+    # 右侧框
+    ra = ease_out(min(1.0, max(0, (t - 0.2) / 0.6)))
+    if ra > 0:
+        d.rounded_rectangle((mid + gap, y, PANEL_W - mx, PANEL_H - 54), radius=16,
+                             fill=(52, 211, 153, int(14 * ra)),
+                             outline=(52, 211, 153, int(80 * ra)), width=1)
+
+    # 标题行
+    fh = font(13, "medium")
+    if la > 0.2:
+        d.text((mx + 12, y + 10), ICONS["cross"] + " " + params.get("left_title", ""), font=fh,
+               fill=(248, 113, 113, int(220 * la)))
+    if ra > 0.2:
+        d.text((mid + gap + 12, y + 10), ICONS["check"] + " " + params.get("right_title", ""), font=fh,
+               fill=(52, 211, 153, int(220 * ra)))
+
+    fl = font(13, "regular")
+    iy = y + 36
+    for j, item in enumerate(params.get("left_items", [])):
+        ia = ease_out(min(1.0, max(0, (t - 0.3 - j * 0.1) / 0.45)))
+        if ia > 0:
+            d.text((mx + 10 - int((1 - ia) * 12), iy + j * 28), item, font=fl,
+                   fill=(248, 113, 113, int(200 * ia)))
+    iy = y + 36
+    for j, item in enumerate(params.get("right_items", [])):
+        ia = ease_out(min(1.0, max(0, (t - 0.5 - j * 0.1) / 0.45)))
+        if ia > 0:
+            d.text((mid + gap + 10 + int((1 - ia) * 12), iy + j * 28), item, font=fl,
+                   fill=(52, 211, 153, int(200 * ia)))
+
+    _place_chips(base, params.get("chips", []), palette, t)
+
+
+def _render_mindmap(base, params, t, palette):
+    d = ImageDraw.Draw(base)
+    center = params.get("center", "核心")
+    branches = params.get("branches", [])
+    cx, cy = PANEL_W // 2, (PANEL_H - 54) // 2 + 40
+
+    # 中心节点（缩放入场）
+    ct = ease_out(min(1.0, t / 0.7))
+    cr = int(36 * ct) + int(3 * math.sin(t * 2))
+    if cr > 3:
+        # 渐变圆背景
+        for r in range(cr, 0, -2):
+            tf = r / cr
+            col = blend_color(palette["a"], palette["b"], 1 - tf)[:3] + (int(200 * tf * ct),)
+            d.ellipse((cx - r, cy - r, cx + r, cy + r), fill=col)
+        fc = font(13, "semibold")
+        cw = text_width(fc, center)
+        d.text((cx - cw // 2, cy - 9), center, font=fc, fill=WHITE)
+
+    # 分支
+    n = len(branches)
+    for i, br in enumerate(branches):
+        bt = ease_out(min(1.0, max(0, (t - 0.3 - i * 0.1) / 0.55)))
+        if bt <= 0:
+            continue
+        ang = math.radians(-90 + i * (360 / n))
+        dist = 90 * bt
+        bx = cx + int(math.cos(ang) * dist)
+        by = cy + int(math.sin(ang) * dist)
+        ac = blend_color(palette["a"], palette["b"], i / max(n - 1, 1))
+
+        # 连线
+        d.line([(cx, cy), (bx, by)], fill=ac[:3] + (int(100 * bt),), width=1)
+
+        # 分支节点背景
+        fb = font(11, "medium")
+        bw = text_width(fb, br) + 16
+        bh = 22
+        d.rounded_rectangle((bx - bw // 2, by - bh // 2, bx + bw // 2, by + bh // 2), radius=11,
+                             fill=ac[:3] + (int(35 * bt),), outline=ac[:3] + (int(120 * bt),), width=1)
+        d.text((bx - bw // 2 + 8, by - bh // 2 + 4), br, font=fb, fill=ac[:3] + (int(245 * bt),))
+
+    _place_chips(base, params.get("chips", []), palette, t)
+
+
+def _render_summary(base, params, t, palette):
+    d = ImageDraw.Draw(base)
+    headline = params.get("headline", "")
+    points = params.get("points", [])
+    cta = params.get("cta", "")
+
+    # 顶部标题框
+    ha = ease_out(min(1.0, max(0, (t - 0.05) / 0.55)))
+    if ha > 0:
+        d.rounded_rectangle((18, 74, PANEL_W - 18, 116), radius=20,
+                             fill=blend_color(palette["a"], palette["b"], 0.5)[:3] + (int(25 * ha),),
+                             outline=blend_color(palette["a"], palette["b"], 0.5)[:3] + (int(100 * ha),),
+                             width=1)
+        fh = font(20, "medium")
+        draw_wrapped_center(d, headline, fh, PANEL_W - 60, 82, TEXT_PRIMARY)
+
+    # 要点列表
+    y = 128
+    for i, pt in enumerate(points):
+        ia = ease_out(min(1.0, max(0, (t - 0.3 - i * 0.12) / 0.5)))
+        if ia <= 0:
+            continue
+        ac = blend_color(palette["a"], palette["b"], i / max(len(points) - 1, 1))
+        # 颜色点
+        d.ellipse((22, y + i * 32 + 5, 30, y + i * 32 + 13),
+                  fill=ac[:3] + (int(240 * ia),))
+        fp = font(14, "regular")
+        d.text((38 + int((1 - ia) * 14), y + i * 32), pt, font=fp,
+               fill=(TEXT_PRIMARY[0], TEXT_PRIMARY[1], TEXT_PRIMARY[2], int(250 * ia)))
+
+    # CTA 按钮（渐变填充）
+    if cta:
+        ca = ease_out(min(1.0, max(0, (t - 1.0) / 0.45)))
+        if ca > 0:
+            by = PANEL_H - 54 - int((1 - ca) * 8)
+            for x in range(44, PANEL_W - 44):
+                tf = (x - 44) / max(PANEL_W - 88, 1)
+                col = blend_color(palette["a"], palette["b"], tf)[:3] + (int(210 * ca),)
+                d.line([(x, by), (x, by + 28)], fill=col)
+            d.rounded_rectangle((44, by, PANEL_W - 44, by + 28), radius=14,
+                                 outline=(255, 255, 255, int(40 * ca)), width=1)
+            fc = font(13, "medium")
+            draw_center(d, cta, fc, by + 6, WHITE)
+
+
+# ── 场景渲染调度 ──────────────────────────────────────────────────────
+
+RENDERERS = {
+    "title_card":     _render_title_card,
+    "data_card":      _render_data_card,
+    "flow_chart":     _render_flow_chart,
+    "comparison_card": _render_comparison,
+    "mindmap_card":   _render_mindmap,
+    "summary_card":   _render_summary,
+}
+
+
+def compose_frame(scene: dict, local_t: float, palette: dict) -> Image.Image:
+    scene_type = scene.get("type", "title_card")
+    params = scene.get("params", {})
+    scene_progress = (local_t % 5.0) / 5.0
+
+    base = Image.new("RGBA", (PANEL_W, PANEL_H), (0, 0, 0, 0))
+    base.alpha_composite(_make_shadow(), (0, 0))
+    base.alpha_composite(_make_glass_panel(), (0, 0))
+
+    renderer = RENDERERS.get(scene_type)
+    if renderer:
+        renderer(base, params, local_t, palette)
+
+    # 头部标签
+    label = scene.get("label", "卡若 · 精华")
+    sub_label = scene.get("sub_label", "")
+    _header_bar(base, label, sub_label, palette, local_t)
+
     return base
 
 
-def render_overlay_frame(scene, local_t, profile):
-    scene_progress = (local_t % 6.0) / 6.0
-    panel = compose_panel(scene, scene['type'], local_t, scene_progress, profile)
-    intro = ease_out(min(1.0, local_t / 0.65))
-    breath = 1 + math.sin(local_t * 1.35) * 0.013
-    scale = (0.935 + intro * 0.07) * breath
-    y_offset = int((1 - intro) * 18 + math.sin(local_t * 1.05) * 5)
-    x_offset = int(math.sin(local_t * 0.75) * 3)
-    panel_resized = panel.resize((int(PANEL_W * scale), int(PANEL_H * scale)), Image.LANCZOS)
-    frame = Image.new('RGBA', (VW, VH), (0, 0, 0, 0))
-    px = (VW - panel_resized.width) // 2 + x_offset
-    py = PANEL_Y - (panel_resized.height - PANEL_H) // 2 + y_offset
-    frame.alpha_composite(panel_resized, (px, py))
+def render_overlay_frame(scene: dict, local_t: float, scene_idx: int) -> Image.Image:
+    palette = get_palette(scene_idx)
+    panel = compose_frame(scene, local_t, palette)
+
+    # 整体漂浮 + 呼吸缩放
+    intro = ease_out(min(1.0, local_t / 0.6))
+    breath = 1 + math.sin(local_t * 1.3) * 0.011
+    scale = (0.94 + intro * 0.06) * breath
+    y_drift = int((1 - intro) * 18 + math.sin(local_t * 1.0) * 4)
+    x_drift = int(math.sin(local_t * 0.65) * 2)
+
+    panel_s = panel.resize((int(PANEL_W * scale), int(PANEL_H * scale)), Image.LANCZOS)
+    frame = Image.new("RGBA", (VW, VH), (0, 0, 0, 0))
+    px = (VW - panel_s.width) // 2 + x_drift
+    py = PANEL_Y - (panel_s.height - PANEL_H) // 2 + y_drift
+    frame.alpha_composite(panel_s, (max(0, px), max(0, py)))
     return frame
 
 
+# ── 默认场景（用于测试）──────────────────────────────────────────────
+
 DEFAULT_SCENES = [
-    {'start': 0, 'end': 30, 'type': 'title_card', 'params': {'question': '帮别人装AI，一单能挣多少钱？', 'subtitle': '传统行业也能做的AI副业'}},
-    {'start': 30, 'end': 70, 'type': 'comparison_card', 'params': {'title': '营销号 vs 真实情况', 'left_title': '营销号', 'left_items': ['AI暴富神话', '零成本躺赚', '一夜翻身'], 'right_title': '真实可做', 'right_items': ['帮装AI工具', '卖API接口', '远程安装服务']}},
-    {'start': 70, 'end': 130, 'type': 'data_card', 'params': {'title': '装AI服务 · 核心数据', 'items': [{'number': '300~1000', 'label': '元/单', 'desc': '远程安装AI工具'}, {'number': '170万+', 'label': '淘宝月销最高', 'desc': '帮别人装AI的店铺'}, {'number': '30分钟', 'label': '单次耗时', 'desc': '远程操作即可完成'}, {'number': '全平台', 'label': '淘宝/闲鱼/Soul', 'desc': '多渠道接单'}]}},
-    {'start': 130, 'end': 190, 'type': 'flow_chart', 'params': {'title': '装AI赚钱 · 操作步骤', 'steps': ['开淘宝/闲鱼店铺', '标题写清：AI安装服务', '客户下单 远程连接', '30分钟完成安装', '收款300~1000元']}},
-    {'start': 190, 'end': 230, 'type': 'mindmap_card', 'params': {'center': '装AI副业', 'branches': ['淘宝开店', '闲鱼挂单', 'Soul接客', '远程安装', 'Mac工具', '月入可观']}},
-    {'start': 230, 'end': 245, 'type': 'summary_card', 'params': {'headline': '赚钱没那么复杂', 'points': ['帮人装AI 一单300~1000', '淘宝最高店月销170万+', '30分钟远程安装搞定', '开店+接单+装机=副业'], 'cta': '关注了解更多AI副业'}},
+    {
+        "start": 0, "end": 30,
+        "type": "title_card",
+        "label": "卡若 · 精华",
+        "sub_label": "AI 工具真实评测",
+        "params": {
+            "question": "哪个AI模型才是真正意义上的AI？",
+            "subtitle": "深度AI模型对比：不是语言模型",
+            "chips": ["深度AI", "语言模型", "真实评测"],
+        },
+    },
+    {
+        "start": 30, "end": 90,
+        "type": "comparison_card",
+        "label": "卡若 · 对比",
+        "sub_label": "工具性能差异分析",
+        "params": {
+            "title": "语言模型 vs 真正的AI",
+            "left_title": "语言模型",
+            "left_items": ["只回答文字", "无法执行动作", "不学习记忆"],
+            "right_title": "深度AI",
+            "right_items": ["理解并执行", "动态调整策略", "持续学习反馈"],
+            "chips": ["能力差异", "使用场景", "选型建议"],
+        },
+    },
+    {
+        "start": 90, "end": 150,
+        "type": "flow_chart",
+        "label": "卡若 · 方法论",
+        "sub_label": "评测流程",
+        "params": {
+            "title": "怎么判断一个AI是否真正有用",
+            "steps": ["提一个具体任务", "看它会不会主动拆解", "看执行后有没有反馈", "反复迭代才是真AI"],
+            "chips": ["判断标准", "实操方法", "避坑指南"],
+        },
+    },
+    {
+        "start": 150, "end": 190,
+        "type": "summary_card",
+        "label": "卡若 · 总结",
+        "sub_label": "你可以直接用",
+        "params": {
+            "headline": "选AI就选能执行的那个",
+            "points": ["语言模型≠真正的AI", "执行力是核心判断标准", "先用深度AI跑一遍再说"],
+            "cta": "关注 · 了解更多AI工具",
+        },
+    },
 ]
 
 
-def render_scene_video(scene, tmp_dir, idx):
-    duration = float(scene['end'] - scene['start'])
-    scene_dir = os.path.join(tmp_dir, f'scene_{idx:03d}')
-    os.makedirs(scene_dir, exist_ok=True)
-    frames = max(1, int(duration * FPS))
-    concat_lines = []
-    profile = build_profile(scene, idx)
-    print(f"  [{idx+1}] {scene['type']} {scene['start']:.0f}s-{scene['end']:.0f}s ({frames} 帧, {profile['palette']['name']})...", end='', flush=True)
+# ── 渲染引擎 ─────────────────────────────────────────────────────────
+
+def render_scene_clip(scene: dict, scene_idx: int, tmp_dir: str) -> dict | None:
+    dur = float(scene["end"] - scene["start"])
+    sdir = os.path.join(tmp_dir, f"sc_{scene_idx:03d}")
+    os.makedirs(sdir, exist_ok=True)
+    n_frames = max(1, int(dur * FPS))
+    concat = []
     last_fp = None
-    for i in range(frames):
-        local_t = i / FPS
-        frame = render_overlay_frame(scene, local_t, profile)
-        fp = os.path.join(scene_dir, f'f_{i:04d}.png')
-        frame.save(fp, 'PNG')
-        concat_lines.append(f"file '{fp}'")
-        concat_lines.append(f'duration {1.0 / FPS:.4f}')
+    tp = scene.get("type", "?")
+    pal_name = get_palette(scene_idx)["name"]
+    print(f"  [{scene_idx+1}] {tp} {scene['start']:.0f}s–{scene['end']:.0f}s ({n_frames}f, {pal_name})...", end="", flush=True)
+    for i in range(n_frames):
+        lt = i / FPS
+        frame = render_overlay_frame(scene, lt, scene_idx)
+        fp = os.path.join(sdir, f"f{i:04d}.png")
+        frame.save(fp, "PNG")
+        concat.append(f"file '{fp}'")
+        concat.append(f"duration {1.0/FPS:.4f}")
         last_fp = fp
-    concat_lines.append(f"file '{last_fp}'")
-    concat_path = os.path.join(scene_dir, 'concat.txt')
-    with open(concat_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(concat_lines))
-    mov_path = os.path.join(scene_dir, 'scene.mov')
-    cmd = ['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', concat_path, '-vf', 'fps=25,format=rgba', '-c:v', 'png', '-t', f'{duration:.3f}', mov_path]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f" ERR {result.stderr[-600:]}", flush=True)
+    concat.append(f"file '{last_fp}'")
+    cf = os.path.join(sdir, "concat.txt")
+    with open(cf, "w") as f:
+        f.write("\n".join(concat))
+    mov = os.path.join(sdir, "sc.mov")
+    cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", cf,
+           "-vf", "fps=25,format=rgba", "-c:v", "png", "-t", f"{dur:.3f}", mov]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f" ERR", flush=True)
         return None
-    print(' ✓', flush=True)
-    return {'path': mov_path, 'start': scene['start'], 'end': scene['end']}
+    print(" ✓", flush=True)
+    return {"path": mov, "start": scene["start"], "end": scene["end"]}
 
 
-def build_full_overlay(scene_videos, duration, tmp_dir):
-    blank = Image.new('RGBA', (VW, VH), (0, 0, 0, 0))
-    blank_path = os.path.join(tmp_dir, 'blank.png')
-    blank.save(blank_path, 'PNG')
-    concat_lines = []
+def build_overlay_stream(clips: list, duration: float, tmp_dir: str) -> str | None:
+    blank = Image.new("RGBA", (VW, VH), (0, 0, 0, 0))
+    bp = os.path.join(tmp_dir, "blank.png")
+    blank.save(bp, "PNG")
+    concat = []
     prev = 0.0
-    for sv in scene_videos:
-        if sv['start'] > prev + 0.04:
-            gap = sv['start'] - prev
-            concat_lines.append(f"file '{blank_path}'")
-            concat_lines.append(f'duration {gap:.3f}')
-        concat_lines.append(f"file '{sv['path']}'")
-        prev = sv['end']
+    for c in clips:
+        if c["start"] > prev + 0.05:
+            concat += [f"file '{bp}'", f"duration {c['start']-prev:.3f}"]
+        concat.append(f"file '{c['path']}'")
+        prev = c["end"]
     if prev < duration:
-        concat_lines.append(f"file '{blank_path}'")
-        concat_lines.append(f'duration {duration - prev:.3f}')
-    concat_lines.append(f"file '{blank_path}'")
-    concat_path = os.path.join(tmp_dir, 'overlay_concat.txt')
-    with open(concat_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(concat_lines))
-    out_path = os.path.join(tmp_dir, 'overlay_full.mov')
-    cmd = ['ffmpeg', '-y', '-f', 'concat', '-safe', '0', '-i', concat_path, '-vf', 'fps=25,format=rgba', '-c:v', 'png', '-t', f'{duration:.3f}', out_path]
-    print('  拼接完整叠加流...', end='', flush=True)
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f" ERR {result.stderr[-800:]}", flush=True)
+        concat += [f"file '{bp}'", f"duration {duration-prev:.3f}"]
+    concat.append(f"file '{bp}'")
+    cf = os.path.join(tmp_dir, "ov_concat.txt")
+    with open(cf, "w") as f:
+        f.write("\n".join(concat))
+    out = os.path.join(tmp_dir, "overlay.mov")
+    cmd = ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", cf,
+           "-vf", "fps=25,format=rgba", "-c:v", "png", "-t", f"{duration:.3f}", out]
+    print("  合并叠加流...", end="", flush=True)
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f" ERR", flush=True)
         return None
-    mb = os.path.getsize(out_path) / 1024 / 1024
-    print(f' ✓ ({mb:.0f}MB)', flush=True)
-    return out_path
+    mb = os.path.getsize(out) / 1024 / 1024
+    print(f" ✓ ({mb:.0f}MB)", flush=True)
+    return out
 
 
-def compose_final(input_video, overlay_video, output_path, duration):
-    cmd = ['ffmpeg', '-y', '-i', input_video, '-i', overlay_video, '-filter_complex', '[1:v]format=rgba[ov];[0:v][ov]overlay=0:0:format=auto:shortest=1[v]', '-map', '[v]', '-map', '0:a?', '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-c:a', 'aac', '-b:a', '128k', '-t', f'{duration:.3f}', '-movflags', '+faststart', output_path]
-    print('  合成最终视频...', end='', flush=True)
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        print(f" ERR {result.stderr[-1200:]}", flush=True)
+def compose_final(input_video: str, overlay: str, output: str, duration: float) -> bool:
+    cmd = [
+        "ffmpeg", "-y", "-i", input_video, "-i", overlay,
+        "-filter_complex", "[1:v]format=rgba[ov];[0:v][ov]overlay=0:0:format=auto:shortest=1[v]",
+        "-map", "[v]", "-map", "0:a?",
+        "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+        "-c:a", "aac", "-b:a", "128k",
+        "-t", f"{duration:.3f}", "-movflags", "+faststart", output,
+    ]
+    print("  最终合成...", end="", flush=True)
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f" ERR", flush=True)
         return False
-    mb = os.path.getsize(output_path) / 1024 / 1024
-    print(f' ✓ ({mb:.1f}MB)', flush=True)
+    mb = os.path.getsize(output) / 1024 / 1024
+    print(f" ✓ ({mb:.1f}MB)", flush=True)
     return True
 
 
-def get_duration(video_path):
-    result = subprocess.run(['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', video_path], capture_output=True, text=True)
-    return float(json.loads(result.stdout)['format']['duration'])
+def get_dur(v: str) -> float:
+    r = subprocess.run(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", v],
+                       capture_output=True, text=True)
+    return float(json.loads(r.stdout)["format"]["duration"])
 
 
 def main():
-    global CURRENT_VIDEO_SEED
-    parser = argparse.ArgumentParser(description='视觉增强 v6：非固定结构高级玻璃舞台')
-    parser.add_argument('-i', '--input', required=True)
-    parser.add_argument('-o', '--output', required=True)
-    parser.add_argument('--scenes')
-    args = parser.parse_args()
-    CURRENT_VIDEO_SEED = Path(args.input).stem
+    global CURRENT_SEED
+    ap = argparse.ArgumentParser(description="视觉增强 v7 苹果毛玻璃浮层")
+    ap.add_argument("-i", "--input", required=True)
+    ap.add_argument("-o", "--output", required=True)
+    ap.add_argument("--scenes")
+    args = ap.parse_args()
+
+    CURRENT_SEED = Path(args.input).stem
+
     scenes = DEFAULT_SCENES
     if args.scenes and os.path.exists(args.scenes):
-        with open(args.scenes, 'r', encoding='utf-8') as f:
+        with open(args.scenes, "r", encoding="utf-8") as f:
             scenes = json.load(f)
-    duration = get_duration(args.input)
-    for scene in scenes:
-        scene['end'] = min(scene['end'], duration)
-    os.makedirs(os.path.dirname(args.output) or '.', exist_ok=True)
-    print(f"输入: {os.path.basename(args.input)} ({duration:.0f}s)")
-    print(f"场景: {len(scenes)} · 非固定结构 · 每视频独立风格\n")
-    with tempfile.TemporaryDirectory(prefix='ve6_') as tmp_dir:
-        print('【1/3】生成每段动态舞台...', flush=True)
-        scene_videos = []
-        for idx, scene in enumerate(scenes):
-            scene_video = render_scene_video(scene, tmp_dir, idx)
-            if scene_video:
-                scene_videos.append(scene_video)
-        print(f"\n【2/3】拼接叠加流 ({len(scene_videos)} 段)...", flush=True)
-        overlay = build_full_overlay(scene_videos, duration, tmp_dir)
-        if not overlay:
+
+    duration = get_dur(args.input)
+    for sc in scenes:
+        sc["end"] = min(sc["end"], duration)
+
+    os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
+    print(f"输入: {Path(args.input).name} ({duration:.0f}s)")
+    print(f"场景: {len(scenes)} 段 · 苹果毛玻璃 v7\n")
+
+    with tempfile.TemporaryDirectory(prefix="ve7_") as tmp:
+        print("【1/3】生成动态帧...", flush=True)
+        clips = [c for c in (render_scene_clip(sc, i, tmp) for i, sc in enumerate(scenes)) if c]
+        if not clips:
             sys.exit(1)
-        print('\n【3/3】合成最终视频...', flush=True)
-        if not compose_final(args.input, overlay, args.output, duration):
+        print(f"\n【2/3】构建叠加流 ({len(clips)} 段)...", flush=True)
+        ov = build_overlay_stream(clips, duration, tmp)
+        if not ov:
+            sys.exit(1)
+        print("\n【3/3】合成成片...", flush=True)
+        if not compose_final(args.input, ov, args.output, duration):
             sys.exit(1)
     print(f"\n✅ 完成: {args.output}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
