@@ -1,10 +1,10 @@
 ---
 name: Soul竖屏切片
-description: Soul 派对视频→竖屏成片（498×1080），剪辑→成片两文件夹，MLX 转录→高光识别→batch_clip→soul_enhance（封面+字幕同步+去语助词+纠错）→visual_enhance v7（苹果毛玻璃浮层）。可选 LTX AI 生成内容/Retake 重剪。支持基因胶囊打包。
+description: Soul 派对视频→竖屏成片（498×1080），剪辑→成片两文件夹，MLX 转录→高光识别→batch_clip→soul_enhance（封面+动态字幕同步+去语助词+纠错+违禁词）→visual_enhance v8（苹果毛玻璃浮层+Logo+场次号+段落总结）。可选 LTX AI 生成内容/Retake 重剪。支持基因胶囊打包。
 triggers: Soul竖屏切片、视频切片、热点切片、竖屏成片、派对切片、LTX、AI生成视频、Retake重剪、字幕优化、字幕同步
 owner: 木叶
 group: 木
-version: "1.2"
+version: "1.3"
 updated: "2026-03-13"
 ---
 
@@ -73,7 +73,7 @@ updated: "2026-03-13"
 | 字幕全跳过（转录稿异常误判） | `_parse_clip_index` 取到场次号（如 119）而非切片序号（01），导致 highlight_info 为空，start_sec=0 落入噪声区 | 改为取 `_数字_` 模式中**最小值**，119→01=1 ✓ |
 | 标题/文件名有下划线 | `sanitize_filename` 保留了 `_` | 现在 `_` 也替换为空格 |
 | 字幕烧录极慢（N/5 次 encode） | 原 batch_size=5，180 条字幕需 36 次 FFmpeg 重编码 | 改为单次通道（1 次 pass）；失败时 batch_size=40 兜底 |
-| **字幕超前于说话（字幕比声音早）** | `batch_clip -ss` 输入端 seeking 导致切片从关键帧开始（早于请求时间 1-3s），字幕按请求时间算相对位置，导致超前 | `SUBTITLE_DELAY_SEC` 从 0.8 提高到 **2.0 秒**；Soul 派对直播流关键帧间距 2-4s，2.0s 补偿更准确 |
+| **字幕超前于说话（字幕比声音早）** | `batch_clip -ss` 输入端 seeking 导致切片从关键帧开始（早于请求时间 1-4s），字幕按请求时间算相对位置，导致超前 | **动态 PTS 检测**：`enhance_clip` 对每条切片用 FFprobe 检测首帧 PTS，动态计算精确 delay（不再用固定值）；`SUBTITLE_DELAY_SEC=2.0` 作为兜底 |
 | **封面期间出现字幕** | 字幕时间计算使字幕落在封面段（前 2.5s）内 | `write_clip_srt` 强制过滤 `end <= cover_duration` 的条目，并 `start = max(start, cover_duration)` |
 | **字幕含 ASR 噪声行（单字母 L / Agent）** | MLX Whisper 对静音/噪声段产生幻觉字符 | `_is_noise_line()` 提前过滤单字母、重复字符、噪声 token |
 | **繁体字幕未转简体** | Soul 派对录音有港台口音，ASR 输出繁体 | `_to_simplified()` 兜底 + CORRECTIONS 扩充 50+ 繁体常用字映射 |
@@ -135,23 +135,25 @@ xxx_output/
 
 ---
 
-## 九、底部浮层：苹果毛玻璃样式（visual_enhance v7）
+## 九、底部浮层：苹果毛玻璃样式（visual_enhance v8）
 
-在 `soul_enhance` 的封面+字幕+竖屏成片上，可选叠加苹果毛玻璃底部浮层，作为**最终成片**（不再多一个"增强版"目录）。
+在 `soul_enhance` 的封面+字幕+竖屏成片上，叠加苹果毛玻璃底部浮层作为**最终成片**（不再多一个"增强版"目录）。
 
-### 设计规范（来自卡若AI前端 神射手/毛狐狸标准）
+### 设计规范（来自卡若AI前端 神射手/毛狐狸标准 v8 终版）
 
 | 元素 | 规格 |
 |------|------|
-| 背景 | `rgba(14,16,28,0.88)` 深黑半透 + 顶部高光条 |
-| 圆角 | 28px（对应前端 `rounded-2xl`） |
-| 边框 | `rgba(255,255,255,0.12)` 白边 + 内缩 `rgba(255,255,255,0.06)` |
-| 阴影 | GaussianBlur(22)，叠加轻层阴影制造悬浮感 |
-| 字体 | 标题 Medium，正文 Regular（两档，不堆叠字重） |
-| 主色 | 蓝→紫渐变（`from-blue-500 to-purple-500`），单色点睛 |
-| 图标 | Unicode 符号图标：◆ 数据 / ▸ 流程 / ⇌ 对比 / ✦ 总结 |
-| 芯片 | 渐变描边胶囊（glass-button 风格），不做满色填充 |
-| **⚠️ 无视频小窗** | 已永久去掉右上角动态小视频窗，不再加入 |
+| 背景 | `rgba(12,15,26,0.88)` 深黑半透 + 8px 柔和高光条 |
+| 圆角 | 26px |
+| 边框 | `rgba(255,255,255,0.10)` 白边 + 内缩 `rgba(255,255,255,0.05)` |
+| 阴影 | GaussianBlur(22)，悬浮感 |
+| 字体 | 标题 Medium，正文 Regular（两档） |
+| 主色 | Soul绿系：`(0,200,140)` → `(52,211,238)` 青绿渐变 |
+| **无图标** | 去掉了所有 badge、问号圆圈、Unicode 图标前缀 |
+| **Logo 左上角** | 加载 `karuo_logo.png` 缩放到 24px 高 + "第 N 场" 文字 |
+| 芯片 | 渐变描边胶囊，不满色填充 |
+| **无视频小窗** | 已永久去掉 |
+| **段落切换** | 前 18% title_card → 中 64% summary_card（要点） → 后 18% summary_card（CTA） |
 
 ### 使用命令
 
@@ -159,7 +161,11 @@ xxx_output/
 python3 visual_enhance.py -i "soul_enhanced.mp4" -o "成片/标题.mp4" --scenes scenes.json
 ```
 
-`--scenes` JSON 格式：每段需 `type`, `label`, `sub_label`, `params`（含 `question`/`subtitle`/`chips`）。
+`--scenes` JSON 格式：每段需 `type`、`episode`（场次号）、`sub_label`、`params`（含 `question`/`subtitle`/`chips`/`headline`/`points`/`cta`）。
+
+### 切片时长规范
+
+每段时长严格在 **30 秒 ~ 5 分钟**，必须是完整的一个话题，有头有尾，不在句子中间截断。
 
 ---
 
