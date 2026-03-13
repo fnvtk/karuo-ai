@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-自动打开 premium.smsonline.cloud，用已保存的 Google 登录态拿到 Firebase idToken。
-拿到后立刻下单 SoulApp 中国号码，轮询收验证码，超时自动退号。
+SMSOnline Premium 取号收码脚本
+
+- 第一次：只用它打开 premium.smsonline.cloud，手动完成登录，脚本自动帮你截获 Firebase idToken。
+- 之后：命令行传入 service/country，一键完成「取号 → 轮询收码 → 超时退号」。
 """
+import argparse
 import json
 import sys
 import time
-import re
 import urllib.request
 from playwright.sync_api import sync_playwright
 
@@ -45,6 +47,7 @@ def api_patch(url, token):
 
 PROFILE_DIR = "/Users/karuo/.smsonline_browser_profile"
 
+
 def get_token_from_browser():
     """用 Playwright persistent context 打开 premium 站，拦截请求拿到最新 Bearer token。
     首次需手动 Google 登录，之后 cookie 保存在 profile 里自动登录。"""
@@ -70,7 +73,7 @@ def get_token_from_browser():
             page.goto(PREMIUM_URL, wait_until="networkidle", timeout=60000)
         except Exception:
             pass
-        for i in range(15):
+        for _ in range(15):
             if captured_token["value"]:
                 break
             time.sleep(2)
@@ -79,18 +82,34 @@ def get_token_from_browser():
                 page.reload(wait_until="networkidle", timeout=30000)
             except Exception:
                 pass
-            for i in range(15):
+            for _ in range(15):
                 if captured_token["value"]:
                     break
                 time.sleep(2)
         if not captured_token["value"]:
             print("未自动拿到 token，请在浏览器中手动登录…最多等 120 秒")
-            for i in range(60):
+            for _ in range(60):
                 if captured_token["value"]:
                     break
                 time.sleep(2)
         ctx.close()
     return captured_token["value"]
+
+
+def normalize_country(country_arg: str) -> str:
+    """把命令行里的缩写（cn/us/gb）转换成 premium 接口里的 country 名称。"""
+    if not country_arg:
+        return "China"
+    m = country_arg.strip().lower()
+    mapping = {
+        "cn": "China",
+        "china": "China",
+        "us": "United States",
+        "usa": "United States",
+        "gb": "United Kingdom",
+        "uk": "United Kingdom",
+    }
+    return mapping.get(m, country_arg)
 
 
 def buy_and_receive(token, service="mx", country="China", network="network02"):
@@ -103,7 +122,7 @@ def buy_and_receive(token, service="mx", country="China", network="network02"):
         "carrier": "any",
         "network": network,
         "m": "",
-        "n": ""
+        "n": "",
     }
     print(f"正在下单 {service} ({country}) …")
     result = api_put(url, token, body)
@@ -117,6 +136,7 @@ def buy_and_receive(token, service="mx", country="China", network="network02"):
     print(f"号码：{number}  订单：{order_id}")
     print(f"轮询中（最多 {TIMEOUT_SEC} 秒）…")
     start = time.time()
+    sms = None
     while time.time() - start < TIMEOUT_SEC:
         time.sleep(POLL_INTERVAL)
         elapsed = int(time.time() - start)
@@ -129,40 +149,86 @@ def buy_and_receive(token, service="mx", country="China", network="network02"):
                 print(f"\n收到验证码！({elapsed}s)")
                 print(f"  号码：{number}")
                 print(f"  验证码：{sms}")
-                return number, sms
+                break
             print(f"  等待中 {elapsed}s… status={status}", flush=True)
         except Exception as e:
             print(f"  轮询出错 {elapsed}s: {e}", flush=True)
-    # 超时退号
-    print(f"\n超时 {TIMEOUT_SEC}s 未收到验证码，正在取消退费…")
-    try:
-        refund_url = f"{API_BASE}/numbers/{USER_ID}/order/{network}/{order_id}/refund"
-        api_patch(refund_url, token)
-        print("  已取消退费。")
-    except Exception as e:
-        print(f"  退费失败：{e}")
-    return number, None
+    if not sms:
+        # 超时退号
+        print(f"\n超时 {TIMEOUT_SEC}s 未收到验证码，正在取消退费…")
+        try:
+            refund_url = f"{API_BASE}/numbers/{USER_ID}/order/{network}/{order_id}/refund"
+            api_patch(refund_url, token)
+            print("  已取消退费。")
+        except Exception as e:
+            print(f"  退费失败：{e}")
+        return number, None
+    return number, sms
 
 
 def main():
+    parser = argparse.ArgumentParser(description="SMSOnline Premium 自动取号收码")
+    parser.add_argument(
+        "--init-login",
+        action="store_true",
+        help="仅用于第一次：打开浏览器并完成登录，不下单号码",
+    )
+    parser.add_argument(
+        "--service",
+        default="mx",
+        help="目标服务编码，例如 soul 对应的服务码（默认 mx）",
+    )
+    parser.add_argument(
+        "--country",
+        default="cn",
+        help="国家代码或名称，例如 cn/us/gb（默认 cn=China）",
+    )
+    parser.add_argument(
+        "--network",
+        default="network02",
+        help="网络编码，默认 network02（通常保持默认即可）",
+    )
+    args = parser.parse_args()
+
     print("=" * 50)
     print("SMSOnline Premium 自动取号收码")
     print("=" * 50)
-    # 1. 拿 token
+
+    # 1. 拿 token（必须先有浏览器里已登录的 session）
     token = get_token_from_browser()
     if not token:
         print("ERROR: 未能获取 token，退出。")
         sys.exit(1)
     print(f"Token 获取成功（长度 {len(token)}）")
+
+    # 仅用于初始化登录：拿到 token 就结束
+    if args.init_login:
+        print("初始化登录完成，后续可直接使用 --service/--country 下单收码。")
+        return
+
     # 2. 下单 + 收码
-    number, code = buy_and_receive(token)
-    if code:
-        print(f"\n{'='*50}")
-        print(f"号码：{number}")
-        print(f"验证码：{code}")
-        print(f"{'='*50}")
+    country_name = normalize_country(args.country)
+    number, code = buy_and_receive(
+        token, service=args.service, country=country_name, network=args.network
+    )
+
+    print("\n" + "=" * 50)
+    if number:
+        # 标准化输出，方便 Skill 与其他脚本复用
+        if code:
+            print(f"号码：{number}")
+            print(f"验证码：{code}")
+            print(f"NUMBER: {number}")
+            print(f"SMS: {code}")
+            print(f"{number} | {code}")
+        else:
+            print(f"未收到验证码，号码 {number} 已退费或取消。")
+            print(f"NUMBER: {number}")
+            print("SMS: (无)")
+            print(f"{number} | (无)")
     else:
-        print(f"\n未收到验证码，号码 {number} 已退费。")
+        print("未能成功下单号码。")
+    print("=" * 50)
 
 
 if __name__ == "__main__":
