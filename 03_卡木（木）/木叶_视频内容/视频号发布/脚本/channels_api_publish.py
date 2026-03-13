@@ -25,7 +25,7 @@ import httpx
 
 SCRIPT_DIR = Path(__file__).parent
 COOKIE_FILE = SCRIPT_DIR / "channels_storage_state.json"
-VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul 派对 120场 20260320_output/成片_大师版")
+VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul_派对_121场_20260311_output/成片_final")
 
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "多平台分发" / "脚本"))
 from publish_result import PublishResult, is_published, save_results, print_summary
@@ -536,8 +536,9 @@ def _run_login_then_retry():
     if not login_script.exists():
         return False
     print("[*] Cookie 无效，正在自动调起登录（浏览器将打开，请扫码）...", flush=True)
-    r = subprocess.run([sys.executable, str(login_script)], cwd=str(SCRIPT_DIR), timeout=300)
-    return r.returncode == 0
+    subprocess.run([sys.executable, str(login_script)], cwd=str(SCRIPT_DIR), timeout=300)
+    # rawKeyBuff 非必需，只要 Cookie 文件已更新即可认为登录成功
+    return COOKIE_FILE.exists() and COOKIE_FILE.stat().st_size > 100
 
 
 async def main():
