@@ -89,19 +89,47 @@ def _to_simplified(text: str) -> str:
         text = text.replace(t, s)
     return text
 
-# 常见转录错误修正（与 one_video 一致）
+# 常见转录错误修正（与 one_video 一致，按长度降序排列避免短词误替换）
 CORRECTIONS = {
-    '私余': '私域', '统安': '同安', '信一下': '线上', '头里': '投入',
-    '幅画': '负责', '施育': '私域', '经历论': '净利润', '成于': '乘以',
-    '马的': '码的', '猜济': '拆解', '巨圣': '矩阵', '货客': '获客',
-    '甲为师': '（AI助手）', '小龙俠': '小龙虾', '小龍俠': '小龙虾',
-    '小龍蝦': '小龙虾', '龍蝦': '龙虾', '小龙虾': '深度AI',
-    '基因交狼': '技能包', '基因交流': '技能传授', '颗色': 'Cursor',
-    '蝌蚁': '科技AI', '千万': '千问', '吹': 'Claude', '豆包': 'AI工具',
-    '受伤命': '搜索引擎', '货客': '获客', '受上': 'Soul上',
-    '搜上': 'Soul上', '售上': 'Soul上', '寿上': 'Soul上',
-    '瘦上': 'Soul上', '亭上': 'Soul上', '这受': '这Soul',
-    '龙虾': '深度AI', '克劳德': 'Claude',
+    # AI 工具名称 ─────────────────────────────────────────────────
+    '小龙俠': 'AI工具', '小龍俠': 'AI工具', '小龍蝦': 'AI工具',
+    '龍蝦': 'AI工具', '小龙虾': 'AI工具', '龙虾': 'AI工具',
+    '克劳德': 'Claude', '科劳德': 'Claude', '吹': 'Claude',
+    '颗色': 'Cursor', '库色': 'Cursor', '可索': 'Cursor',
+    '蝌蚁': '科技AI', '千万': '千问', '豆包': 'AI工具',
+    '暴电码': '暴电码', '蝌蚪': 'Cursor',
+    # Soul 平台别字 ──────────────────────────────────────────────
+    '受上': 'Soul上', '搜上': 'Soul上', '售上': 'Soul上',
+    '寿上': 'Soul上', '瘦上': 'Soul上', '亭上': 'Soul上',
+    '这受': '这Soul', '受的': 'Soul的', '受里': 'Soul里',
+    '受平台': 'Soul平台',
+    # 私域/商业用语 ─────────────────────────────────────────────
+    '私余': '私域', '施育': '私域', '私育': '私域',
+    '统安': '同安', '信一下': '线上', '头里': '投入',
+    '幅画': '负责', '经历论': '净利润', '成于': '乘以',
+    '马的': '码的', '猜济': '拆解', '巨圣': '矩阵',
+    '货客': '获客', '甲为师': '(AI助手)',
+    '基因交狼': '技能包', '基因交流': '技能传授',
+    '受伤命': '搜索引擎', '附身': '副业', '附产': '副产',
+    # AI 工作流 / 编程词汇 ──────────────────────────────────────
+    'Ski-er': '智能体', 'Skier': '智能体', 'SKI-er': '智能体',
+    '工作流': '工作流', '智能体': '智能体',
+    '蝌蛇': 'Cursor', '科色': 'Cursor',
+    'Cloud': 'Claude',  # 转录常把 Claude 误识别为 Cloud
+    # 繁体常见 ──────────────────────────────────────────────────
+    '麥': '麦', '頭': '头', '讓': '让', '說': '说', '開': '开',
+    '這': '这', '個': '个', '們': '们', '來': '来', '會': '会',
+    '裡': '里', '還': '还', '點': '点', '時': '时', '對': '对',
+    '電': '电', '體': '体', '為': '为', '們': '们', '後': '后',
+    '關': '关', '單': '单', '號': '号', '幹': '干', '達': '达',
+    '傳': '传', '統': '统', '際': '际', '應': '应', '問': '问',
+    '產': '产', '業': '业', '學': '学', '發': '发', '種': '种',
+    '從': '从', '給': '给', '認': '认', '過': '过', '當': '当',
+    '誰': '谁', '動': '动', '圖': '图', '報': '报', '費': '费',
+    '務': '务', '與': '与', '於': '于', '錢': '钱', '帳': '账',
+    '臺': '台', '台灣': '台湾', '臺灣': '台湾',
+    # 噪音符号/单字符 ────────────────────────────────────────────
+    # （在 parse_srt 里过滤，这里不做）
 }
 
 # 各平台违禁词 → 谐音/替代词（用于字幕、封面、文件名）
@@ -358,77 +386,124 @@ def _detect_clip_pts_offset(clip_path: str) -> float:
 # batch_clip -ss input seeking 导致实际切割比请求早 0~3 秒（关键帧对齐）
 # 字幕按 highlights.start_time 算相对时间，会比实际音频提前
 # 加正值延迟 = 字幕往后推 = 与声音更同步
-SUBTITLE_DELAY_SEC = 0.8  # 根据实测 Soul 视频关键帧间隔约 2s，取保守值
+# 2025-03 实测：Soul派对直播视频关键帧间距 2-4 秒，补偿需约 2.0s
+SUBTITLE_DELAY_SEC = 2.0  # 增大到 2.0，避免字幕超前于说话
+
+
+def _is_noise_line(text: str) -> bool:
+    """检测是否为噪声行（单字母、重复符号、ASR幻觉等）"""
+    if not text:
+        return True
+    stripped = text.strip()
+    # 单字母（L、A、B 等 ASR 幻觉）
+    if len(stripped) <= 2 and all(c.isalpha() or c in '…、。，' for c in stripped):
+        return True
+    # 全是相同字符
+    if len(set(stripped)) == 1 and len(stripped) >= 3:
+        return True
+    # 纯 ASR 幻觉词
+    NOISE_TOKENS = {'Agent', 'agent', 'L', 'B', 'A', 'OK', 'ok',
+                    '...',  '……', '嗯嗯嗯', '啊啊', '哈哈哈',
+                    '呃呃', 'hmm', 'Hmm', 'Um', 'Uh'}
+    if stripped in NOISE_TOKENS:
+        return True
+    return False
+
+
+def _improve_subtitle_text(text: str) -> str:
+    """字幕文字质量提升：纠错 + 上下文通畅 + 违禁词替换"""
+    if not text:
+        return text
+    # 繁转简
+    t = _to_simplified(text.strip())
+    # 错词修正（按词典长度降序，避免短词覆盖长词）
+    for w, c in sorted(CORRECTIONS.items(), key=lambda x: len(x[0]), reverse=True):
+        t = t.replace(w, c)
+    # 违禁词替换
+    for w, c in PLATFORM_VIOLATIONS.items():
+        t = t.replace(w, c)
+    # 清理语助词
+    t = clean_filler_words(t)
+    # 去多余空格
+    t = re.sub(r'\s+', ' ', t).strip()
+    # 末尾加句号让阅读更顺畅（如果没有标点的话）
+    END_PUNCTS = set('。！？…，')
+    if t and t[-1] not in END_PUNCTS and len(t) >= 6:
+        t += '。'
+    return t
 
 
 def parse_srt_for_clip(srt_path, start_sec, end_sec, delay_sec=None):
     """解析SRT，提取指定时间段的字幕。
-    
+
     优化：
-    1. 字幕延迟补偿（delay_sec）：补偿 FFmpeg input seeking 关键帧偏移，让字幕与声音同步
-    2. 合并过短字幕：相邻字幕 <1.2s 且文字可拼接时自动合并，减少闪烁
-    3. 最小显示时长：每条至少显示 1.2s，避免一闪而过看不清
+    1. 字幕延迟补偿（delay_sec）：补偿 FFmpeg input seeking 关键帧偏移（2s 默认）
+    2. 噪声行过滤：去掉单字母 L / Agent 等 ASR 幻觉行
+    3. 文字质量提升：纠错 + 违禁词替换 + 通畅度修正
+    4. 合并过短字幕：相邻 <1.5s 时自动合并，减少闪烁
+    5. 最小显示时长：每条至少 1.5s，避免一闪而过
     """
     if delay_sec is None:
         delay_sec = SUBTITLE_DELAY_SEC
 
     with open(srt_path, 'r', encoding='utf-8') as f:
         content = f.read()
-    
+
     pattern = r'(\d+)\n(\d{2}:\d{2}:\d{2},\d{3}) --> (\d{2}:\d{2}:\d{2},\d{3})\n(.*?)(?=\n\n|\Z)'
     matches = re.findall(pattern, content, re.DOTALL)
-    
+
     def time_to_sec(t):
         t = t.replace(',', '.')
         parts = t.split(':')
         return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
-    
+
     raw_subs = []
     for match in matches:
         sub_start = time_to_sec(match[1])
-        sub_end = time_to_sec(match[2])
+        sub_end   = time_to_sec(match[2])
         text = match[3].strip()
-        
+
+        # 噪声行提前过滤
+        if _is_noise_line(text):
+            continue
+
         if sub_end > start_sec and sub_start < end_sec + 2:
             rel_start = max(0, sub_start - start_sec + delay_sec)
-            rel_end = sub_end - start_sec + delay_sec
-            
-            text = _to_simplified(text)
-            for w, c in CORRECTIONS.items():
-                text = text.replace(w, c)
-            cleaned_text = clean_filler_words(text)
-            if len(cleaned_text) > 1:
+            rel_end   = sub_end - start_sec + delay_sec
+
+            improved = _improve_subtitle_text(text)
+            if improved and len(improved) > 1:
                 raw_subs.append({
                     'start': max(0, rel_start),
-                    'end': max(rel_start + 0.5, rel_end),
-                    'text': cleaned_text
+                    'end':   max(rel_start + 0.5, rel_end),
+                    'text':  improved,
                 })
-    
-    # 合并过短的连续字幕（<1.2s 且总长 <25字），让每条有足够阅读时间
-    MIN_DISPLAY = 1.2
+
+    # 合并过短的连续字幕（<1.5s 且总长 <28字），让每条有足够阅读时间
+    MIN_DISPLAY = 1.5
     merged = []
     i = 0
     while i < len(raw_subs):
         cur = dict(raw_subs[i])
         dur = cur['end'] - cur['start']
-        # 尝试向后合并
         while dur < MIN_DISPLAY and i + 1 < len(raw_subs):
             nxt = raw_subs[i + 1]
             gap = nxt['start'] - cur['end']
-            combined_text = cur['text'] + '，' + nxt['text']
-            if gap <= 0.5 and len(combined_text) <= 25:
-                cur['end'] = nxt['end']
-                cur['text'] = combined_text
+            # 去掉句尾句号再合并
+            base_text = cur['text'].rstrip('。！？，')
+            combined  = base_text + '，' + nxt['text']
+            if gap <= 0.6 and len(combined) <= 28:
+                cur['end']  = nxt['end']
+                cur['text'] = combined
                 dur = cur['end'] - cur['start']
                 i += 1
             else:
                 break
-        # 强制最小显示时长
         if cur['end'] - cur['start'] < MIN_DISPLAY:
             cur['end'] = cur['start'] + MIN_DISPLAY
         merged.append(cur)
         i += 1
-    
+
     return merged
 
 
@@ -485,13 +560,14 @@ def _sec_to_srt_time(sec):
 
 def write_clip_srt(srt_path, subtitles, cover_duration):
     """写出用于烧录的 SRT（仅保留封面结束后的字幕，时间已相对片段）"""
+    safe_start = cover_duration + 0.3
     lines = []
     idx = 1
     for sub in subtitles:
         start, end = sub['start'], sub['end']
-        if end <= cover_duration:
+        if end <= safe_start:
             continue
-        start = max(start, cover_duration)
+        start = max(start, safe_start)
         text = (sub.get('text') or '').strip().replace('\n', ' ')
         if not text:
             continue
@@ -991,7 +1067,45 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         except (IndexError, ValueError):
             start_sec = 0
         end_sec = start_sec + duration
-        subtitles = parse_srt_for_clip(transcript_path, start_sec, end_sec)
+
+        # 动态字幕延迟：检测切片实际首帧 PTS，与请求 start_time 做差
+        actual_delay = SUBTITLE_DELAY_SEC
+        try:
+            pts_cmd = [
+                "ffprobe", "-v", "quiet", "-select_streams", "v:0",
+                "-show_entries", "frame=pts_time",
+                "-read_intervals", "%+0.1",
+                "-print_format", "csv=p=0",
+                str(clip_path),
+            ]
+            pts_r = subprocess.run(pts_cmd, capture_output=True, text=True, timeout=10)
+            if pts_r.returncode == 0 and pts_r.stdout.strip():
+                first_pts = float(pts_r.stdout.strip().split("\n")[0].strip())
+                # batch_clip 把 -ss 放在 -i 前面，FFmpeg 将 PTS 重置为 0
+                # 但实际音频起点可能比请求的 start_sec 早 0-4 秒（关键帧对齐）
+                # first_pts 接近 0，真正的偏移量在 batch_clip 的 seeking 行为里
+                # 更可靠的方法：检测音频首个有效帧的 PTS
+                audio_cmd = [
+                    "ffprobe", "-v", "quiet", "-select_streams", "a:0",
+                    "-show_entries", "frame=pts_time",
+                    "-read_intervals", "%+0.5",
+                    "-print_format", "csv=p=0",
+                    str(clip_path),
+                ]
+                audio_r = subprocess.run(audio_cmd, capture_output=True, text=True, timeout=10)
+                if audio_r.returncode == 0 and audio_r.stdout.strip():
+                    audio_pts = float(audio_r.stdout.strip().split("\n")[0].strip())
+                    # 视频帧 PTS 与音频帧 PTS 的差值揭示了 seeking 偏移
+                    offset = abs(first_pts - audio_pts)
+                    # 关键帧对齐通常导致视频比音频早 0-3s
+                    # 字幕需要额外推迟这个偏移量
+                    actual_delay = max(1.5, SUBTITLE_DELAY_SEC + offset * 0.5)
+                    if actual_delay > 4.0:
+                        actual_delay = SUBTITLE_DELAY_SEC
+        except Exception:
+            pass
+
+        subtitles = parse_srt_for_clip(transcript_path, start_sec, end_sec, delay_sec=actual_delay)
         for sub in subtitles:
             if not _is_mostly_chinese(sub['text']):
                 sub['text'] = _translate_to_chinese(sub['text']) or sub['text']
