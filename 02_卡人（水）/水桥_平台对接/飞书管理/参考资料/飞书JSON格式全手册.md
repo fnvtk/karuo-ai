@@ -3,7 +3,7 @@
 > 基于项目 52 个 `.feishu.json` 实际文件 + 6 个脚本验证 + 飞书开放平台官方文档。  
 > **版本：2.1** | **更新：2026-02-22**  
 > 来源：卡若AI 水桥 · 飞书管理  
-> v2.1 新增：表格列宽自动适配 API、表格分割行 2+ 破折号兼容、code/callout 降级保底
+> v2.2 新增：表格列宽 150~520px、表头/首列加粗、首尾去掉 callout、--no-callouts。v2.1：表格列宽 API、code/callout 降级
 
 ---
 
@@ -406,7 +406,8 @@ Body:
 
 - 对每一列循环调用，pixelSize 按内容自动计算：中文 ≈ 20px/字、ASCII ≈ 9px/字 + 24px 内边距。  
 - 最小 80px，最大 400px。  
-- `feishu_publish_blocks_with_images.py` 中 `_auto_resize_sheet_columns()` 已封装此逻辑，写完单元格自动触发。
+- **v2.2**：列宽 min 150px、max 520px；表头行+首列自动加粗（`PUT .../styles` appendStyle）；sanitize 去掉首尾 callout。
+- `feishu_publish_blocks_with_images.py` 中 `_auto_resize_sheet_columns` + `_apply_sheet_bold_style` 已封装；`md_to_feishu_json --no-callouts` 将 `>` 转正文。
 
 **Markdown 表格分割行兼容（v2.1 修复）**：
 
@@ -638,7 +639,7 @@ Markdown 表格
 | 块数 > 50 写入失败 | 单次限制 50 块 | 分批写入，每批 ≤ 50 |
 | sheet 超 9×9 报错 | 电子表格创建上限 | 改用 TSV 正文(2) 回退 |
 | 写入串月 | wiki_token 路由错误 | 写前校验文档标题含目标月份 |
-| 表格列太窄挤压 | 默认列宽约 72px | 写完数据后调用 `PUT dimension_range` 或用 `_auto_resize_sheet_columns()` |
+| 表格列太窄挤压 | 默认列宽约 72px | v2.2：min 150px max 520px；`_auto_resize_sheet_columns` 自动调用 |
 | 表格未识别（显示 `｜文字｜`） | 分割行破折号不足 3 个（`:--`） | 脚本 v2.1 已修复，现接受 2+ 破折号 |
 | code(14)/callout(19) 写入失败 | API 1770001 | 脚本自动降级为 text(2) 正文块，内容保留 |
 
@@ -646,4 +647,4 @@ Markdown 表格
 
 **版本**：2.1 | **整理**：卡若AI 水桥 | **更新**：2026-02-22  
 **数据来源**：52 个 `.feishu.json` + 6 个脚本 + 飞书开放平台 API 文档  
-**v2.1 变更**：表格分割行接受 2+ 破折号；新增列宽自适应 `dimension_range` API；sanitize_blocks 扩展支持 code/callout；code/callout 写入失败自动降级为 text。
+**v2.2 变更**：表格列宽 150~520px；表头+首列加粗（`PUT styles`）；首尾 callout 去除；`--no-callouts`。**v2.1**：列宽 API、code/callout 降级。

@@ -138,7 +138,7 @@ def _clean_inline_markdown(text: str) -> str:
 
 # ── 主转换函数 ─────────────────────────────────────────────────────────────────
 
-def md_to_blocks(md: str, image_paths: list[str] | None = None) -> list:
+def md_to_blocks(md: str, image_paths: list[str] | None = None, no_callouts: bool = False) -> list:
     """将 Markdown 字符串转为飞书 blocks 列表。"""
     blocks: list[dict] = []
     image_paths = image_paths or []
@@ -242,14 +242,17 @@ def md_to_blocks(md: str, image_paths: list[str] | None = None) -> list:
             else:
                 first_h1_consumed = True
 
-        # ── 引用 → block_type:19 callout ─────────────────────────────────────
+        # ── 引用 → block_type:19 callout（no_callouts 时转为正文）─────────────────
         elif stripped.startswith(">"):
             quote = stripped
             while quote.startswith(">"):
                 quote = quote[1:].lstrip()
             quote = _clean_inline_markdown(quote)
             if quote:
-                blocks.append(_callout(quote))
+                if no_callouts:
+                    blocks.append(_text(quote))
+                else:
+                    blocks.append(_callout(quote))
 
         # ── 正文、列表 ────────────────────────────────────────────────────────
         elif stripped:
@@ -301,6 +304,7 @@ def main() -> None:
     ap.add_argument("input", help="Markdown 文件")
     ap.add_argument("output", help="输出 JSON 文件")
     ap.add_argument("--images", default="", help="图片路径，逗号分隔（按序对应 ![]()）")
+    ap.add_argument("--no-callouts", action="store_true", help="不生成高亮块，将 > 引用转为正文")
     args = ap.parse_args()
 
     inp = Path(args.input)
@@ -310,7 +314,7 @@ def main() -> None:
 
     md = inp.read_text(encoding="utf-8")
     image_paths = [p.strip() for p in args.images.split(",") if p.strip()]
-    blocks = md_to_blocks(md, image_paths)
+    blocks = md_to_blocks(md, image_paths, no_callouts=args.no_callouts)
     final, img_paths = blocks_to_upload_format(blocks, inp.parent)
 
     out = {

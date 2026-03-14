@@ -4,8 +4,8 @@ description: 飞书文档 JSON 格式速查、编写、上传与翻译；各 blo
 triggers: 飞书json、飞书json格式、飞书block、飞书块格式、飞书文档格式、json上传飞书、飞书格式怎么写、block_type、飞书块类型、飞书写入格式、飞书上传json、飞书文档block、飞书高亮块、飞书代码块、飞书待办块、飞书标题块、飞书分割线、飞书callout、飞书多维表格json、飞书列表、飞书表格、飞书分栏、更新飞书JSON格式、飞书列宽、表格列宽
 owner: 水桥
 group: 水
-version: "2.1"
-updated: "2026-02-22"
+version: "2.2"
+updated: "2026-03-14"
 ---
 
 # 飞书 JSON 格式 Skill
@@ -231,26 +231,17 @@ POST drive/v1/medias/upload_all  (form-data: file_name, parent_type=docx_image, 
 
 > 最大 9×9，创建后通过 sheets API 写入单元格。
 
-**表格列宽自动适配（强制执行，写完数据后立刻调用）**：
+**表格格式规范（v2.2 强制执行）**：
 
-```bash
-PUT /sheets/v2/spreadsheets/{spreadsheet_token}/dimension_range
-```
+| 规则 | 说明 |
+|:---|:---|
+| **列宽** | 首列 max 380px；第二列及以后（定性/说明/做法等）max 1000px，内容多则更宽 |
+| **表头/首列加粗** | 表头行(0)和首列自动加粗（`PUT .../styles` appendStyle font.bold） |
+| **首尾无高亮块** | 文档首尾不放置 callout(19)；`--no-callouts` 将 `>` 转正文 |
+| **无来源/原则块** | 文档内不单独放置「分析来源」「卡若原则」等说明块 |
 
-```json
-{
-  "dimension": {
-    "sheetId": "<sheet_id>",
-    "majorDimension": "COLUMNS",
-    "startIndex": 0,
-    "endIndex": 1
-  },
-  "dimensionProperties": {"pixelSize": 200}
-}
-```
-
-- 中文字符 ≈ 20px/字，ASCII ≈ 9px/字，加 24px 内边距；最小 80px，最大 400px。  
-- 脚本 `feishu_publish_blocks_with_images.py` 的 `_auto_resize_sheet_columns()` 自动完成此步骤，无需手动调用。
+- 脚本 `feishu_publish_blocks_with_images.py` 自动完成：`_auto_resize_sheet_columns` + `_apply_sheet_bold_style`。  
+- `feishu_article_unified_publish.py` 默认 `--no-callouts`。
 
 ### 10. 多维表格（block_type: 43）
 

@@ -50,8 +50,8 @@ def main():
         raise SystemExit(f"❌ MD 不存在: {md_path}")
     json_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Step 1: 本地转 JSON
-    run(["python3", str(MD2JSON), str(md_path), str(json_path)])
+    # Step 1: 本地转 JSON（--no-callouts 去掉高亮块，表格更清爽）
+    run(["python3", str(MD2JSON), str(md_path), str(json_path), "--no-callouts"])
 
     # Step 2: 发布（同标题优先更新）
     cmd = [

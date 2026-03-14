@@ -333,7 +333,7 @@ def _get_elements_content(elements: list) -> str:
 
 
 def sanitize_blocks(blocks: list) -> list:
-    """飞书 docx blocks 轻量清洗：去掉空文本/空代码块/空 callout，避免 invalid param。"""
+    """飞书 docx blocks 轻量清洗：去掉空文本/空代码块/空 callout，去掉首尾 callout，避免 invalid param。"""
     out = []
     for b in blocks:
         if not isinstance(b, dict):
@@ -351,6 +351,11 @@ def sanitize_blocks(blocks: list) -> list:
             if not _get_elements_content(elems).strip():
                 continue
         out.append(b)
+    # 去掉首尾 callout（表格上下不挤高亮块）
+    while out and isinstance(out[0], dict) and out[0].get("block_type") == 19:
+        out.pop(0)
+    while out and isinstance(out[-1], dict) and out[-1].get("block_type") == 19:
+        out.pop()
     return out
 
 
@@ -394,6 +399,11 @@ def _cell_px_width(text: str) -> int:
     return w + 24
 
 
+# 表格列宽：首列 max 400px；第二列及以后（定性/说明等）max 1000px，内容多则更宽
+SHEET_COL_MIN_PX = 150
+SHEET_COL_MAX_PX = 1000
+
+
 def _auto_resize_sheet_columns(
     headers: dict, spreadsheet_token: str, sheet_id: str, values: list[list[str]]
 ) -> None:
@@ -408,9 +418,11 @@ def _auto_resize_sheet_columns(
     for j in range(cols):
         max_w = max(
             (_cell_px_width(row[j]) for row in values if j < len(row)),
-            default=80,
+            default=SHEET_COL_MIN_PX,
         )
-        width = max(80, min(max_w, 400))
+        # 第二列及以后（定性/说明/做法等）内容多，放宽到 1000px
+        cap = SHEET_COL_MAX_PX if j >= 1 else 380
+        width = max(SHEET_COL_MIN_PX, min(max_w, cap))
         payload = {
             "dimension": {
                 "sheetId": sheet_id,
@@ -424,6 +436,33 @@ def _auto_resize_sheet_columns(
             requests.put(url, headers=headers, json=payload, timeout=10)
         except Exception:
             pass
+
+
+def _apply_sheet_bold_style(
+    headers: dict, spreadsheet_token: str, sheet_id: str, values: list[list[str]]
+) -> None:
+    """表头行(0)和首列加粗。调用飞书 Sheets style API。失败静默跳过。"""
+    if not values or not spreadsheet_token or not sheet_id:
+        return
+    rows, cols = len(values), max(len(r) for r in values)
+    if rows <= 0 or cols <= 0:
+        return
+    end_col = _col_letter(cols - 1)
+    url = f"https://open.feishu.cn/open-apis/sheets/v2/spreadsheets/{spreadsheet_token}/styles"
+    try:
+        requests.put(
+            url, headers=headers,
+            json={"appendStyle": {"range": f"{sheet_id}!A1:{end_col}1", "style": {"font": {"bold": True}}}},
+            timeout=10,
+        )
+        if rows > 1:
+            requests.put(
+                url, headers=headers,
+                json={"appendStyle": {"range": f"{sheet_id}!A2:A{rows}", "style": {"font": {"bold": True}}}},
+                timeout=10,
+            )
+    except Exception:
+        pass
 
 
 def _fill_sheet_block_values(headers: dict, sheet_block_token: str, values: list[list[str]]) -> bool:
@@ -447,8 +486,9 @@ def _fill_sheet_block_values(headers: dict, sheet_block_token: str, values: list
     if j.get("code") != 0:
         print(f"⚠️ 表格数据写入失败: {j.get('msg')} range={range_str}")
         return False
-    # 写完数据后自动适配列宽
+    # 写完数据后自动适配列宽 + 表头/首列加粗
     _auto_resize_sheet_columns(headers, spreadsheet_token, sheet_id, values)
+    _apply_sheet_bold_style(headers, spreadsheet_token, sheet_id, values)
     return True
 
 
