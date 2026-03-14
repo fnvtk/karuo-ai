@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-读书笔记写入 XMind 脚本
-将五行结构化的读书笔记写入 XMind 文件
+读书笔记写入 XMind 脚本（五行模板格式 v2）
+中心红色 + 五行橙色浮动节点 + 五方位布局
 
 用法:
     python write_to_xmind.py "书名" "作者" "分类" [--test]
@@ -16,52 +16,155 @@ import shutil
 import zipfile
 import uuid
 import sys
+import random
+import string
 from datetime import datetime
 
-# XMind 文件路径
 XMIND_PATH = "/Users/karuo/Documents/我的脑图/5 学习/读书笔记.xmind"
 
-# 分类映射
 CATEGORIES = {
     "个人提升": "一、个人提升",
-    "人际关系": "二、人际关系", 
+    "人际关系": "二、人际关系",
     "创业": "三、创业",
     "商业思维": "四、商业思维",
     "投资": "五、投资"
 }
 
-# 五行颜色标记
-MARKERS = {
-    "金": "flag-yellow",
-    "水": "flag-blue",
-    "木": "flag-green",
-    "火": "flag-red",
-    "土": "flag-orange"
+WUXING_THEME = {
+    "subTopic": {
+        "id": str(uuid.uuid4()),
+        "properties": {
+            "fo:font-size": "11pt",
+            "fo:color": "#434B54",
+            "fo:text-align": "left"
+        }
+    },
+    "summary": {
+        "id": str(uuid.uuid4()),
+        "properties": {"line-color": "#F0B67F"}
+    },
+    "boundary": {
+        "id": str(uuid.uuid4()),
+        "properties": {
+            "fo:font-size": "14pt", "fo:font-weight": "700",
+            "fo:font-style": "normal", "fo:color": "#F0B67F",
+            "svg:fill": "#FEF1E4", "line-color": "#F0B67F"
+        }
+    },
+    "importantTopic": {
+        "id": str(uuid.uuid4()),
+        "properties": {
+            "fo:font-weight": "bold", "fo:color": "#FFFFFF", "svg:fill": "#FF4600"
+        }
+    },
+    "calloutTopic": {
+        "id": str(uuid.uuid4()),
+        "properties": {
+            "fo:font-size": "14pt", "fo:font-weight": "600",
+            "fo:font-style": "normal", "fo:color": "#775D44",
+            "svg:fill": "#F0B67F", "border-line-width": "0"
+        }
+    },
+    "centralTopic": {
+        "id": str(uuid.uuid4()),
+        "properties": {
+            "fo:font-size": "20pt", "fo:font-weight": "600",
+            "fo:font-style": "normal", "svg:fill": "#e4705c",
+            "line-color": "#434B54", "border-line-width": "0"
+        }
+    },
+    "mainTopic": {
+        "id": str(uuid.uuid4()),
+        "properties": {
+            "fo:font-size": "14pt", "fo:color": "#FFFFFF",
+            "svg:fill": "#434B54", "line-width": "1pt",
+            "border-line-width": "0",
+            "line-class": "org.xmind.branchConnection.curve"
+        }
+    },
+    "floatingTopic": {
+        "id": str(uuid.uuid4()),
+        "properties": {
+            "fo:font-weight": "600", "fo:font-style": "normal",
+            "fo:color": "#775D44", "svg:fill": "#F0B67F",
+            "line-width": "1pt", "line-color": "#F0B67F",
+            "border-line-color": "#F0B67F", "border-line-width": "0",
+            "line-class": "org.xmind.branchConnection.curve"
+        }
+    },
+    "summaryTopic": {
+        "id": str(uuid.uuid4()),
+        "properties": {
+            "fo:font-weight": "600", "fo:font-style": "normal",
+            "fo:color": "#775D44", "svg:fill": "#F0B67F",
+            "line-width": "1pt", "line-color": "#F0B67F",
+            "border-line-color": "#F0B67F", "border-line-width": "2pt",
+            "line-class": "org.xmind.branchConnection.curve"
+        }
+    },
+    "relationship": {
+        "id": str(uuid.uuid4()),
+        "properties": {
+            "fo:font-weight": "600", "fo:font-style": "normal",
+            "fo:color": "#F0B67F", "line-width": "3pt",
+            "line-color": "#F0B67F", "line-pattern": "solid"
+        }
+    }
 }
 
+WUXING_POSITIONS = {
+    "金": {"x": -8, "y": -252},
+    "水": {"x": 271, "y": -113},
+    "木": {"x": 196, "y": 191},
+    "火": {"x": -175, "y": 197},
+    "土": {"x": -260, "y": -83},
+}
+
+WUXING_DESCRIPTIONS = {
+    "金": "定位与角色：是谁、给谁、站在什么位置上",
+    "水": "经历与路径：事情是怎么发生的",
+    "木": "方法与产出：具体怎么干、能产出什么",
+    "火": "认知与判断：为什么这么想、怎么判断对错",
+    "土": "系统与沉淀：如何长期稳定、不崩盘",
+}
+
+ELEMENT_KEY_MAP = {
+    "金": "gold", "水": "water", "木": "wood", "火": "fire", "土": "earth"
+}
+
+
 def gen_id():
-    """生成 XMind 节点 ID（26位混合字母数字格式）"""
-    import random
-    import string
     chars = string.ascii_lowercase + string.digits
     return ''.join(random.choice(chars) for _ in range(26))
 
+
+def _make_element_node(name, items, note_text=""):
+    """创建五行浮动节点（detached 定位模式）"""
+    children = []
+    if WUXING_DESCRIPTIONS.get(name):
+        children.append({"id": gen_id(), "title": WUXING_DESCRIPTIONS[name]})
+    for item in items:
+        children.append({"id": gen_id(), "title": item})
+
+    node = {
+        "id": gen_id(),
+        "title": name,
+        "position": WUXING_POSITIONS[name],
+        "children": {"attached": children} if children else {}
+    }
+    if note_text:
+        node["notes"] = {"plain": {"content": note_text}}
+    return node
+
+
 def create_book_sheet(book_name, author, note_data=None):
     """
-    创建书籍标签页结构
-    
-    Args:
-        book_name: 书名
-        author: 作者
-        note_data: 笔记数据字典（可选，用于填充内容）
-    
-    Returns:
-        tuple: (sheet结构, sheet_id, root_id)  # 返回root_id用于链接
+    创建书籍标签页（五行模板格式 v2）
+    中心红色节点 + 五行橙色浮动节点（detached）+ 补充信息（attached）
     """
-    sheet_id = str(uuid.uuid4())  # sheet用标准UUID格式
-    root_id = gen_id()  # rootTopic用26位格式
-    
-    # 默认笔记数据
+    sheet_id = str(uuid.uuid4())
+    root_id = gen_id()
+
     if note_data is None:
         note_data = {
             "summary": "待填写一句话总结",
@@ -70,113 +173,87 @@ def create_book_sheet(book_name, author, note_data=None):
             "wood": ["木-1：待填写", "木-2：待填写", "木-3：待填写", "木-4：待填写"],
             "fire": ["火-1：待填写", "火-2：待填写", "火-3：待填写", "火-4：待填写"],
             "earth": ["土-1：待填写", "土-2：待填写", "土-3：待填写", "土-4：待填写"],
-            "questions": [],
-            "characters": [],
-            "quotes": [],
-            "keywords": [],
-            "process": "",
-            "rules": ""
+            "questions": [], "characters": [], "quotes": [],
+            "keywords": [], "process": "", "rules": ""
         }
-    
-    def create_element_node(name, marker, items, description=""):
-        """创建五行元素节点"""
-        children = []
-        if description:
-            children.append({
-                "id": gen_id(),
-                "title": description
-            })
-        for item in items:
-            children.append({
-                "id": gen_id(),
-                "title": item
-            })
-        return {
-            "id": gen_id(),
-            "title": name,
-            "markers": [{"markerId": marker}],
-            "children": {"attached": children} if children else {}
-        }
-    
+
+    detached_nodes = []
+    for name in ["金", "水", "木", "火", "土"]:
+        key = ELEMENT_KEY_MAP[name]
+        items = note_data.get(key, [])
+        detached_nodes.append(_make_element_node(name, items))
+
+    attached_nodes = [
+        {
+            "id": gen_id(), "title": "一句话总结",
+            "children": {"attached": [
+                {"id": gen_id(), "title": note_data.get("summary", "待填写")}
+            ]}
+        },
+        {
+            "id": gen_id(), "title": "问题与解答",
+            "children": {"attached": [
+                {"id": gen_id(), "title": q}
+                for q in (note_data.get("questions") or ["待填写"])
+            ]}
+        },
+        {
+            "id": gen_id(), "title": "人物分析",
+            "children": {"attached": [
+                {"id": gen_id(), "title": c}
+                for c in (note_data.get("characters") or ["待填写"])
+            ]}
+        },
+        {
+            "id": gen_id(), "title": "金句与关键词",
+            "children": {"attached": [
+                {"id": gen_id(), "title": "金句", "children": {"attached": [
+                    {"id": gen_id(), "title": q}
+                    for q in (note_data.get("quotes") or ["待填写"])
+                ]}},
+                {"id": gen_id(), "title": "关键词", "children": {"attached": [
+                    {"id": gen_id(), "title": k}
+                    for k in (note_data.get("keywords") or ["待填写"])
+                ]}}
+            ]}
+        },
+        {
+            "id": gen_id(), "title": "流程图示",
+            "children": {"attached": [
+                {"id": gen_id(), "title": note_data.get("process") or "待填写"}
+            ]}
+        },
+        {
+            "id": gen_id(), "title": "使用规则",
+            "children": {"attached": [
+                {"id": gen_id(), "title": note_data.get("rules") or "待填写"}
+            ]}
+        },
+    ]
+
     sheet = {
         "id": sheet_id,
         "class": "sheet",
         "title": f"《{book_name}》- {author}",
+        "theme": WUXING_THEME,
         "rootTopic": {
             "id": root_id,
             "class": "topic",
-            "title": f"《{book_name}》- {author}",
-            "structureClass": "org.xmind.ui.map.unbalanced",
+            "title": f"《{book_name}》\n{author}",
+            "structureClass": "org.xmind.ui.map.clockwise",
+            "extensions": [
+                {
+                    "provider": "org.xmind.ui.map.unbalanced",
+                    "content": [{"name": "right-number", "content": "-1"}]
+                }
+            ],
             "children": {
-                "attached": [
-                    # 一句话总结
-                    {
-                        "id": gen_id(),
-                        "title": "一句话总结",
-                        "children": {
-                            "attached": [
-                                {"id": gen_id(), "title": note_data.get("summary", "待填写")}
-                            ]
-                        }
-                    },
-                    # 金
-                    create_element_node("金", MARKERS["金"], note_data.get("gold", []), "定位与角色：是谁、给谁、站在什么位置上"),
-                    # 水
-                    create_element_node("水", MARKERS["水"], note_data.get("water", []), "经历与路径：事情是怎么发生的"),
-                    # 木
-                    create_element_node("木", MARKERS["木"], note_data.get("wood", []), "方法与产出：具体怎么干、能产出什么"),
-                    # 火
-                    create_element_node("火", MARKERS["火"], note_data.get("fire", []), "认知与判断：为什么这么想、怎么判断对错"),
-                    # 土
-                    create_element_node("土", MARKERS["土"], note_data.get("earth", []), "系统与沉淀：如何长期稳定、不崩盘"),
-                    # 问题与解答
-                    {
-                        "id": gen_id(),
-                        "title": "问题与解答",
-                        "children": {
-                            "attached": [{"id": gen_id(), "title": q} for q in note_data.get("questions", ["待填写"])]
-                        }
-                    },
-                    # 人物分析
-                    {
-                        "id": gen_id(),
-                        "title": "人物分析",
-                        "children": {
-                            "attached": [{"id": gen_id(), "title": c} for c in note_data.get("characters", ["待填写"])]
-                        }
-                    },
-                    # 金句与关键词
-                    {
-                        "id": gen_id(),
-                        "title": "金句与关键词",
-                        "children": {
-                            "attached": [
-                                {"id": gen_id(), "title": "金句", "children": {"attached": [{"id": gen_id(), "title": q} for q in note_data.get("quotes", ["待填写"])]}},
-                                {"id": gen_id(), "title": "关键词", "children": {"attached": [{"id": gen_id(), "title": k} for k in note_data.get("keywords", ["待填写"])]}}
-                            ]
-                        }
-                    },
-                    # 流程图示
-                    {
-                        "id": gen_id(),
-                        "title": "流程图示",
-                        "children": {
-                            "attached": [{"id": gen_id(), "title": note_data.get("process", "待填写")}]
-                        }
-                    },
-                    # 使用规则
-                    {
-                        "id": gen_id(),
-                        "title": "使用规则",
-                        "children": {
-                            "attached": [{"id": gen_id(), "title": note_data.get("rules", "待填写")}]
-                        }
-                    }
-                ]
+                "attached": attached_nodes,
+                "detached": detached_nodes,
             }
         }
     }
-    
+
     return sheet, sheet_id, root_id
 
 def add_link_to_category(topics, category_title, book_name, author, sheet_id):
