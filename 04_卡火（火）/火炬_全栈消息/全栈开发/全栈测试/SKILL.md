@@ -1,16 +1,18 @@
 ---
 name: 全栈测试
-description: 卡若AI 全栈测试（火炬）— 项目功能完成后的系统化验收。覆盖前端渲染/后端API/数据库完整性/脚本运行/发布引擎五个维度。每次开发完一个功能都必须调用本 SKILL 进行测试、修复、记录。
-triggers: 全栈测试、功能测试、回归测试、深度测试、端到端测试、E2E测试、API测试、发布测试、测试验收、测试报告
+description: 卡若AI 全栈测试（火炬）— 通用全站深度测试框架。适用于任何 Web 项目的系统化验收：逐页逐按钮逐功能，前端/后端/数据库三方通透检查，发现即修，截图存档，安全审计，经验沉淀。
+triggers: 全栈测试、功能测试、回归测试、深度测试、端到端测试、E2E测试、API测试、发布测试、测试验收、测试报告、测试员、网站测试
 owner: 火炬
 group: 火
-version: "1.0"
-updated: "2026-03-11"
+version: "2.0"
+updated: "2026-03-14"
 ---
 
-# 全栈测试（火炬）
+# 全栈测试 v2.0（火炬 · 通用版）
 
-> 主责：项目功能开发后的**系统化测试验收**。每完成一个功能/迭代/修复，都调用本 SKILL 做全面测试，发现问题直接修复，修复后再测试，直到全部通过。
+> **定位**：任何 Web 项目的**终极测试框架**。不是简单跑一遍，而是以「百分测试员」标准——逐页、逐按钮、逐功能、逐像素地检查前端/后端/数据库三方一致性，发现问题即修、修完再验、验完截图、截图归档、经验沉淀。
+>
+> **适用范围**：卡若AI 官网、存客宝、玩值电竞、万推、及任何卡若AI 管理的 Web 项目。
 
 ---
 
@@ -18,176 +20,266 @@ updated: "2026-03-11"
 
 以下场景**必须调用**本 SKILL：
 1. 开发完一个新功能后
-2. 修复 Bug 后
+2. 修复 Bug 后需要回归验证
 3. 迭代版本上线前
-4. 用户反馈"功能不可用"时
+4. 用户反馈「功能不可用」时
 5. 长时间未测试的项目重启时
+6. 用户说「帮我测一下」「检查一下网站」「全站测试」时
 
 ---
 
-## 二、测试五维度
+## 二、测试总原则
 
-### 2.1 前端渲染测试
-
-**目标**：确保所有页面可访问、所有按钮可点击、所有交互有响应。
-
-**执行步骤**：
-1. 打开项目首页，检查 HTTP 状态和 HTML 大小
-2. 检查浏览器控制台零 JS 错误（`Vue is not defined` 等致命错误）
-3. 逐个导航项点击，验证每个页面渲染完整
-4. 对每个页面的**核心交互元素**逐一点击操作：
-   - 按钮：点击后是否有响应（loading 状态 / toast / 跳转）
-   - 表单：输入后是否可提交
-   - 复选框/下拉：操作后是否更新关联状态
-   - 弹窗：是否可打开和关闭
-5. 截图记录每个页面最终状态
-
-**修复原则**：
-- CDN 加载失败 → 切换可靠 CDN（jsdelivr > unpkg > cdnjs）
-- 模板语法未编译 → 检查 Vue/React 挂载错误
-- 按钮点击无响应 → 检查事件绑定、disabled 状态、ARIA role
-- 样式错位 → 检查 CSS 加载顺序和媒体查询
+1. **逐页逐按钮**：不跳过任何页面、任何按钮、任何链接、任何可编辑区域
+2. **三方通透**：每个操作同时验证前端渲染 + 后端 API 响应 + 数据库落库
+3. **发现即修**：测试中发现问题不记录跳过，**当场修复**，修完重新验证
+4. **方向一致**：所有功能必须与项目整体方向一致，重复/废弃功能直接清理
+5. **截图存档**：每个页面、每个子功能的最终状态截图，存入项目对应目录
+6. **经验沉淀**：测试中遇到的问题和解决方案写入经验库，分类归档
 
 ---
 
-### 2.2 后端 API 回归测试
+## 三、执行流程（十步法）
 
-**目标**：每个 API 端点真实调用，验证 HTTP 状态码和响应格式。
+### Step 0：环境准备
 
-**执行步骤**：
-1. 列出项目所有 API 端点（搜索 `@app.get|post|put|delete`）
-2. 按认证流程获取 token
-3. 逐个端点发送真实请求，记录：
-   - HTTP 状态码（期望 200/201）
-   - 响应体结构（字段是否完整）
-   - 边界情况（空参数、不存在的 ID、未认证）
-4. 统计通过率，未通过的立即定位原因
-
-**标准请求模板**（curl）：
-```bash
-# 认证
-TOKEN=$(curl -s -X POST $BASE/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"xxx"}' | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
-
-# GET 端点
-curl -s "$BASE/api/endpoint?token=$TOKEN" | python3 -m json.tool
-
-# POST 端点
-curl -s -X POST "$BASE/api/endpoint?token=$TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"key":"value"}' | python3 -m json.tool
+```
+1. 确认服务运行状态（端口、进程、日志）
+2. 确认数据库连接正常（MongoDB / MySQL / SQLite / Postgres）
+3. 确认环境变量配置完整（.env / .env.local）
+4. 记录项目基本信息：
+   - 项目名、框架、端口号
+   - 数据库类型与连接信息
+   - 页面总数、API 端点总数
 ```
 
-**修复原则**：
-- 500 错误 → 查看服务端日志定位异常
-- 导入错误 → 检查依赖版本兼容性（如 `playwright_stealth` API 变化）
-- 数据格式错误 → 检查 Pydantic model 字段定义
-- 认证失败 → 检查 token 过期时间和密钥配置
+**快速健康检查**：
+```bash
+# 通用健康检查（替换 PORT 和 HEALTH_PATH）
+curl -s -o /dev/null -w "HTTP %{http_code} | %{time_total}s" http://localhost:$PORT/$HEALTH_PATH
+```
 
 ---
 
-### 2.3 数据库完整性测试
+### Step 1：全站页面地图
 
-**目标**：确保数据一致、无孤儿记录、关键字段非空。
+在测试前，先**穷举项目所有页面和路由**。
 
-**执行步骤**：
-1. 列出所有表和记录数
-2. 检查外键关联完整性（孤儿记录）：
-   ```sql
-   SELECT COUNT(*) FROM child WHERE parent_id NOT IN (SELECT id FROM parent);
-   ```
-3. 检查关键字段非空（如 video 的 file_path、account 的 platform）
-4. 检查文件引用完整性（file_path 指向的文件是否存在）
-5. 检查数据合理性（status 字段值域、时间字段合理性）
-6. 清理发现的坏数据（删除孤儿、补填缺失字段）
+**方法**（按项目框架选择）：
+- **Next.js**：扫描 `src/app/` 下所有 `page.tsx`，提取路由
+- **Vue/Nuxt**：扫描 `src/pages/` 或 `src/views/`
+- **Python (FastAPI/Flask)**：搜索 `@app.get|post` 或 `@router`
+- **通用**：读项目的路由配置文件 + 导航组件
 
-**修复原则**：
-- 孤儿记录 → DELETE 或 CASCADE
-- 文件不存在的引用 → 标记为 failed 或删除
-- 缺失字段 → 补填（如 ffprobe 提取 duration）
-- 永远无法完成的 pending 任务 → 标记为 failed + 原因
+**输出**：一份按模块分组的页面清单，每个页面标注：
+- 路径（如 `/console/skills`）
+- 页面类型（列表页 / 详情页 / 表单页 / 配置页）
+- 预期数据来源（哪个 API、哪张表）
 
 ---
 
-### 2.4 脚本/服务运行测试
+### Step 2：逐页深度检查（核心）
 
-**目标**：确保后台服务、定时任务、心跳机制正常运行。
+**对每个页面按以下清单逐项检查：**
 
-**执行步骤**：
-1. 检查服务进程是否存活（`curl /api/health`）
-2. 检查心跳/调度器是否在运行（日志中搜索心跳关键词）
-3. 检查后台任务执行情况（pending 任务是否被正常捡起）
-4. 检查日志中是否有未处理的异常
-5. 检查环境变量是否正确加载（`.env` 文件）
-6. 检查依赖包版本兼容性
+#### 2.1 页面加载
+- [ ] HTTP 状态码 200
+- [ ] 页面标题正确
+- [ ] 关键内容渲染完成（不是骨架屏/loading 卡死）
+- [ ] 无 JS 控制台错误
+- [ ] 数据量与数据库一致（如"共 73 项"对应 DB 中 73 条记录）
 
-**修复原则**：
-- 服务未启动 → 检查端口占用、依赖缺失
-- 心跳未执行 → 检查 lifespan 中的 asyncio.create_task
-- 环境变量未生效 → 检查 dotenv 加载顺序
-- 包版本不兼容 → 更新 requirements.txt 并安装
+#### 2.2 每个按钮
+对页面上**每一个按钮**执行：
+- [ ] 点击后有响应（loading / toast / 弹窗 / 跳转 / 数据变化）
+- [ ] 按钮文案准确描述功能（不误导）
+- [ ] 按钮有对应的后端 API 且 API 正常响应
+- [ ] 破坏性按钮（删除/清空）有确认弹窗
+- [ ] 操作成功/失败都有用户反馈（不静默失败）
+
+#### 2.3 每个链接/导航
+- [ ] 所有链接指向正确页面（不 404、不循环重定向）
+- [ ] 导航高亮与当前页面一致
+- [ ] 面包屑/返回按钮正常
+
+#### 2.4 每个表单/输入
+- [ ] 输入框有 placeholder 或 label
+- [ ] 必填项有标识
+- [ ] 提交后数据正确写入数据库
+- [ ] 编辑后数据正确更新
+- [ ] 空表单提交有校验提示
+
+#### 2.5 每个列表/表格
+- [ ] 数据正确加载（条数、内容与 DB 一致）
+- [ ] 搜索/筛选正常工作
+- [ ] 分页正常（上一页/下一页/总数）
+- [ ] 排序正常（如按时间倒序）
+- [ ] 空状态有友好提示（非空白页面）
+
+#### 2.6 UI/UX 检查
+- [ ] 布局无挤压、无溢出、无重叠
+- [ ] 文字不截断（长文本有 truncate + tooltip）
+- [ ] 按钮有明确的功能描述（而非「提交」「确定」等模糊词）
+- [ ] 解释性内容用小问号/tooltip，不占主界面空间
+- [ ] 响应式（手机端不破版，如需要的话）
+- [ ] Loading 状态有骨架屏或 spinner（不是空白）
+- [ ] 颜色对比度足够（文字可读）
+- [ ] 间距统一（padding/margin 一致）
 
 ---
 
-### 2.5 发布引擎/业务流程端到端测试
+### Step 3：后端 API 回归测试
 
-**目标**：模拟真实用户操作全流程，验证从输入到最终输出的完整链路。
+**对每个 API 端点执行：**
 
-**执行步骤**：
-1. 模拟用户完整操作流程：
-   - 登录 → 上传素材 → 创建任务 → 执行 → 查看结果
-2. 检查每个环节的数据传递是否正确
-3. 检查异步任务（BackgroundTasks）是否正确执行
-4. 检查第三方集成（Playwright 浏览器自动化、AI 调用）
-5. 检查错误恢复机制（失败后重试）
+1. **列出所有 API**：
+   - Next.js：扫描 `src/app/api/` 下所有 `route.ts`
+   - FastAPI：搜索 `@app.get|post|put|delete|patch`
+   - Express：搜索 `router.get|post|put|delete`
 
-**修复原则**：
-- Playwright 启动失败 → 检查 stealth 库 API、浏览器安装
-- 上传文件丢失 → 检查 UPLOAD_DIR 配置和权限
-- 异步任务卡住 → 心跳调度器自动捡起 stale 任务
-- AI 调用失败 → 检查 KARUO_AI_ROOT 配置和脚本路径
+2. **逐个调用验证**：
+   - GET 端点：返回 200 + 正确数据结构
+   - POST 端点：创建成功 + 数据库有新记录
+   - PUT/PATCH 端点：更新成功 + 数据库记录变化
+   - DELETE 端点：删除成功 + 数据库记录消失
+   - 认证端点：无 token 返回 401/403
+
+3. **边界测试**：
+   - 空参数请求
+   - 不存在的 ID
+   - 超长字符串
+   - 重复提交
+
+4. **错误处理检查**：
+   - 每个 API 调用都有 try/catch
+   - 错误响应有明确的错误信息
+   - 不暴露内部错误细节给前端
 
 ---
 
-## 三、测试报告格式
+### Step 4：数据库一致性检查
 
-每次测试完成后，输出标准报告：
+1. **数据量核对**：每个集合/表的记录数与前端显示一致
+2. **唯一性检查**：关键字段（如 id）无重复
+3. **完整性检查**：必填字段无空值
+4. **关联性检查**：外键/引用字段指向有效记录
+5. **索引检查**：高频查询字段有索引
+6. **数据合理性**：状态字段值在预期范围内
+
+**MongoDB 通用检查脚本**：
+```javascript
+// 检查每个集合的数量和重复
+const db = require('mongodb').MongoClient.connect(MONGO_URI);
+for (const col of collections) {
+  const total = await db.collection(col).countDocuments();
+  const distinct = await db.collection(col).distinct('id');
+  console.log(`${col}: ${total} total, ${distinct.length} unique`);
+  if (total !== distinct.length) console.error(`⚠️ ${col} has duplicates!`);
+}
+```
+
+---
+
+### Step 5：安全隐患排查
+
+**必查清单**：
+- [ ] 登录/认证机制是否正常工作
+- [ ] 敏感页面是否有权限保护（middleware/guard）
+- [ ] API Key / 密码是否硬编码在源码中（应在 .env）
+- [ ] API Key 展示是否做脱敏（首 8 末 4）
+- [ ] 重定向参数是否有校验（防开放重定向）
+- [ ] 文件上传是否限制类型和大小
+- [ ] SQL/NoSQL 注入防护
+- [ ] XSS 防护（用户输入是否转义）
+- [ ] CORS 配置是否合理
+- [ ] Cookie 安全属性（httpOnly、sameSite、secure）
+- [ ] 错误信息不泄露内部细节（堆栈、路径、密钥）
+
+---
+
+### Step 6：重复/废弃功能清理
+
+- 检查是否有功能重复的页面或组件
+- 检查导航中是否有失效链接
+- 检查是否有未使用的 API 端点
+- 检查是否有未使用的组件/函数（死代码）
+- 清理发现的重复/废弃内容
+
+---
+
+### Step 7：全站截图存档
+
+**截图范围**：
+- 每个页面的默认状态
+- 每个页面的核心交互状态（如展开详情、打开弹窗）
+- 每个页面的空状态
+- 登录页
+- 错误页（404 等）
+
+**存储路径**：`/Users/karuo/Documents/卡若Ai的文件夹/图片/网站测试截图/[项目名]/`
+
+---
+
+### Step 8：参考学习（可选）
+
+当发现功能有优化空间时：
+1. 搜索 GitHub 上同类优秀项目的实现方式
+2. 参考 OpenCloud、Vercel Dashboard、Supabase Studio 等成熟后台的 UI/UX
+3. 学习核心代码并适配到自己的项目
+4. 记录参考来源和学习要点
+
+---
+
+### Step 9：经验沉淀
+
+**每次测试完成后必须执行**：
+
+1. **写经验文档**：`02_卡人（水）/水溪_整理归档/经验库/待沉淀/[项目名]_测试经验_YYYYMMDD.md`
+   - 分类：P0 严重 / P1 重要 / P2 优化
+   - 每个问题：现象 → 根因 → 修复方式
+   - 通用经验提炼（不绑定特定项目）
+
+2. **更新本 SKILL 经验库**（本文件末尾 §八）
+
+3. **发飞书复盘总结**
+
+---
+
+### Step 10：输出测试报告
 
 ```
 ============================================
   [项目名] 全栈测试报告 — YYYY-MM-DD HH:MM
 ============================================
 
-【前端渲染】 X/Y 页面通过
-  ✅ 页面A: 正常
-  ❌ 页面B: JS错误 — [错误信息]
-  → 修复: [修复措施]
+【测试范围】
+  页面总数: X | API 端点: Y | 数据库集合/表: Z
 
-【后端API】 X/Y 端点通过
+【前端渲染】 X/Y 页面通过
+  ✅ 页面A: 正常（N 个按钮全部可用）
+  ❌ 页面B: [问题] → [修复] → [验证通过]
+
+【后端 API】 X/Y 端点通过
   ✅ GET /api/xxx: 200 OK
-  ❌ POST /api/yyy: 500 — [错误信息]
-  → 修复: [修复措施]
+  ❌ POST /api/yyy: [问题] → [修复]
 
 【数据库】 X 项检查
-  ✅ 外键完整性: 0 孤儿
-  ⚠️ 视频 duration 为空: 3 条 → 已补填
-  → 修复: [修复措施]
+  ✅ 唯一性: 全部通过
+  ⚠️ [问题] → [修复]
 
-【服务运行】
-  ✅ 服务存活: HTTP 200
-  ✅ 心跳调度: 运行中
-  ⚠️ 环境变量: KARUO_AI_ROOT 未配置
-  → 修复: [修复措施]
+【安全审计】
+  ✅ 认证机制: 正常
+  ⚠️ [问题] → [修复]
 
-【端到端】
-  ✅ 上传→分发→记录: 完整流程通过
-  ❌ 视频号发布: headless 找不到上传按钮
-  → 修复: [修复措施]
+【UI/UX】
+  ✅ 布局: 无挤压
+  ⚠️ [问题] → [修复]
 
 【修复记录】
-  1. [BUG] xxx → [修复方式] → [验证结果]
-  2. [优化] xxx → [提升方式] → [验证结果]
+  1. [BUG] xxx → [修复方式] → ✅ 验证通过
+  2. [优化] xxx → [提升方式] → ✅ 验证通过
+
+【截图归档】 X 张截图已存入 [路径]
 
 总结: X/Y 通过, Z 个问题已修复, W 个待处理
 ============================================
@@ -195,85 +287,134 @@ curl -s -X POST "$BASE/api/endpoint?token=$TOKEN" \
 
 ---
 
-## 四、与其他 SKILL 联动
+## 四、修复原则（通用）
+
+### 4.1 前端问题
+| 现象 | 修复方向 |
+|:-----|:---------|
+| 页面白屏/404 | 检查路由配置、文件路径 |
+| 按钮无响应 | 检查事件绑定、disabled 状态、API 是否缺失 |
+| 数据不加载 | 检查 fetch 调用、API 返回格式、useEffect 依赖 |
+| 布局挤压/溢出 | 检查 flex/grid 配置、overflow、min-width |
+| 文案误导 | 按钮文案改为准确描述功能 |
+| 静默失败 | 添加 try/catch + 用户反馈（toast/alert） |
+| 删除无确认 | 添加 confirm() 弹窗 |
+
+### 4.2 后端问题
+| 现象 | 修复方向 |
+|:-----|:---------|
+| 500 错误 | 查服务端日志、检查异常处理 |
+| API 缺失 | 补充对应的 route handler |
+| 数据格式错误 | 检查 schema/model 定义 |
+| 认证失败 | 检查 token/cookie/middleware |
+| 并发问题 | 加锁/唯一索引/幂等处理 |
+
+### 4.3 数据库问题
+| 现象 | 修复方向 |
+|:-----|:---------|
+| 数据重复 | 唯一索引 + replaceOne upsert（不要 deleteMany+insertMany） |
+| 孤儿记录 | 清理 + 加级联删除 |
+| 字段缺失 | 补填默认值 |
+| 索引缺失 | createIndex 加速查询 |
+
+### 4.4 安全问题
+| 现象 | 修复方向 |
+|:-----|:---------|
+| 密钥硬编码 | 迁移到 .env 环境变量 |
+| API Key 明文展示 | 脱敏显示（首 8 末 4） |
+| 开放重定向 | 校验 redirect 参数只允许内部相对路径 |
+| 登录页不可达 | middleware 白名单放行 |
+| 无权限保护 | 添加 middleware/guard |
+
+---
+
+## 五、技术栈参考
+
+| 工具 | 用途 |
+|:-----|:-----|
+| **浏览器自动化（MCP browser）** | 逐页点击、截图、DOM 检查 |
+| **curl / httpx** | API 端点测试 |
+| **MongoDB shell / mongosh** | 数据库直查 |
+| **pytest / jest** | 单元/集成测试 |
+| **Lighthouse** | 性能与可访问性 |
+| **OWASP ZAP** | 安全扫描 |
+
+---
+
+## 六、与其他 SKILL 联动
 
 | 场景 | 联动 SKILL |
 |:-----|:-----------|
 | 功能开发后测试 | 全栈开发 → **全栈测试** → 复盘 |
-| 前端样式问题 | **全栈测试** → 前端开发（神射手标准） |
-| 数据库问题 | **全栈测试** → 全栈开发（数据库修复） |
-| 发布引擎问题 | **全栈测试** → 多平台分发（SKILL） |
-| AI 能力问题 | **全栈测试** → 视频切片/混剪（SKILL） |
+| 前端样式问题 | **全栈测试** → 前端开发（F01a） |
+| 数据库问题 | **全栈测试** → 数据库管理（G13） |
+| 安全问题 | **全栈测试** → 金盾（数据安全） |
+| 部署后验证 | 服务器管理（G07） → **全栈测试** |
 
 ---
 
-## 五、自动化脚本参考
+## 七、自动化脚本模板
 
-项目根目录可放置 `test_fullstack.sh`，一键执行全量测试：
-
+### 7.1 通用健康检查
 ```bash
 #!/bin/bash
-# 全栈测试脚本模板
-BASE="http://localhost:8001"
-echo "=== 1. Health Check ==="
-curl -s $BASE/api/health | python3 -m json.tool
+BASE="http://localhost:${1:-3000}"
+echo "=== Health Check: $BASE ==="
+STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE")
+echo "Root: HTTP $STATUS"
 
-echo "=== 2. Login ==="
-TOKEN=$(curl -s -X POST $BASE/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin123"}' \
-  | python3 -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
-echo "TOKEN=${TOKEN:0:16}..."
-
-echo "=== 3. API Endpoints ==="
-for EP in /api/stats /api/accounts /api/videos /api/distributions /api/ai/status /api/platforms; do
-  CODE=$(curl -s -o /dev/null -w "%{http_code}" "$BASE${EP}?token=$TOKEN")
+echo "=== API Endpoints ==="
+for EP in $(grep -r "export.*async.*function.*GET\|POST\|PUT\|DELETE" src/app/api/ -l 2>/dev/null | sed 's|src/app||;s|/route.ts||;s|/route.js||'); do
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" "${BASE}${EP}")
   echo "  $EP → $CODE"
 done
+```
 
-echo "=== 4. Database Check ==="
-python3 -c "
-import sqlite3,os
-conn=sqlite3.connect('wantui.db')
-c=conn.cursor()
-for t in ['users','platform_accounts','videos','distributions']:
-    c.execute(f'SELECT COUNT(*) FROM {t}')
-    print(f'  {t}: {c.fetchone()[0]}')
-conn.close()
-"
-
-echo "=== Done ==="
+### 7.2 MongoDB 数据检查
+```javascript
+const { MongoClient } = require('mongodb');
+async function check() {
+  const client = await MongoClient.connect(process.env.MONGO_URI);
+  const db = client.db(process.env.MONGO_DB);
+  const collections = await db.listCollections().toArray();
+  for (const { name } of collections) {
+    const total = await db.collection(name).countDocuments();
+    const ids = await db.collection(name).distinct('id');
+    const status = total === ids.length ? '✅' : '⚠️ DUPLICATES';
+    console.log(`${status} ${name}: ${total} docs, ${ids.length} unique ids`);
+  }
+  client.close();
+}
+check();
 ```
 
 ---
 
-## 六、技术栈参考（GitHub 最佳实践）
+## 八、经验库（持续沉淀）
 
-| 工具 | 用途 |
-|:-----|:-----|
-| **pytest** | Python 单元/集成测试框架 |
-| **pytest-playwright** | Playwright 浏览器自动化测试 |
-| **httpx** / **requests** | API 端点测试 |
-| **sqlite3** / **SQLAlchemy** | 数据库直接检查 |
-| **ffprobe** | 视频文件元数据验证 |
-| **allure-pytest** | 测试报告生成 |
-| **GitHub Actions** | CI/CD 自动化测试 |
+> 每次测试发现的通用问题和解决方案记录在此，供所有项目参考。
 
----
+### 8.1 卡若AI 官网（2026-03-13 ~ 2026-03-14）
 
-## 七、经验库（持续沉淀）
+| 问题 | 根因 | 修复 | 通用教训 |
+|:-----|:-----|:-----|:---------|
+| 技能数据翻倍（146 vs 73） | storage-mongo.ts 用 deleteMany+insertMany 竞态 | 唯一索引 + replaceOne upsert | **MongoDB 并发写必须唯一索引 + 幂等 upsert** |
+| 登录页不可达 | middleware 未白名单放行 /login | 显式放行 LOGIN_PATH | **middleware 拦截时必须白名单放行认证页** |
+| 开放重定向漏洞 | login 的 next 参数未校验 | 限制只允许 / 开头且非 // 的路径 | **重定向参数必须校验** |
+| 心跳页崩溃 | exec.actions 可能 undefined | 全部加 ?? [] | **数组属性永远加空值防御** |
+| API Key 明文展示 | 前端直接显示完整 key | 脱敏首 8 末 4 | **敏感信息只做脱敏展示** |
+| 删除无确认 | 直接调 DELETE API | 加 confirm() | **破坏性操作必须确认弹窗** |
+| API 静默失败 | fetch 无 try/catch 和 res.ok 检查 | 统一加错误处理 | **每个 fetch 都要 try/catch + res.ok** |
+| 基因胶囊删除 API 缺失 | route.ts 没有 DELETE handler | 补 handler | **前端有操作按钮，后端必须有对应 API** |
+| 导航入口丢失 | ConsoleShell navGroups 遗漏 | 补回导航项 | **改导航结构后必须全量验证** |
+| CTA 链接错误 | 营销页链接指向不存在的路由 | 修正链接 | **所有 Link/href 必须指向有效路由** |
 
-> 每次测试发现的问题和解决方案记录在此，供后续参考。
+### 8.2 万推 v2（2026-03-11）
 
-### 7.1 万推 v2（2026-03-11）
-
-| 问题 | 原因 | 修复 |
-|:-----|:-----|:-----|
-| Vue is not defined | unpkg CDN 被墙 | 切换 cdn.jsdelivr.net |
-| stealth_async 不存在 | playwright_stealth 新版 API | 改用 `Stealth().use_async(async_playwright())` |
-| 复选框点击无响应 | `@click.stop` 阻止冒泡但无自身 handler | 添加 `@click.stop="toggle(…)"` |
-| video duration 为空 | 上传时未提取 | 添加 ffprobe 提取 |
-| 18 条孤儿分发 | video_id=NULL | 清理 + 防御性检查 |
-| pending 任务卡住 | 心跳只处理排期任务 | 增加 stale 任务自动捡起（>90s） |
-| B站发布超时 | Playwright 等待元素 30s | headless 模式下平台加载慢，需优化等待策略 |
-| 视频号找不到上传按钮 | headless DOM 不完整 | 需非 headless 或 API 方式 |
+| 问题 | 根因 | 修复 | 通用教训 |
+|:-----|:-----|:-----|:---------|
+| Vue is not defined | unpkg CDN 被墙 | 切换 cdn.jsdelivr.net | **CDN 选择优先级：jsdelivr > unpkg > cdnjs** |
+| stealth_async 不存在 | playwright_stealth API 变化 | 改用新 API | **第三方库更新后检查 API 兼容性** |
+| 复选框点击无响应 | @click.stop 无自身 handler | 添加 handler | **事件修饰符不替代事件处理** |
+| 18 条孤儿分发 | video_id=NULL | 清理 + 防御 | **外键字段加 NOT NULL 约束** |
+| pending 任务卡住 | 心跳只处理排期任务 | 增加 stale 任务自动捡起 | **后台任务需要超时兜底机制** |
