@@ -23,6 +23,10 @@
 | 通义千问（DashScope） | `https://dashscope.aliyuncs.com/compatible-mode/v1` | 阿里百炼，OpenAI 兼容 | 账号索引·阿里云 / DASHSCOPE_API_KEY |
 | v0（Claude） | `https://api.v0.dev/v1` | v0 Model API，模型选 v0-1.5-md / v0-1.5-lg / v0-1.0-md | 账号索引·v0.dev（URL/Secret） |
 | 智增增 | `https://api.zhizengzeng.com/v1` | OpenAI 兼容 | 官网 API 清单已登记 |
+| Groq（超快推理） | `https://api.groq.com/openai/v1` | Llama 3/Mixtral/Gemma，延迟极低 | cr4hsunuomlj@sharebot.net（临时邮箱注册） |
+| Together AI（多模型聚合） | `https://api.together.xyz/v1` | Llama 3/Qwen/DeepSeek 等 | zhiqun1984@gmail.com（Google OAuth） |
+| Cerebras（AI芯片加速推理） | `https://api.cerebras.ai/v1` | Llama 3.1/3.3 | Google OAuth 注册 |
+| Cohere（NLP专家） | `https://api.cohere.com/v2` | Command A/R/Embed/Rerank，非 OpenAI 兼容需特殊适配 | zhiqun1984@gmail.com（Google OAuth） |
 
 ---
 
