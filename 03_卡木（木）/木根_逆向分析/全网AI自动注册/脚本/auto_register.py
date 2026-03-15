@@ -26,6 +26,7 @@ from providers.openai_provider import OpenAIProvider
 from providers.cursor_provider import CursorProvider
 from providers.gemini_provider import GeminiProvider
 from providers.generic_browser_provider import GenericBrowserProvider
+from providers.cerebras_provider import CerebrasProvider
 
 logging.basicConfig(
     level=logging.INFO,
@@ -57,6 +58,7 @@ def get_provider(name: str, config: dict, email_svc: EmailService, storage: Acco
         "openai": lambda: OpenAIProvider(config, email_svc, storage),
         "cursor": lambda: CursorProvider(config, email_svc, storage),
         "gemini": lambda: GeminiProvider(config, email_svc, storage),
+        "cerebras": lambda: CerebrasProvider(config, email_svc, storage),
         "groq": lambda: GenericBrowserProvider("groq", config, email_svc, storage),
         "deepseek": lambda: GenericBrowserProvider("deepseek", config, email_svc, storage),
         "mistral": lambda: GenericBrowserProvider("mistral", config, email_svc, storage),

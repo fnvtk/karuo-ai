@@ -30,31 +30,38 @@
 
 ---
 
-## 三、当前接口队列（2026-03-16 01:50 更新）
+## 三、当前接口队列（2026-03-16 02:02 更新）
 
 | 序号 | 平台 | Base URL | 模型 | 上下文 | 状态 |
 |:---|:---|:---|:---|:---|:---|
-| 1 | **Cohere** | `https://api.cohere.com/compatibility/v1` | command-a-03-2025 | **128K** | ✅ 主力（priority=1） |
-| 2 | Cerebras | `https://api.cerebras.ai/v1` | llama3.1-8b | 8K | ✅ 备用（priority=5） |
-| 3 | Ollama 本机 | `http://localhost:11434` | qwen2.5:3b | 32K | ✅ 兜底 |
-| - | v0 | `https://api.v0.dev/v1` | v0-1.5-md | - | ❌ 持续 500（disabled） |
-| - | Groq | `https://api.groq.com/openai/v1` | llama-3.3-70b-versatile | - | ❌ 组织受限（disabled） |
-| - | Together AI | `https://api.together.xyz/v1` | Llama-3.3-70B-Instruct-Turbo | - | ❌ 额度耗尽（standby） |
+| 1 | **Cerebras** | `https://api.cerebras.ai/v1` | **qwen-3-235b-a22b-instruct-2507** | 8K | ✅ 主力（不限额度，235B大模型） |
+| 2 | **Cohere** | `https://api.cohere.com/compatibility/v1` | command-a-03-2025 | **128K** | ✅ 备选（免费tier，长上下文） |
+| 3 | Cerebras | `https://api.cerebras.ai/v1` | llama3.1-8b | 8K | ✅ 快速推理备选 |
+| - | ~~Groq~~ | - | - | - | ❌ 组织受限（disabled） |
+| - | ~~Together AI~~ | - | - | - | ❌ 额度耗尽（disabled） |
+| - | ~~v0~~ | - | - | - | ❌ 持续 500（disabled） |
 
-> **重要**：Cohere 128K 上下文适合长对话；Cerebras 8K 上下文过小，仅作备用。路由引擎已支持 priority 字段排序。
+> **重要**：Cerebras 不限额度、不封号，qwen-3-235b 为 235B 参数大模型。Cohere 128K 适合长对话。
+> 网关已接入 Key 池（`key_pool.db`），自动从池中读取活跃 Key。
 
-### Key 健康检查
+### Key 池自动管理
 
 ```bash
-python3 运营中枢/scripts/karuo_ai_gateway/key_health_check.py          # 一次性
-python3 运营中枢/scripts/karuo_ai_gateway/key_health_check.py --watch 300  # 守护
+# Key 池管理（核心）
+python3 03_卡木（木）/木根_逆向分析/全网AI自动注册/脚本/key_pool_manager.py status     # 池状态
+python3 03_卡木（木）/木根_逆向分析/全网AI自动注册/脚本/key_pool_manager.py check      # 健康检查
+python3 03_卡木（木）/木根_逆向分析/全网AI自动注册/脚本/key_pool_manager.py auto-fill  # 自动补充
+python3 03_卡木（木）/木根_逆向分析/全网AI自动注册/脚本/key_pool_manager.py daemon     # 守护模式
+
+# 网关健康检查
+python3 运营中枢/scripts/karuo_ai_gateway/key_health_check.py
 ```
 
-### Key 来源
+### Key 来源与自动补充
 
-- Groq / Cerebras / Cohere / Together AI：由「全网AI自动注册」SKILL（M02a）通过浏览器自动化注册获取
-- v0：手动配置
-- 新 Key 接入：编辑 `.env.api_keys.local` → 健康检查 → 复制到 `.env` → 重启网关
+- **Cerebras（主力）**：由「全网AI自动注册」SKILL（M02a）纯 API 自动注册（mail.tm + Stytch magic link），Key 池最低水位 3 个
+- **Cohere**：手动注册，免费 tier
+- Key 池补充后网关自动读取，无需重启
 
 ## 四、卡若AI 规则与已有 API 对应关系
 

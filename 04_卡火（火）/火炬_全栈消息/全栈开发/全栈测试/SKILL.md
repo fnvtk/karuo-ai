@@ -4,8 +4,8 @@ description: 卡若AI 全栈测试（火炬）— 通用全站深度测试框架
 triggers: 全栈测试、功能测试、回归测试、深度测试、端到端测试、E2E测试、API测试、发布测试、测试验收、测试报告、测试员、网站测试
 owner: 火炬
 group: 火
-version: "2.0"
-updated: "2026-03-14"
+version: "2.1"
+updated: "2026-03-15"
 ---
 
 # 全栈测试 v2.0（火炬 · 通用版）
@@ -409,7 +409,53 @@ check();
 | 导航入口丢失 | ConsoleShell navGroups 遗漏 | 补回导航项 | **改导航结构后必须全量验证** |
 | CTA 链接错误 | 营销页链接指向不存在的路由 | 修正链接 | **所有 Link/href 必须指向有效路由** |
 
-### 8.2 万推 v2（2026-03-11）
+### 8.2 Soul 创业派对（2026-03-15）
+
+| 问题 | 根因 | 修复方向 | 通用教训 |
+|:-----|:-----|:---------|:---------|
+| OSS accessKeySecret 明文返回前端 | AdminSettingsGet 未脱敏 ossConfig | 后端返回时隐藏 Secret | **密钥类配置返回前端必须脱敏，只返回 `****`** |
+| 管理端无登录守卫 | 前端路由无 token 检查 | 添加路由守卫 | **SPA 管理端必须有全局路由守卫，未登录跳 /login** |
+| payment.js API 路径全部错误 | 用了不存在的 `apiBase`，路径不符规范 | 删除或重构 | **工具文件须定期扫描是否仍在被引用，无引用即删** |
+| 小程序跳转路径不存在 | `pages/catalog/catalog` 不在 app.json | 改为正确路径 | **跳转路径必须与 app.json pages 注册一致** |
+| wx.getUserProfile() 已废弃 | 2022年后不可用 | 改用 chooseAvatar | **定期检查微信基础库废弃 API，及时迁移** |
+| ES Module/CommonJS 混用 | export default 与 module.exports 混用 | 统一模块语法 | **小程序项目模块导入方式必须统一（除非确认构建工具支持）** |
+| 匹配 API 失败时伪装成功 | catch 中 setData `joinSuccess:true` | 移除伪装逻辑 | **API 失败绝不伪装成功，必须真实反馈给用户** |
+| 生产环境残留测试模式 | match.js 中「测试模式购买」 | 删除测试代码 | **上线前必须搜索清理 mock/test/debug 代码** |
+| admin/chapters 分页被忽略 | handler 未读取 page/pageSize 参数 | 添加分页支持 | **列表 API 必须支持 page+pageSize 参数** |
+| admin/users 返回管理员而非用户 | 端点逻辑错误 | 区分管理员与普通用户 API | **API 命名必须准确反映返回数据** |
+| 热度 Top20 有 8 条零点击 | reading_progress 数据不完整 | 检查阅读追踪上报 | **热度算法依赖的数据源（阅读/付费）须验证完整性** |
+| 免费章节数不一致 | stats 查 `is_free=true` 与实际数不符 | 核查查询条件 | **聚合统计必须与列表接口交叉验证** |
+| baseUrl/appId/mchId 硬编码 | 前端代码直接写死 | 移至配置文件或 API | **环境相关配置不硬编码，走 .env 或后端 config API** |
+| console.log 调试日志未清理 | 开发完未清理 | 上线前 grep 清理 | **上线检查清单加一项：grep -r "console.log" 并清理** |
+
+**Soul 项目测试方法论沉淀（通用可复用）**：
+
+1. **三端隔离验证法**（适用于小程序+管理端+API 架构）：
+   - 小程序只调 `/api/miniprogram/*`，管理端只调 `/api/admin/*` + `/api/db/*`
+   - 发现混调即为 Bug
+
+2. **API 响应结构解析要注意字段名差异**：
+   - 同一项目不同端点可能用 `data`/`results`/`orders`/`records` 等不同字段
+   - 测试脚本解析前先 `print(list(d.keys()))` 确认结构
+
+3. **OSS 上传测试四步法**：
+   - ① 配置写入验证 → ② 上传接口调用 → ③ 返回 URL 可访问性 → ④ bucket ACL/签名策略验证
+   - 阿里云新账号默认「禁止公共访问」，需用签名 URL 或控制台关闭限制
+
+4. **小程序代码审查重点项**：
+   - 废弃 API 检查（wx.getUserProfile / wx.createCanvasContext）
+   - 模块语法统一（ES Module vs CommonJS）
+   - 未使用工具文件检查（特别是 utils/ 下的公共模块）
+   - 硬编码搜索（grep `hardcode` 关键：URL/appId/mchId/微信号/日期）
+   - mock/test 代码残留检查
+
+5. **安全检查必做项**（本次新增）：
+   - `/api/admin/settings` 返回的配置中密钥是否脱敏
+   - 前端路由守卫是否生效（直接访问后台路径）
+   - Token 存储方式（小程序 setStorageSync 可接受）
+   - 支付参数来源（必须从后端获取，不可前端生成）
+
+### 8.3 万推 v2（2026-03-11）
 
 | 问题 | 根因 | 修复 | 通用教训 |
 |:-----|:-----|:-----|:---------|

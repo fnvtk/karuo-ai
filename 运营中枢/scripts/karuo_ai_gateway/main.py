@@ -218,11 +218,49 @@ def _split_csv_env(value: str) -> List[str]:
     return [x.strip() for x in s.split(",") if x.strip()]
 
 
+KEY_POOL_DB = Path(__file__).resolve().parents[2] / "03_卡木（木）/木根_逆向分析/全网AI自动注册/脚本/key_pool.db"
+
+
+def _load_key_pool_providers() -> List[Dict[str, str]]:
+    """从 Key 池 SQLite 动态加载活跃 Key 作为补充 provider"""
+    if not KEY_POOL_DB.exists():
+        return []
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(KEY_POOL_DB))
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM api_keys WHERE status='active' ORDER BY latency_ms ASC"
+        ).fetchall()
+        conn.close()
+
+        platform_base = {
+            "cerebras": "https://api.cerebras.ai/v1",
+            "cohere": "https://api.cohere.com/compatibility/v1",
+            "groq": "https://api.groq.com/openai/v1",
+            "together": "https://api.together.xyz/v1",
+        }
+        providers = []
+        for r in rows:
+            row = dict(r)
+            base = platform_base.get(row["platform"], "")
+            if base and row["api_key"]:
+                providers.append({
+                    "base_url": base.rstrip("/"),
+                    "api_key": row["api_key"],
+                    "model": row.get("model") or "",
+                })
+        return providers
+    except Exception:
+        return []
+
+
 def _build_provider_queue(llm_cfg: Dict[str, Any]) -> List[Dict[str, str]]:
     """
     构建 LLM 接口队列：
     1) 优先读取 OPENAI_API_BASES / OPENAI_API_KEYS / OPENAI_MODELS（逗号分隔）
     2) 若未配置队列，则回退到单接口 OPENAI_API_BASE / OPENAI_API_KEY / OPENAI_MODEL
+    3) 自动合并 Key 池中的活跃 Key（去重）
     """
     base_env = llm_cfg.get("api_base_env", "OPENAI_API_BASE")
     key_env = llm_cfg.get("api_key_env", "OPENAI_API_KEY")
@@ -240,6 +278,8 @@ def _build_provider_queue(llm_cfg: Dict[str, Any]) -> List[Dict[str, str]]:
     models = _split_csv_env(os.environ.get(models_env, ""))
 
     providers: List[Dict[str, str]] = []
+    seen_keys = set()
+
     if bases:
         for i, b in enumerate(bases):
             key = keys[i] if i < len(keys) and keys[i] else single_key
@@ -247,8 +287,17 @@ def _build_provider_queue(llm_cfg: Dict[str, Any]) -> List[Dict[str, str]]:
             if not b or not key:
                 continue
             providers.append({"base_url": b.rstrip("/"), "api_key": key, "model": model})
+            seen_keys.add(key)
     elif single_key:
         providers.append({"base_url": single_base.rstrip("/"), "api_key": single_key, "model": single_model})
+        seen_keys.add(single_key)
+
+    pool_providers = _load_key_pool_providers()
+    for pp in pool_providers:
+        if pp["api_key"] not in seen_keys:
+            providers.append(pp)
+            seen_keys.add(pp["api_key"])
+
     return providers
 
 
