@@ -155,6 +155,50 @@ curl -s -o /dev/null -w "HTTP %{http_code} | %{time_total}s" http://localhost:$P
    - 错误响应有明确的错误信息
    - 不暴露内部错误细节给前端
 
+5. **API 响应字段差异防御**（2026-03-15 沉淀）：
+   - 不同端点的数据字段名可能不同（`data`/`results`/`orders`/`records`）
+   - 测试脚本解析前先 `print(list(response.keys()))` 确认结构
+   - 聚合统计端点的总数必须与列表端点的实际条数交叉验证
+
+---
+
+### Step 3.5：小程序/移动端代码审查（2026-03-15 新增）
+
+> 适用于项目包含微信小程序或移动端的情况。
+
+1. **页面全量扫描**：
+   - 读 `app.json` 获取所有注册页面
+   - 逐页检查 `.js` / `.wxml` / `.wxss`
+
+2. **API 路径合规**：
+   - 小程序只调 `/api/miniprogram/*`
+   - 管理端只调 `/api/admin/*` + `/api/db/*`
+   - 发现混调即为 Bug
+
+3. **废弃 API 检查**：
+   ```bash
+   grep -rn "getUserProfile\|createCanvasContext" miniprogram/
+   ```
+
+4. **模块语法统一**：
+   ```bash
+   grep -rn "export default" miniprogram/utils/
+   ```
+   小程序默认不支持 ES Module，`export default` 会运行报错。
+
+5. **硬编码搜索**：
+   ```bash
+   grep -rn "apiBase\|appId\|mchId" miniprogram/
+   ```
+
+6. **死代码/测试残留**：
+   ```bash
+   grep -rn "mock\|Mock\|测试模式\|test mode" miniprogram/pages/
+   grep -rc "console.log" miniprogram/pages/ | grep -v ":0$"
+   ```
+
+7. **核心流程审查**：逐条走通 登录→阅读→购买→VIP→分销→提现→匹配
+
 ---
 
 ### Step 4：数据库一致性检查
