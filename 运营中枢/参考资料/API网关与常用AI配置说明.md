@@ -30,15 +30,18 @@
 
 ---
 
-## 三、当前接口队列（2026-03-16 更新）
+## 三、当前接口队列（2026-03-16 01:50 更新）
 
-| 序号 | 平台 | Base URL | 模型 | 状态 |
-|:---|:---|:---|:---|:---|
-| 1 | Cerebras | `https://api.cerebras.ai/v1` | llama3.1-8b | ✅ 健康（active） |
-| 2 | Cohere | `https://api.cohere.com/compatibility/v1` | command-a-03-2025 | ✅ 健康（active） |
-| 3 | v0 | `https://api.v0.dev/v1` | v0-1.5-md | ❌ 持续 500（standby） |
-| - | Groq | `https://api.groq.com/openai/v1` | llama-3.3-70b-versatile | ❌ 组织受限（disabled） |
-| - | Together AI | `https://api.together.xyz/v1` | Llama-3.3-70B-Instruct-Turbo | ❌ 额度耗尽（standby） |
+| 序号 | 平台 | Base URL | 模型 | 上下文 | 状态 |
+|:---|:---|:---|:---|:---|:---|
+| 1 | **Cohere** | `https://api.cohere.com/compatibility/v1` | command-a-03-2025 | **128K** | ✅ 主力（priority=1） |
+| 2 | Cerebras | `https://api.cerebras.ai/v1` | llama3.1-8b | 8K | ✅ 备用（priority=5） |
+| 3 | Ollama 本机 | `http://localhost:11434` | qwen2.5:3b | 32K | ✅ 兜底 |
+| - | v0 | `https://api.v0.dev/v1` | v0-1.5-md | - | ❌ 持续 500（disabled） |
+| - | Groq | `https://api.groq.com/openai/v1` | llama-3.3-70b-versatile | - | ❌ 组织受限（disabled） |
+| - | Together AI | `https://api.together.xyz/v1` | Llama-3.3-70B-Instruct-Turbo | - | ❌ 额度耗尽（standby） |
+
+> **重要**：Cohere 128K 上下文适合长对话；Cerebras 8K 上下文过小，仅作备用。路由引擎已支持 priority 字段排序。
 
 ### Key 健康检查
 
