@@ -30,15 +30,15 @@
 
 ---
 
-## 三、当前接口队列（2026-03-15 更新）
+## 三、当前接口队列（2026-03-16 更新）
 
 | 序号 | 平台 | Base URL | 模型 | 状态 |
 |:---|:---|:---|:---|:---|
-| 1 | Groq | `https://api.groq.com/openai/v1` | llama-3.3-70b-versatile | ✅ 健康 |
-| 2 | Cohere | `https://api.cohere.com/compatibility/v1` | command-a-03-2025 | ✅ 健康 |
-| 3 | Cerebras | `https://api.cerebras.ai/v1` | llama3.1-8b | ✅ 健康 |
-| 4 | v0 | `https://api.v0.dev/v1` | claude-opus | ⚠️ 偶发 500 |
-| 备用 | Together AI | `https://api.together.xyz/v1` | Llama-3.3-70B-Instruct-Turbo | ❌ 额度耗尽 |
+| 1 | Cerebras | `https://api.cerebras.ai/v1` | llama3.1-8b | ✅ 健康（active） |
+| 2 | Cohere | `https://api.cohere.com/compatibility/v1` | command-a-03-2025 | ✅ 健康（active） |
+| 3 | v0 | `https://api.v0.dev/v1` | v0-1.5-md | ❌ 持续 500（standby） |
+| - | Groq | `https://api.groq.com/openai/v1` | llama-3.3-70b-versatile | ❌ 组织受限（disabled） |
+| - | Together AI | `https://api.together.xyz/v1` | Llama-3.3-70B-Instruct-Turbo | ❌ 额度耗尽（standby） |
 
 ### Key 健康检查
 
