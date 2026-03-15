@@ -4,8 +4,8 @@ description: 卡若AI 全栈开发（火炬）— 知己及类似项目经验 + 
 triggers: 全栈开发/知己项目/分销/存客宝/RAG/向量化/Next.js/知识库/卡若AI官网/官网开发/全站开发/开发文档/1～10/开发模板/官网全站/v0前端/v0生成/毛玻璃/前端规格/神射手/毛狐狸/前端标准/实施计划/两阶段评审/橙色锁/配色/API调用/使用手册
 owner: 火炬
 group: 火
-version: "2.4"
-updated: "2026-03-12"
+version: "2.5"
+updated: "2026-03-15"
 ---
 
 # 全栈开发（火炬）
@@ -125,6 +125,75 @@ updated: "2026-03-12"
 
 **协同**：Word/文档类清洗用火炬「文档清洗」；部署到 v0、同步 GitHub/Vercel 用金盾「Vercel与v0部署流水线」。
 
+### 1.10 埋点统计（全站强制，2026-03-15 沉淀）
+
+**任何新功能、新页面、新按钮上线时，必须同步接入埋点统计。** 这是全站开发的标准动作，与功能代码同等重要。
+
+#### 为什么强制
+
+没有埋点 = 没有数据 = 无法判断功能是否有效。上线后再补埋点往往遗漏大量初期行为数据。**先埋点、再发布** 是卡若AI 全站的铁律。
+
+#### 标准架构（三层）
+
+```
+前端（小程序/Web）           后端 API                    管理后台
+trackClick(module,       →  POST /api/{平台}/track   →  GET /api/admin/track/stats
+  action, target, extra)     存入 user_tracks 表          按 module/action/时间段聚合
+```
+
+#### 数据模型（user_tracks 表）
+
+| 字段 | 类型 | 说明 |
+|:---|:---|:---|
+| id | string/UUID | 主键 |
+| user_id | string | 用户 ID |
+| action | string | 动作类型：`btn_click` / `page_view` / `tab_click` / `share` / `nav_click` |
+| target | string | 具体目标：按钮名、页面名、分享类型 |
+| extra_data | JSONB | 扩展信息，**必须包含 `module`（所属模块）和 `page`（页面标识）** |
+| created_at | timestamp | 自动时间戳 |
+
+#### 前端埋点工具标准（以小程序为例）
+
+```javascript
+// utils/trackClick.js
+function trackClick(module, action, target, extra) {
+  const userId = app.globalData.userInfo?.id || ''
+  if (!userId) return
+  app.request('/api/miniprogram/track', {
+    method: 'POST',
+    data: {
+      userId, action, target,
+      extraData: Object.assign({ module, page: module }, extra || {})
+    },
+    silent: true
+  }).catch(() => {})
+}
+```
+
+Web 端同理，封装为 `trackClick(module, action, target)` 函数，通过 fetch 静默上报。
+
+#### 埋点接入检查清单
+
+每开发一个页面/功能，按此清单逐项确认：
+
+- [ ] 页面所有**可点击按钮/标签**都已调用 `trackClick`
+- [ ] `module` 参数使用统一命名（home / chapters / read / my / vip / wallet / match / referral / search / settings）
+- [ ] `action` 参数使用标准动词（`btn_click` / `page_view` / `tab_click` / `nav_click` / `share`）
+- [ ] `target` 参数能区分具体按钮（如 `购买VIP`、`充值`、`阅读第3章`）
+- [ ] 后端 track API 已注册路由并能正确存储 `extra_data`
+- [ ] 管理后台「分类标签点击统计」面板能展示该模块的数据
+
+#### 管理后台展示标准
+
+管理后台数据概览页须包含「分类标签点击统计」面板：
+- 支持时间段筛选（今日 / 本周 / 本月 / 全部）
+- 按 module 分组展示，每个模块显示 top N 点击项
+- 自动 30 秒刷新
+
+#### 经验来源
+
+Soul 创业实验项目（2026-03-15）首次实施全站埋点，覆盖小程序 9 个页面 + 管理后台统计面板 + 后端聚合 API。详见 `运营中枢/参考资料/项目经验库_知己与类似项目.md`。
+
 ---
 
 ## 二、项目经验库（知己类，必读）
@@ -190,6 +259,7 @@ scripts/
 | **前端开发/前端标准_神射手与毛狐狸** | 布局/颜色/毛玻璃/组件/特效统一标准，所有项目前端开发参考 |
 | **神射手 开发文档 4、前端** | 神射手项目内前端规范、核心组件代码、截图索引 |
 | **Superpowers与全栈开发对比与优化建议** | `运营中枢/参考资料/Superpowers与全栈开发对比与优化建议.md` — 计划粒度、TDD、两阶段评审、分支收尾等优化方向 |
+| **埋点统计标准（Soul项目沉淀）** | 全站埋点三层架构：前端 trackClick → 后端 track API → 管理后台聚合面板；2026-03-15 Soul 创业实验项目首次实施，见本 Skill 1.10 节 |
 
 ---
 

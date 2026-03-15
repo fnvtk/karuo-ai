@@ -1,14 +1,14 @@
 ---
-name: 全网API自动注册
-description: 自动注册全网各类 AI/开发 API 免费账号，提取 API Key/Token 并统一管理
-triggers: API注册、自动注册、批量注册、API Key、注册账号、免费API、API池、key池、自动开号
+name: 全网AI自动注册
+description: 自动注册全网各类 AI API 免费账号，提取 API Key/Token 并统一管理
+triggers: AI注册、自动注册、批量注册、API Key、注册账号、免费API、API池、key池、自动开号、Gemini注册
 owner: 木根
 group: 木（卡木）
 version: "1.0"
 updated: "2026-03-15"
 ---
 
-# 全网API自动注册
+# 全网AI自动注册
 
 ## 能做什么（Capabilities）
 
