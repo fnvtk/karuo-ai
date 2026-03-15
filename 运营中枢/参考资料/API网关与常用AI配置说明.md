@@ -26,10 +26,34 @@
 
 ---
 
-## 三、卡若AI 规则与已有 API 对应关系
+## 三、当前接口队列（2026-03-15 更新）
+
+| 序号 | 平台 | Base URL | 模型 | 状态 |
+|:---|:---|:---|:---|:---|
+| 1 | Groq | `https://api.groq.com/openai/v1` | llama-3.3-70b-versatile | ✅ 健康 |
+| 2 | Cohere | `https://api.cohere.com/compatibility/v1` | command-a-03-2025 | ✅ 健康 |
+| 3 | Cerebras | `https://api.cerebras.ai/v1` | llama3.1-8b | ✅ 健康 |
+| 4 | v0 | `https://api.v0.dev/v1` | claude-opus | ⚠️ 偶发 500 |
+| 备用 | Together AI | `https://api.together.xyz/v1` | Llama-3.3-70B-Instruct-Turbo | ❌ 额度耗尽 |
+
+### Key 健康检查
+
+```bash
+python3 运营中枢/scripts/karuo_ai_gateway/key_health_check.py          # 一次性
+python3 运营中枢/scripts/karuo_ai_gateway/key_health_check.py --watch 300  # 守护
+```
+
+### Key 来源
+
+- Groq / Cerebras / Cohere / Together AI：由「全网AI自动注册」SKILL（M02a）通过浏览器自动化注册获取
+- v0：手动配置
+- 新 Key 接入：编辑 `.env.api_keys.local` → 健康检查 → 复制到 `.env` → 重启网关
+
+## 四、卡若AI 规则与已有 API 对应关系
 
 - **主仓库网关**：`运营中枢/scripts/karuo_ai_gateway/`，环境变量 `OPENAI_API_BASES` / `OPENAI_API_KEYS` / `OPENAI_MODELS` 支持多接口排队与故障切换，与官网「API 网关」概念一致。
 - **API 稳定性规则**：`.cursor/rules/api-failover-stability.mdc` 规定接口排队、故障切换与告警，与上述网关行为一致。
+- **Key 健康检查**：`运营中枢/scripts/karuo_ai_gateway/key_health_check.py` 定期检测各 Key 可用性、响应延迟和额度，状态存入 `key_status.json`。
 - **账号与 Key**：`运营中枢/工作台/00_账号与API索引.md` 中 v0、阿里云、腾讯云等；网关 Key 建议写在 `karuo_ai_gateway/.env.api_keys.local` 或环境变量，不提交仓库。
 
 ---

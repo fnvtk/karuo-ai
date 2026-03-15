@@ -4,7 +4,7 @@ description: 自动注册全网各类 AI API 免费账号，提取 API Key/Token
 triggers: AI注册、自动注册、批量注册、API Key、注册账号、免费API、API池、key池、自动开号、Gemini注册
 owner: 木根
 group: 木（卡木）
-version: "1.0"
+version: "2.0"
 updated: "2026-03-15"
 ---
 
@@ -103,6 +103,42 @@ python auto_register.py --serve --port 8899
 - 前置技能：M02 网站逆向分析（分析注册流程时联动）
 - 外部工具：Python 3.10+、Chrome/Chromium（浏览器模式需要）
 - Python 包：curl_cffi、DrissionPage、aiosqlite、fastapi、uvicorn、pyyaml
+
+## 与卡若AI网关联动
+
+本 SKILL 注册的 Key 可自动接入卡若AI 网关的故障切换队列：
+
+### 当前已接入的 Key 池
+
+| 平台 | 接口地址 | 模型 | 状态 |
+|:---|:---|:---|:---|
+| Groq | `https://api.groq.com/openai/v1` | llama-3.3-70b-versatile | ✅ 已接入 |
+| Cohere | `https://api.cohere.com/compatibility/v1` | command-a-03-2025 | ✅ 已接入 |
+| Cerebras | `https://api.cerebras.ai/v1` | llama3.1-8b | ✅ 已接入 |
+| Together AI | `https://api.together.xyz/v1` | Llama-3.3-70B-Instruct-Turbo | ⚠️ 额度耗尽，待轮换 |
+| v0 (主力) | `https://api.v0.dev/v1` | claude-opus | ⚠️ 偶发 500 |
+
+### 新 Key 接入流程
+
+1. 通过本 SKILL 注册新账号并获取 API Key
+2. 编辑 `运营中枢/scripts/karuo_ai_gateway/.env.api_keys.local`，在 `OPENAI_API_BASES` / `OPENAI_API_KEYS` / `OPENAI_MODELS` 队列追加
+3. 运行 `python3 运营中枢/scripts/karuo_ai_gateway/key_health_check.py` 验证健康状态
+4. 重启网关生效
+
+### Key 健康检查与自动轮换
+
+```bash
+# 一次性检查
+python3 运营中枢/scripts/karuo_ai_gateway/key_health_check.py
+
+# 每 5 分钟轮询（后台守护）
+python3 运营中枢/scripts/karuo_ai_gateway/key_health_check.py --watch 300
+
+# 输出仅健康接口的 env 配置
+python3 运营中枢/scripts/karuo_ai_gateway/key_health_check.py --env
+```
+
+状态文件：`运营中枢/scripts/karuo_ai_gateway/key_status.json`
 
 ## 参考项目（References）
 
