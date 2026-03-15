@@ -679,6 +679,14 @@ ssh nas "netstat -tlnp | grep 27017"
 - **验证**：再次运行上面的 `time_machine_diskstation_auto.sh`，确认网络与端口正常；在系统设置中确认红点消失或显示「正在备份」。
 - **更新 Skill**：若本次通过某一步（如 DSM 某选项、Mac 重选磁盘）解决问题，将该要点**追加**到 `参考资料/Time_Machine_DiskStation_错误排查.md` 或本小节，便于下次全自动/半自动复用。
 
+### 4. 回家自动挂载并触发备份
+
+- 适用：用户一回家连上家里网络，就希望 Time Machine 自动备份到 `DiskStation.local / Backup`。
+- 脚本：`scripts/time_machine_home_auto.sh`
+- 机制：每 10 分钟检查一次；若能连通 `192.168.110.29`，会先挂载 `Backup` 共享，清理多余的 `*.sparsebundle`（仅保留最大的一个），再执行 `tmutil startbackup --auto`。
+- LaunchAgent：`scripts/com.karuo.time_machine_home_auto.plist`
+- 安装后无需手动点系统设置；前提是 **Time Machine 目标已经配置为家里 NAS**。
+
 ### 家里 NAS 速查（Time Machine 用）
 
 | 项目 | 值 |
@@ -730,6 +738,7 @@ ssh nas "netstat -tlnp | grep 27017"
 | 脚本 | 功能 | 位置 | 快速运行 |
 |------|------|------|----------|
 | `time_machine_diskstation_auto.sh` | Time Machine → 家里 DiskStation 检测/验证，输出材料路径供按参考资料处理 | `./scripts/` | `./scripts/time_machine_diskstation_auto.sh` |
+| `time_machine_home_auto.sh` | 回到家自动挂载 `Backup` 并触发 Time Machine 备份 | `./scripts/` | `./scripts/time_machine_home_auto.sh` |
 | `mount_diskstation_1tb.sh` | 家里 NAS 约 1TB 备份盘挂载到 Mac（内网优先），当硬盘用 + 时间机器 | `./scripts/` | `./scripts/mount_diskstation_1tb.sh` |
 | `export_macos_vm_to_downloads.sh` | CKB NAS 上 macOS VM 打包下载到本机「下载」文件夹，实时显示大小与用时，并生成使用说明 | `./scripts/` | 见下方「macOS VM 导出到本机」 |
 | `optimize_macos_vm_compose.sh` | 本机→NAS：macOS VM 流畅度优化 | `./scripts/` | 需本机与 NAS 同网 |
