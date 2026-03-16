@@ -3,6 +3,7 @@
 部署后对外提供 POST /v1/chat，其他 AI 或终端可通过此接口调用卡若AI。
 """
 from pathlib import Path
+import asyncio
 import os
 import re
 import time
@@ -1063,13 +1064,122 @@ def allowed_skills(request: Request):
 
 
 # =============================================================================
-# 工作手机 SDK 代理（卡若AI 统一 API 入口）
-# 通过卡若AI 网关统一调用工作手机 SDK 的 Frida Hook / ADB 控制接口
+# 工作手机 SDK 全量集成（卡若AI 统一微信控制中心）
+# 110 个操作 + 自动注册 + 自然语言指令 + 批量操作
 # =============================================================================
 
 import httpx
 
 WORKPHONE_SDK_URL = os.environ.get("WORKPHONE_SDK_URL", "http://127.0.0.1:8899")
+
+_SDK_CLIENT: Optional[httpx.AsyncClient] = None
+
+
+def _get_sdk_client() -> httpx.AsyncClient:
+    global _SDK_CLIENT
+    if _SDK_CLIENT is None or _SDK_CLIENT.is_closed:
+        _SDK_CLIENT = httpx.AsyncClient(timeout=60, base_url=WORKPHONE_SDK_URL)
+    return _SDK_CLIENT
+
+
+async def _sdk_get(path: str, timeout: float = 10) -> dict:
+    try:
+        resp = await _get_sdk_client().get(path, timeout=timeout)
+        return resp.json()
+    except httpx.TimeoutException:
+        return {"code": 504, "error": "SDK 响应超时"}
+    except Exception as e:
+        return {"code": 502, "error": f"SDK 不可达: {e}"}
+
+
+async def _sdk_post(path: str, payload: dict, timeout: float = 60) -> dict:
+    try:
+        resp = await _get_sdk_client().post(path, json=payload, timeout=timeout)
+        result = resp.json()
+        result["gateway"] = "karuo_ai"
+        return result
+    except httpx.TimeoutException:
+        return {"code": 504, "error": "SDK 执行超时", "gateway": "karuo_ai"}
+    except Exception as e:
+        return {"code": 502, "error": f"SDK 不可达: {e}", "gateway": "karuo_ai"}
+
+
+# ── 自然语言 → action 映射 ──
+
+NL_PATTERNS: List[Tuple[str, str, Dict[str, str]]] = [
+    # (关键词, action, 参数提取提示)
+    ("发消息给", "send_message", {"to_id": "target", "content": "rest"}),
+    ("发送消息", "send_message", {"to_id": "target", "content": "rest"}),
+    ("给.*发消息", "send_message", {"to_id": "between", "content": "rest"}),
+    ("添加好友", "add_friend", {"user_id": "target"}),
+    ("加好友", "add_friend", {"user_id": "target"}),
+    ("通过好友", "accept_friend", {"user_id": "target"}),
+    ("发朋友圈", "post_moments", {"content": "rest"}),
+    ("看朋友圈", "get_moments", {}),
+    ("获取联系人", "get_contacts", {}),
+    ("联系人列表", "get_contacts", {}),
+    ("获取资料", "get_profile", {}),
+    ("我的资料", "get_profile", {}),
+    ("账号信息", "get_profile", {}),
+    ("设置昵称", "set_nickname", {"nickname": "rest"}),
+    ("修改签名", "set_signature", {"signature": "rest"}),
+    ("创建群", "create_group", {"group_name": "rest"}),
+    ("群发消息", "send_group_message", {"content": "rest"}),
+    ("注册微信", "auto_register", {"nickname": "rest"}),
+    ("自动注册", "auto_register", {}),
+    ("检查登录", "check_login_state", {}),
+    ("登录状态", "check_login_state", {}),
+    ("获取手机号", "get_sim_phone", {}),
+    ("SIM卡", "get_sim_phone", {}),
+    ("扫码", "scan_qr_code", {}),
+    ("二维码", "generate_my_qr_code", {}),
+    ("发红包", "send_red_packet", {"to_id": "target", "amount": "rest"}),
+    ("转账", "send_transfer", {"to_id": "target", "amount": "rest"}),
+    ("查余额", "get_wallet_balance", {}),
+    ("点赞", "like_moments", {}),
+    ("搜索", "global_search", {"keyword": "rest"}),
+    ("退出登录", "logout", {}),
+    ("切换账号", "switch_account", {}),
+]
+
+
+def _parse_nl_command(text: str) -> Optional[Tuple[str, dict]]:
+    """将自然语言指令解析为 (action, params)"""
+    s = (text or "").strip()
+    if not s:
+        return None
+
+    for pattern, action, _hints in NL_PATTERNS:
+        if ".*" in pattern:
+            m = re.search(pattern, s)
+            if m:
+                rest = s[m.end():].strip().strip("，。,.")
+                params = {}
+                if action == "send_message" and "between" in _hints.values():
+                    parts = s.split("发消息")
+                    pre = parts[0].replace("给", "").strip() if parts else ""
+                    post = parts[1].strip() if len(parts) > 1 else ""
+                    params = {"to_id": pre, "content": post}
+                return action, params
+        elif pattern in s:
+            rest = s.replace(pattern, "").strip().strip("，。,.")
+            params = {}
+            if "target" in _hints.values():
+                parts = rest.split(" ", 1) if " " in rest else rest.split("，", 1)
+                if len(parts) >= 2:
+                    params[list(_hints.keys())[0]] = parts[0]
+                    remaining_keys = [k for k, v in _hints.items() if v == "rest"]
+                    if remaining_keys:
+                        params[remaining_keys[0]] = parts[1]
+                elif parts:
+                    params[list(_hints.keys())[0]] = parts[0]
+            elif "rest" in _hints.values():
+                for k, v in _hints.items():
+                    if v == "rest":
+                        params[k] = rest
+            return action, params
+
+    return None
 
 
 class WorkPhoneExecuteRequest(BaseModel):
@@ -1079,75 +1189,257 @@ class WorkPhoneExecuteRequest(BaseModel):
     params: dict = {}
 
 
+class WorkPhoneNLRequest(BaseModel):
+    """自然语言微信控制请求"""
+    device_id: str
+    command: str
+    platform: str = "wechat"
+
+
+class WorkPhoneAutoRegisterRequest(BaseModel):
+    """自动注册请求"""
+    device_id: str
+    nickname: str = "卡若AI"
+    password: str = ""
+    test_msg_to: str = ""
+    test_msg_content: str = "你好，我是卡若AI工作手机"
+
+
+class WorkPhoneBatchRequest(BaseModel):
+    """批量操作请求"""
+    device_id: str
+    platform: str = "wechat"
+    actions: List[Dict[str, Any]]
+    interval: float = 1.0
+
+
+# ── 基础 SDK 代理端点 ──
+
 @app.get("/v1/workphone/actions")
 async def workphone_actions():
-    """获取工作手机 SDK 支持的全部 Hook 操作清单"""
-    async with httpx.AsyncClient(timeout=10) as client:
-        try:
-            resp = await client.get(f"{WORKPHONE_SDK_URL}/api/v3/hook/actions")
-            return resp.json()
-        except Exception as e:
-            return {"code": 502, "error": f"SDK 不可达: {e}"}
+    """获取工作手机 SDK 支持的全部 110 个操作清单"""
+    return await _sdk_get("/api/v3/hook/actions")
 
 
 @app.get("/v1/workphone/devices")
 async def workphone_devices():
     """获取工作手机设备列表"""
-    async with httpx.AsyncClient(timeout=10) as client:
-        try:
-            resp = await client.get(f"{WORKPHONE_SDK_URL}/api/v3/devices")
-            return resp.json()
-        except Exception as e:
-            return {"code": 502, "error": f"SDK 不可达: {e}"}
-
-
-@app.post("/v1/workphone/execute")
-async def workphone_execute(req: WorkPhoneExecuteRequest):
-    """
-    工作手机统一控制 — 通过卡若AI 网关调用 SDK Hook/ADB
-
-    示例:
-      POST /v1/workphone/execute
-      {"device_id":"dc9c23e00510","action":"send_message","params":{"to_id":"阿猫","content":"你好"}}
-      {"device_id":"dc9c23e00510","action":"get_profile","params":{}}
-      {"device_id":"dc9c23e00510","action":"register_account","params":{"phone":"138xxx","nickname":"卡若AI"}}
-    """
-    payload = {
-        "device_id": req.device_id,
-        "platform": req.platform,
-        "action": req.action,
-        "params": req.params or {},
-    }
-    async with httpx.AsyncClient(timeout=60) as client:
-        try:
-            resp = await client.post(
-                f"{WORKPHONE_SDK_URL}/api/v3/hook/execute",
-                json=payload,
-            )
-            result = resp.json()
-            result["gateway"] = "karuo_ai"
-            return result
-        except httpx.TimeoutException:
-            return {"code": 504, "error": "SDK 执行超时", "action": req.action}
-        except Exception as e:
-            return {"code": 502, "error": f"SDK 不可达: {e}", "action": req.action}
+    return await _sdk_get("/api/v3/devices")
 
 
 @app.get("/v1/workphone/status")
 async def workphone_status():
     """工作手机 SDK 服务状态"""
-    async with httpx.AsyncClient(timeout=5) as client:
-        try:
-            resp = await client.get(f"{WORKPHONE_SDK_URL}/health")
-            sdk_ok = resp.status_code == 200
-        except Exception:
-            sdk_ok = False
+    result = await _sdk_get("/health", timeout=5)
+    sdk_ok = result.get("code") != 502 and result.get("code") != 504
     return {
         "sdk_url": WORKPHONE_SDK_URL,
         "sdk_reachable": sdk_ok,
         "gateway": "karuo_ai",
-        "gateway_version": "1.0",
+        "gateway_version": "2.0",
+        "total_actions": 110,
+        "features": ["hook_execute", "auto_register", "nl_command", "batch", "sim_phone"],
     }
+
+
+# ── 核心：统一执行入口 ──
+
+@app.post("/v1/workphone/execute")
+async def workphone_execute(req: WorkPhoneExecuteRequest):
+    """
+    工作手机统一控制 — 通过卡若AI 网关调用 SDK 的 110 个操作
+
+    通道优先级：Frida Hook → WebSocket Agent → ADB UI 自动化
+
+    示例:
+      {"device_id":"dc9c23e00510","action":"send_message","params":{"to_id":"阿猫","content":"你好"}}
+      {"device_id":"dc9c23e00510","action":"get_profile","params":{}}
+      {"device_id":"dc9c23e00510","action":"auto_register","params":{"nickname":"卡若AI"}}
+      {"device_id":"dc9c23e00510","action":"check_login_state","params":{}}
+      {"device_id":"dc9c23e00510","action":"get_sim_phone","params":{}}
+    """
+    return await _sdk_post("/api/v3/hook/execute", {
+        "device_id": req.device_id,
+        "platform": req.platform,
+        "action": req.action,
+        "params": req.params or {},
+    })
+
+
+# ── 自然语言指令入口 ──
+
+@app.post("/v1/workphone/command")
+async def workphone_nl_command(req: WorkPhoneNLRequest):
+    """
+    自然语言控制微信 — 说中文就能操作
+
+    示例:
+      {"device_id":"dc9c23e00510","command":"发消息给阿猫 你好啊"}
+      {"device_id":"dc9c23e00510","command":"获取联系人列表"}
+      {"device_id":"dc9c23e00510","command":"注册微信 卡若AI"}
+      {"device_id":"dc9c23e00510","command":"检查登录状态"}
+      {"device_id":"dc9c23e00510","command":"发朋友圈 今天天气真好"}
+      {"device_id":"dc9c23e00510","command":"搜索 张三"}
+    """
+    parsed = _parse_nl_command(req.command)
+    if not parsed:
+        return {
+            "code": 400,
+            "error": f"无法解析指令: {req.command}",
+            "hint": "支持：发消息给X、获取联系人、发朋友圈、注册微信、检查登录、扫码 等",
+            "gateway": "karuo_ai",
+        }
+
+    action, params = parsed
+    result = await _sdk_post("/api/v3/hook/execute", {
+        "device_id": req.device_id,
+        "platform": req.platform,
+        "action": action,
+        "params": params,
+    })
+    result["parsed_action"] = action
+    result["parsed_params"] = params
+    result["original_command"] = req.command
+    return result
+
+
+# ── 自动注册专用入口 ──
+
+@app.post("/v1/workphone/auto-register")
+async def workphone_auto_register(req: WorkPhoneAutoRegisterRequest):
+    """
+    全自动微信注册 — 一键完成
+
+    流程:
+    1. 检测微信登录状态
+    2. 未登录 → 自动从 SIM 获取手机号 → 注册
+    3. 自动读取短信验证码 → 填写
+    4. 设置昵称/密码 → 完成
+    5. 可选：发送测试消息
+    """
+    return await _sdk_post("/api/v3/auto-register/full", {
+        "device_id": req.device_id,
+        "nickname": req.nickname,
+        "password": req.password,
+        "test_msg_to": req.test_msg_to,
+        "test_msg_content": req.test_msg_content,
+    }, timeout=120)
+
+
+@app.post("/v1/workphone/check-login")
+async def workphone_check_login(device_id: str):
+    """检查微信登录状态"""
+    return await _sdk_post("/api/v3/auto-register/check-state", {
+        "device_id": device_id,
+    })
+
+
+@app.post("/v1/workphone/sim-phone")
+async def workphone_sim_phone(device_id: str):
+    """获取设备 SIM 卡手机号"""
+    return await _sdk_post("/api/v3/auto-register/get-sim-phone", {
+        "device_id": device_id,
+    })
+
+
+# ── 批量操作 ──
+
+@app.post("/v1/workphone/batch")
+async def workphone_batch(req: WorkPhoneBatchRequest):
+    """
+    批量执行微信操作（按顺序，带间隔防封）
+
+    示例:
+      {
+        "device_id": "dc9c23e00510",
+        "actions": [
+          {"action": "send_message", "params": {"to_id": "A", "content": "hi"}},
+          {"action": "send_message", "params": {"to_id": "B", "content": "hello"}},
+          {"action": "like_moments", "params": {"user_id": "C"}}
+        ],
+        "interval": 2.0
+      }
+    """
+    results = []
+    for i, item in enumerate(req.actions):
+        if i > 0 and req.interval > 0:
+            await asyncio.sleep(min(req.interval, 10))
+
+        action = item.get("action", "")
+        params = item.get("params", {})
+        r = await _sdk_post("/api/v3/hook/execute", {
+            "device_id": req.device_id,
+            "platform": req.platform,
+            "action": action,
+            "params": params,
+        })
+        results.append({"index": i, "action": action, "result": r})
+
+    success_count = sum(1 for r in results if r["result"].get("code") == 200)
+    return {
+        "code": 200,
+        "total": len(req.actions),
+        "success": success_count,
+        "failed": len(req.actions) - success_count,
+        "results": results,
+        "gateway": "karuo_ai",
+    }
+
+
+# ── 快捷 API（常用操作的简化端点）──
+
+@app.post("/v1/wechat/send")
+async def wechat_send(device_id: str, to: str, content: str, platform: str = "wechat"):
+    """快捷发送微信消息"""
+    return await _sdk_post("/api/v3/hook/execute", {
+        "device_id": device_id, "platform": platform,
+        "action": "send_message", "params": {"to_id": to, "content": content},
+    })
+
+
+@app.get("/v1/wechat/profile")
+async def wechat_profile(device_id: str, platform: str = "wechat"):
+    """快捷获取微信资料"""
+    return await _sdk_post("/api/v3/hook/execute", {
+        "device_id": device_id, "platform": platform,
+        "action": "get_profile", "params": {},
+    })
+
+
+@app.get("/v1/wechat/contacts")
+async def wechat_contacts(device_id: str, limit: int = 100, platform: str = "wechat"):
+    """快捷获取联系人列表"""
+    return await _sdk_post("/api/v3/hook/execute", {
+        "device_id": device_id, "platform": platform,
+        "action": "get_contacts", "params": {"limit": limit},
+    })
+
+
+@app.post("/v1/wechat/moments")
+async def wechat_post_moments(device_id: str, content: str, platform: str = "wechat"):
+    """快捷发朋友圈"""
+    return await _sdk_post("/api/v3/hook/execute", {
+        "device_id": device_id, "platform": platform,
+        "action": "post_moments", "params": {"content": content},
+    })
+
+
+@app.post("/v1/wechat/add-friend")
+async def wechat_add_friend(device_id: str, user_id: str, message: str = "", platform: str = "wechat"):
+    """快捷添加好友"""
+    return await _sdk_post("/api/v3/hook/execute", {
+        "device_id": device_id, "platform": platform,
+        "action": "add_friend", "params": {"user_id": user_id, "message": message},
+    })
+
+
+@app.get("/v1/wechat/groups")
+async def wechat_groups(device_id: str, limit: int = 100, platform: str = "wechat"):
+    """快捷获取群列表"""
+    return await _sdk_post("/api/v3/hook/execute", {
+        "device_id": device_id, "platform": platform,
+        "action": "get_groups", "params": {"limit": limit},
+    })
 
 
 if __name__ == "__main__":

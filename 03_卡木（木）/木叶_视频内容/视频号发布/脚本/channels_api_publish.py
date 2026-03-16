@@ -375,6 +375,9 @@ async def poll_clip_result(
 
         if status == 1:
             return data
+        if "url" in data and "width" in data and "height" in data:
+            print(f"  转码完成（url+dimensions已返回）", flush=True)
+            return data
         if status < -1:
             print(f"  [!] clip_result 失败: status={status}", flush=True)
             return None
@@ -466,17 +469,27 @@ async def create_post(
     if scheduled_ts > 0:
         payload["postTimingInfo"] = {"timing": 1, "postTime": scheduled_ts}
 
-    headers = _micro_headers(cookie_str, uin, finger_print)
-    rid = f"{uuid.uuid4().hex[:8]}-{uuid.uuid4().hex[:8]}"
-    url = (
-        f"{MICRO_PREFIX}/post/post_create"
-        f"?_aid={aid}&_rid={rid}"
-        f"&_pageUrl=https%3A%2F%2Fchannels.weixin.qq.com%2Fmicro%2Fcontent%2Fpost%2Fcreate"
-    )
-
-    r = httpx.post(url, json=payload, headers=headers, timeout=30)
-    resp = r.json()
-    print(f"  [DEBUG] post_create response: {json.dumps(resp, ensure_ascii=False)[:300]}", flush=True)
+    # 尝试 CGI_PREFIX（标准助手端点）和 MICRO_PREFIX 两个路径
+    for prefix, referer in [
+        (CGI_PREFIX, "https://channels.weixin.qq.com/platform/post/create"),
+        (MICRO_PREFIX, "https://channels.weixin.qq.com/micro/content/post/create"),
+    ]:
+        headers = {
+            "Cookie": cookie_str,
+            "User-Agent": UA,
+            "Content-Type": "application/json",
+            "Referer": referer,
+            "x-wechat-uin": uin,
+        }
+        if finger_print:
+            headers["finger-print-device-id"] = finger_print
+        rid = f"{uuid.uuid4().hex[:8]}-{uuid.uuid4().hex[:8]}"
+        url = f"{prefix}/post/post_create"
+        r = httpx.post(url, json=payload, headers=headers, timeout=30)
+        resp = r.json()
+        print(f"  [DEBUG] post_create ({prefix.split('/')[-2]}): {json.dumps(resp, ensure_ascii=False)[:300]}", flush=True)
+        if resp.get("errCode") == 0:
+            return resp
     return resp
 
 

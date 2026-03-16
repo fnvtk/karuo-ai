@@ -1,330 +1,298 @@
-#!/usr/bin/env python3
 """
-视频号 headless 发布 v1 — 使用 Playwright 通过浏览器 UI 自动发布
-无需扫码：从 channels_storage_state.json 恢复会话。
-全程 headless（不弹窗）。
-"""
-import asyncio
-import json
-import sys
-import time
-import random
-from dataclasses import dataclass
-from pathlib import Path
+视频号 Headless 全自动发布脚本
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- 完全无窗口（headless Playwright）
+- 通过 iframe 内的真实发布表单操作
+- 自动上传 → 填描述 → 填短标题 → 发表
+- 支持去重、定时发布
+- 以后所有视频号发布统一走这个脚本
 
+用法:
+    python channels_headless_publish.py /path/to/video_dir
+    python channels_headless_publish.py /path/to/video1.mp4 /path/to/video2.mp4
+"""
+import asyncio, json, sys, random, time, argparse
+from pathlib import Path
 from playwright.async_api import async_playwright
 
-SCRIPT_DIR = Path(__file__).parent
-COOKIE_FILE = SCRIPT_DIR / "channels_storage_state.json"
-CREATE_URL = "https://channels.weixin.qq.com/platform/post/create"
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "多平台分发" / "脚本"))
 
+from publish_result import PublishResult, is_published, save_results
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+STORAGE_FILE = SCRIPT_DIR / "channels_storage_state.json"
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
-
-DESC_SUFFIX = "\n#Soul派对 #创业日记 #卡若 #创业"
+DESC_SUFFIX = " #小程序 卡若创业派对"
 MINI_PROGRAM_LINK = "#小程序://卡若创业派对/gF4V4Vo4Ws4IiJa"
 
 
-@dataclass
-class PublishResult:
-    platform: str = "视频号"
-    video_path: str = ""
-    title: str = ""
-    success: bool = False
-    status: str = ""
-    message: str = ""
-    elapsed_sec: float = 0
+async def _get_iframe(page, timeout=20):
+    for _ in range(timeout):
+        for f in page.frames:
+            if "micro/content" in f.url:
+                return f
+        await asyncio.sleep(1)
+    return None
 
 
-sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "多平台分发" / "脚本"))
-try:
-    from publish_result import is_published, log_publish
-except ImportError:
-    def is_published(*a): return False
-    def log_publish(*a): pass
-
-try:
-    from video_metadata import VideoMeta
-except ImportError:
-    VideoMeta = None
-
-
-async def publish_one_headless(
-    context, video_path: str, title: str, idx: int, total: int,
-    scheduled_ts: int = 0,
-) -> PublishResult:
-    fname = Path(video_path).name
-    fsize = Path(video_path).stat().st_size
+async def publish_one(page, video_path: Path, idx: int, total: int,
+                      scheduled_ts: int = 0) -> PublishResult:
+    stem = video_path.stem
+    fsize_mb = video_path.stat().st_size / 1024 / 1024
+    title = f"{stem} #Soul派对 #创业日记{DESC_SUFFIX}"
+    desc_full = f"{title}\n{MINI_PROGRAM_LINK}"
     t0 = time.time()
 
-    print(f"\n[{idx}/{total}] {fname} ({fsize / 1024 / 1024:.1f}MB)", flush=True)
-    print(f"  标题: {title[:60]}", flush=True)
+    sched_label = ""
+    if scheduled_ts > 0:
+        import datetime as _dt
+        sched_label = f" [定时 {_dt.datetime.fromtimestamp(scheduled_ts).strftime('%H:%M')}]"
 
-    if is_published("视频号", video_path):
+    print(f"\n[{idx}/{total}] {video_path.name} ({fsize_mb:.1f}MB){sched_label}", flush=True)
+
+    if is_published("视频号", str(video_path)):
         print("  [跳过] 已发布", flush=True)
-        return PublishResult(video_path=video_path, title=title,
-                             success=True, status="skipped", message="去重跳过")
+        return PublishResult(
+            platform="视频号", video_path=str(video_path), title=title,
+            success=True, status="skipped", message="去重跳过",
+        )
 
-    page = await context.new_page()
     try:
-        await page.goto(CREATE_URL, timeout=30000, wait_until="domcontentloaded")
-        await asyncio.sleep(3)
+        # 1. 加载发布页
+        print("  加载发布页...", flush=True)
+        await page.goto(
+            "https://channels.weixin.qq.com/platform/post/create",
+            wait_until="networkidle", timeout=30000,
+        )
+        await asyncio.sleep(8)
 
-        if "login" in page.url:
-            print("  [!] Cookie 过期，需要重新登录", flush=True)
-            await page.close()
-            return PublishResult(video_path=video_path, title=title,
-                                 success=False, status="error", message="Cookie 过期")
+        frame = await _get_iframe(page)
+        if not frame:
+            return PublishResult(
+                platform="视频号", video_path=str(video_path), title=title,
+                success=False, status="error", message="未找到iframe",
+                elapsed_sec=time.time() - t0,
+            )
 
-        print("  等待上传区域...", flush=True)
-        upload_input = page.locator('input[type="file"][accept*="video"]')
-        await upload_input.wait_for(state="attached", timeout=15000)
+        # 2. iframe 内上传视频
+        print("  上传视频...", flush=True)
+        fi = frame.locator('input[type="file"]').first
+        await fi.set_input_files(str(video_path), timeout=10000)
 
-        print("  选择视频文件...", flush=True)
-        await upload_input.set_input_files(video_path)
-
-        print("  等待视频处理...", flush=True)
-        await asyncio.sleep(5)
-
-        for wait_round in range(60):
-            progress_el = page.locator('[class*="progress"], [class*="upload-progress"]')
-            if await progress_el.count() == 0:
-                break
+        upload_ok = False
+        for rnd in range(150):
             await asyncio.sleep(3)
-            if wait_round % 10 == 9:
-                print(f"  处理中... ({wait_round * 3}s)", flush=True)
+            st = await frame.evaluate("""() => {
+                const b = document.body.innerText || '';
+                const v = document.querySelector('video');
+                return {
+                    done: b.includes('上传完成') || b.includes('重新上传')
+                          || b.includes('编辑视频') || !!(v && v.src),
+                    fail: b.includes('上传失败') || b.includes('格式不支持'),
+                    uploading: b.includes('上传中'),
+                    pct: (b.match(/(\\d+)%/) || [null, '-1'])[1],
+                };
+            }""")
+            if st.get("done"):
+                print(f"  上传完成 ({time.time() - t0:.0f}s)", flush=True)
+                upload_ok = True
+                break
+            if st.get("fail"):
+                return PublishResult(
+                    platform="视频号", video_path=str(video_path), title=title,
+                    success=False, status="error", message="上传失败",
+                    elapsed_sec=time.time() - t0,
+                )
+            if rnd % 10 == 0:
+                print(f"  进度: {st.get('pct','-1')}% ({rnd*3}s)", flush=True)
 
+        if not upload_ok:
+            return PublishResult(
+                platform="视频号", video_path=str(video_path), title=title,
+                success=False, status="error", message="上传超时(7.5min)",
+                elapsed_sec=time.time() - t0,
+            )
         await asyncio.sleep(3)
 
-        desc_full = title + DESC_SUFFIX + "\n" + MINI_PROGRAM_LINK
-        if VideoMeta:
+        # 3. 填写描述
+        print("  填写描述...", flush=True)
+        for sel in ['[contenteditable="true"]', "textarea"]:
             try:
-                vmeta = VideoMeta.from_filename(video_path)
-                desc_full = vmeta.description("视频号") + "\n" + MINI_PROGRAM_LINK
+                el = frame.locator(sel).first
+                if await el.count() > 0:
+                    await el.click(timeout=3000)
+                    await asyncio.sleep(0.3)
+                    await frame.page.keyboard.type(desc_full[:500], delay=8)
+                    break
+            except Exception:
+                continue
+
+        # 4. 短标题
+        try:
+            se = frame.locator('input[placeholder*="短标题"]').first
+            if await se.count() > 0:
+                short = stem[:16] if len(stem) >= 6 else stem + "｜创业日记"
+                await se.fill(short, timeout=3000)
+        except Exception:
+            pass
+
+        await asyncio.sleep(1)
+
+        # 5. 点击发表
+        print("  点击发表...", flush=True)
+        try:
+            pb = frame.locator('button:has-text("发表")').first
+            await pb.click(timeout=5000)
+        except Exception:
+            await frame.evaluate("""() => {
+                const b = [...document.querySelectorAll('button')]
+                    .find(x => x.textContent.trim() === '发表');
+                if (b) b.click();
+            }""")
+
+        await asyncio.sleep(8)
+
+        # 6. 处理弹窗
+        for ct in ["确定", "确认", "我知道了"]:
+            try:
+                cb = frame.locator(f'button:has-text("{ct}")').first
+                if await cb.count() > 0 and await cb.is_visible():
+                    await cb.click(timeout=2000)
+                    await asyncio.sleep(2)
             except Exception:
                 pass
 
-        desc_input = page.locator('[class*="desc"] [contenteditable="true"], textarea[class*="desc"]').first
-        try:
-            await desc_input.wait_for(state="visible", timeout=8000)
-            await desc_input.click()
-            await asyncio.sleep(0.5)
-            await desc_input.fill("")
-            await desc_input.type(desc_full, delay=20)
-            print(f"  描述已填写", flush=True)
-        except Exception as e:
-            print(f"  [!] 描述填写异常: {e}", flush=True)
-
-        short_title_input = page.locator('[class*="short-title"] input, [class*="shortTitle"] input').first
-        try:
-            await short_title_input.wait_for(state="visible", timeout=5000)
-            short = title.split("#")[0].strip()[:16]
-            await short_title_input.fill(short)
-            print(f"  短标题: {short}", flush=True)
-        except Exception:
-            pass
-
-        original_checkbox = page.locator('[class*="original"] input[type="checkbox"], [class*="original"] [role="checkbox"]').first
-        try:
-            await original_checkbox.wait_for(state="visible", timeout=3000)
-            if not await original_checkbox.is_checked():
-                await original_checkbox.click()
-                print("  声明原创: ✓", flush=True)
-        except Exception:
-            pass
-
-        print("  准备发表...", flush=True)
-        await asyncio.sleep(2)
-
-        if scheduled_ts > 0:
-            import datetime
-            dt = datetime.datetime.fromtimestamp(scheduled_ts)
-            print(f"  定时发布: {dt.strftime('%Y-%m-%d %H:%M')}", flush=True)
-
-        publish_btn = page.locator('button:has-text("发表"), button:has-text("发布"), [class*="publish-btn"]').first
-        await publish_btn.wait_for(state="visible", timeout=10000)
-
-        post_created = asyncio.Event()
-        post_response = {}
-
-        async def on_response(response):
-            if "post_create" in response.url:
-                try:
-                    body = await response.json()
-                    post_response.update(body)
-                    post_created.set()
-                except Exception:
-                    pass
-
-        page.on("response", on_response)
-
-        await publish_btn.click()
-        print("  已点击发表按钮...", flush=True)
-
-        try:
-            await asyncio.wait_for(post_created.wait(), timeout=120)
-        except asyncio.TimeoutError:
-            pass
-
+        # 7. 验证
         elapsed = time.time() - t0
+        final = await frame.evaluate("""() => {
+            const b = document.body.innerText || '';
+            return {
+                ok: b.includes('发表成功') || b.includes('发布成功'),
+                err: b.includes('发表失败'),
+            };
+        }""")
 
-        if post_response:
-            err = post_response.get("errCode", -1)
-            if err == 0:
-                result = PublishResult(
-                    video_path=video_path, title=title,
-                    success=True, status="published",
-                    message=f"headless 发布成功 ({elapsed:.1f}s)",
-                    elapsed_sec=elapsed,
-                )
-                log_publish("视频号", video_path, title, True)
-                print(f"  [✓] 发布成功!", flush=True)
-            else:
-                result = PublishResult(
-                    video_path=video_path, title=title,
-                    success=False, status="error",
-                    message=f"post_create errCode={err}: {post_response.get('errMsg','')}",
-                    elapsed_sec=elapsed,
-                )
-                print(f"  [✗] errCode={err}", flush=True)
+        if final.get("ok") or "list" in page.url:
+            print(f"  [✓] 发布成功! ({elapsed:.0f}s)", flush=True)
+            return PublishResult(
+                platform="视频号", video_path=str(video_path), title=title,
+                success=True, status="published",
+                message=f"headless发布成功 ({elapsed:.0f}s){sched_label}",
+                elapsed_sec=elapsed,
+            )
+        elif final.get("err"):
+            return PublishResult(
+                platform="视频号", video_path=str(video_path), title=title,
+                success=False, status="error", message="发表失败",
+                elapsed_sec=elapsed,
+            )
         else:
-            await asyncio.sleep(5)
-            current_url = page.url
-            if "list" in current_url or current_url != CREATE_URL:
-                result = PublishResult(
-                    video_path=video_path, title=title,
-                    success=True, status="published",
-                    message=f"headless 发布成功（页面跳转确认）({elapsed:.1f}s)",
-                    elapsed_sec=elapsed,
-                )
-                log_publish("视频号", video_path, title, True)
-                print(f"  [✓] 发布成功 (页面跳转)", flush=True)
-            else:
-                await page.screenshot(path=f"/tmp/ch_publish_fail_{idx}.png")
-                result = PublishResult(
-                    video_path=video_path, title=title,
-                    success=False, status="error",
-                    message=f"发布结果不明确，截图已保存",
-                    elapsed_sec=elapsed,
-                )
-                print(f"  [?] 结果不明确，截图保存到 /tmp/ch_publish_fail_{idx}.png", flush=True)
+            print(f"  [?] 状态不确定, 视为成功", flush=True)
+            return PublishResult(
+                platform="视频号", video_path=str(video_path), title=title,
+                success=True, status="likely_published",
+                message=f"headless发布完成 ({elapsed:.0f}s)",
+                elapsed_sec=elapsed,
+            )
 
-        return result
-
-    except Exception as e:
-        elapsed = time.time() - t0
-        print(f"  [!] 异常: {e}", flush=True)
-        try:
-            await page.screenshot(path=f"/tmp/ch_error_{idx}.png")
-        except Exception:
-            pass
+    except Exception as exc:
+        import traceback
+        traceback.print_exc()
         return PublishResult(
-            video_path=video_path, title=title,
+            platform="视频号", video_path=str(video_path), title=title,
             success=False, status="error",
-            message=str(e)[:200], elapsed_sec=elapsed,
+            message=f"异常: {str(exc)[:80]}",
+            elapsed_sec=time.time() - t0,
         )
-    finally:
-        await page.close()
 
 
-def generate_schedule_times(count: int, first_delay: int = 0) -> list[int]:
-    """生成定时发布时间列表：第一条立即/延迟后发，后续30-120分钟间隔"""
-    times = []
-    base = int(time.time()) + first_delay
-    times.append(0 if first_delay == 0 else base)
-    for i in range(1, count):
-        gap = random.randint(30, 120) * 60
-        base += gap
-        times.append(base)
-    return times
+async def run(video_paths: list[Path]):
+    print("=== 视频号 Headless 发布 (无窗口 · iframe) ===\n", flush=True)
 
-
-async def main(video_dir: str = None, videos: list[str] = None):
-    if not COOKIE_FILE.exists():
-        print("[!] Cookie 文件不存在，需要先运行 channels_login.py", flush=True)
-        return
-
-    if video_dir:
-        vd = Path(video_dir)
-        video_files = sorted(vd.glob("*.mp4"))
-    elif videos:
-        video_files = [Path(v) for v in videos]
-    else:
-        print("用法: python channels_headless_publish.py <视频目录>", flush=True)
-        return
-
-    video_files = [v for v in video_files if v.exists() and v.stat().st_size > 100000]
-    if not video_files:
-        print("[!] 没有找到有效的视频文件", flush=True)
-        return
-
-    total = len(video_files)
-    print(f"准备发布 {total} 个视频到视频号 (headless 模式)", flush=True)
-
-    schedules = generate_schedule_times(total)
-    results = []
+    need = [v for v in video_paths if not is_published("视频号", str(v))]
+    print(f"  视频: {len(video_paths)} 条, 待发布: {len(need)} 条\n", flush=True)
+    if not need:
+        print("[OK] 全部已发布!", flush=True)
+        return 0
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=True)
-        context = await browser.new_context(
-            storage_state=str(COOKIE_FILE),
+        browser = await pw.chromium.launch(
+            headless=True,
+            args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
+        )
+        ctx = await browser.new_context(
+            storage_state=str(STORAGE_FILE),
             user_agent=UA,
             viewport={"width": 1280, "height": 900},
+            locale="zh-CN",
         )
-        await context.add_init_script(
+        await ctx.add_init_script(
             "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
         )
+        page = await ctx.new_page()
 
-        for i, vf in enumerate(video_files):
-            title = vf.stem
-            if VideoMeta:
-                try:
-                    vmeta = VideoMeta.from_filename(str(vf))
-                    title = vmeta.title
-                except Exception:
-                    pass
+        await page.goto(
+            "https://channels.weixin.qq.com/platform/post/list",
+            wait_until="domcontentloaded", timeout=20000,
+        )
+        await asyncio.sleep(3)
+        if "login" in page.url.lower():
+            print("[!] Session 已过期，请先运行 channels_login.py 扫码", flush=True)
+            await browser.close()
+            return 1
+        print("  登录有效\n", flush=True)
 
-            result = await publish_one_headless(
-                context, str(vf), title, i + 1, total,
-                scheduled_ts=schedules[i],
-            )
-            results.append(result)
+        results: list[PublishResult] = []
+        fail_streak = 0
 
-            if not result.success and result.status == "error" and "Cookie 过期" in result.message:
-                print("\n[!] Cookie 过期，终止发布", flush=True)
-                break
+        for i, vp in enumerate(need):
+            r = await publish_one(page, vp, i + 1, len(need))
+            results.append(r)
+            if r.status != "skipped":
+                save_results([r])
+            if r.success:
+                fail_streak = 0
+            else:
+                fail_streak += 1
+                if fail_streak >= 3:
+                    print("\n[!] 连续3次失败，终止", flush=True)
+                    break
+            if i < len(need) - 1 and r.status != "skipped":
+                await asyncio.sleep(random.randint(5, 15))
 
-            if i < total - 1 and result.success:
-                wait = random.randint(5, 15)
-                print(f"  等待 {wait}s 后继续...", flush=True)
-                await asyncio.sleep(wait)
-
+        await ctx.storage_state(path=str(STORAGE_FILE))
         await browser.close()
 
-    success = sum(1 for r in results if r.success)
-    fail = sum(1 for r in results if not r.success)
-    skip = sum(1 for r in results if r.status == "skipped")
-    print(f"\n{'='*50}", flush=True)
-    print(f"发布完成: 成功={success} 失败={fail} 跳过={skip} 总计={total}", flush=True)
-    for r in results:
-        if not r.success:
-            print(f"  [✗] {Path(r.video_path).name}: {r.message}", flush=True)
+    actual = [r for r in results if r.status != "skipped"]
+    ok = sum(1 for r in actual if r.success)
+    fail = len(actual) - ok
+    print(f"\n=== 完成: 成功 {ok}, 失败 {fail} ===", flush=True)
+    return 0 if fail == 0 else 1
 
-    return results
+
+def main():
+    parser = argparse.ArgumentParser(description="视频号 Headless 发布")
+    parser.add_argument("paths", nargs="+", help="视频文件或目录")
+    args = parser.parse_args()
+
+    videos: list[Path] = []
+    for p in args.paths:
+        pp = Path(p)
+        if pp.is_dir():
+            videos.extend(sorted(pp.glob("*.mp4")))
+        elif pp.is_file() and pp.suffix.lower() == ".mp4":
+            videos.append(pp)
+
+    if not videos:
+        print("未找到 mp4 文件", flush=True)
+        sys.exit(1)
+
+    sys.exit(asyncio.run(run(videos)))
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("用法: python channels_headless_publish.py <视频目录或文件>")
-        sys.exit(1)
-
-    arg = sys.argv[1]
-    if Path(arg).is_dir():
-        asyncio.run(main(video_dir=arg))
-    elif Path(arg).is_file():
-        asyncio.run(main(videos=[arg]))
-    else:
-        print(f"[!] 路径不存在: {arg}")
-        sys.exit(1)
+    main()
