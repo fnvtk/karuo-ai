@@ -1062,6 +1062,94 @@ def allowed_skills(request: Request):
     }
 
 
+# =============================================================================
+# 工作手机 SDK 代理（卡若AI 统一 API 入口）
+# 通过卡若AI 网关统一调用工作手机 SDK 的 Frida Hook / ADB 控制接口
+# =============================================================================
+
+import httpx
+
+WORKPHONE_SDK_URL = os.environ.get("WORKPHONE_SDK_URL", "http://127.0.0.1:8899")
+
+
+class WorkPhoneExecuteRequest(BaseModel):
+    device_id: str
+    platform: str = "wechat"
+    action: str
+    params: dict = {}
+
+
+@app.get("/v1/workphone/actions")
+async def workphone_actions():
+    """获取工作手机 SDK 支持的全部 Hook 操作清单"""
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            resp = await client.get(f"{WORKPHONE_SDK_URL}/api/v3/hook/actions")
+            return resp.json()
+        except Exception as e:
+            return {"code": 502, "error": f"SDK 不可达: {e}"}
+
+
+@app.get("/v1/workphone/devices")
+async def workphone_devices():
+    """获取工作手机设备列表"""
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            resp = await client.get(f"{WORKPHONE_SDK_URL}/api/v3/devices")
+            return resp.json()
+        except Exception as e:
+            return {"code": 502, "error": f"SDK 不可达: {e}"}
+
+
+@app.post("/v1/workphone/execute")
+async def workphone_execute(req: WorkPhoneExecuteRequest):
+    """
+    工作手机统一控制 — 通过卡若AI 网关调用 SDK Hook/ADB
+
+    示例:
+      POST /v1/workphone/execute
+      {"device_id":"dc9c23e00510","action":"send_message","params":{"to_id":"阿猫","content":"你好"}}
+      {"device_id":"dc9c23e00510","action":"get_profile","params":{}}
+      {"device_id":"dc9c23e00510","action":"register_account","params":{"phone":"138xxx","nickname":"卡若AI"}}
+    """
+    payload = {
+        "device_id": req.device_id,
+        "platform": req.platform,
+        "action": req.action,
+        "params": req.params or {},
+    }
+    async with httpx.AsyncClient(timeout=60) as client:
+        try:
+            resp = await client.post(
+                f"{WORKPHONE_SDK_URL}/api/v3/hook/execute",
+                json=payload,
+            )
+            result = resp.json()
+            result["gateway"] = "karuo_ai"
+            return result
+        except httpx.TimeoutException:
+            return {"code": 504, "error": "SDK 执行超时", "action": req.action}
+        except Exception as e:
+            return {"code": 502, "error": f"SDK 不可达: {e}", "action": req.action}
+
+
+@app.get("/v1/workphone/status")
+async def workphone_status():
+    """工作手机 SDK 服务状态"""
+    async with httpx.AsyncClient(timeout=5) as client:
+        try:
+            resp = await client.get(f"{WORKPHONE_SDK_URL}/health")
+            sdk_ok = resp.status_code == 200
+        except Exception:
+            sdk_ok = False
+    return {
+        "sdk_url": WORKPHONE_SDK_URL,
+        "sdk_reachable": sdk_ok,
+        "gateway": "karuo_ai",
+        "gateway_version": "1.0",
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
