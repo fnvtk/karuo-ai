@@ -60,6 +60,7 @@ kr宝塔: qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT
 7. **站点/Nginx/SSL 类操作 · 默认宝塔 API，被拒则降级**：凡涉及「添加站点、Nginx 反代、重载、申请 SSL、开启 HTTPS」等，**默认一律先用宝塔 API**（本机执行对应脚本，需执行机公网 IP 已加入该面板「设置 → API 接口」白名单）。若调用被拒绝（如 **IP 校验失败**、连接超时等），则**降级一：用 SSH 直接操作**（在服务器上写 Nginx 配置、重载、或在服务器内用 127.0.0.1 调宝塔 API 免白名单）。若 **SSH 操作不了**（连接被关、风控、无密钥等），则**降级二：用腾讯云 API**（TAT 下发命令、或 CVM/轻量 API 等）在服务器内完成同样操作。以后碰到此类问题，直接按「宝塔 API → SSH → 腾讯云 API」顺序执行，不反复询问用户。
 8. **执行形式强制顺序**：宝塔服务器上任何操作，**一律按「宝塔 API → SSH → TAT」顺序尝试**。能通过宝塔 API 完成的先用 API；API 不可用（超时、IP 校验失败等）再用 SSH 在机内执行；SSH 不可用再用腾讯云 TAT。不得跳过顺序。
 9. **前置检查（强制）**：每次对服务器做**修改类操作**（改配置、改站点、改 Node 项目、重启服务等）之前，**必须先检查目标项目及周边项目/应用**（如通过宝塔 API `get_project_list` 看 Node 项目状态、或 SSH 看进程与端口），确认修改不会导致其他应用不可用后再执行；执行后再次确认目标与周边状态正常。
+10. **PHP 5.6 / Discuz 防护（强制）**：发现 PHP 5.6 **必须升级**（至少 7.4）；Discuz 站点必须加固目录权限、Nginx 路径封堵、PHP disable_functions；www 用户 shell 设为 `/sbin/nologin` 并锁定密码。详见 Q6 及「分布式算力管控 SKILL §11.3」。
 
 ---
 
@@ -373,6 +374,32 @@ ss -tlnp | grep :端口号
 - 如发现 PM2 残留: `pm2 kill`（清理后不再使用）
 - 在宝塔面板【网站】→【Node 项目】管理启动/停止
 - 批量操作见 `references/宝塔Node项目管理_SKILL.md`
+
+### Q6: PHP 5.6 / Discuz 漏洞防护（⚠️ 2026-02 入侵根因）
+
+**背景**：2026-02 KR 宝塔服务器遭 Mirai 僵尸网络 + 挖矿木马入侵，根因是 **www.lkdie.com / db.lkdie.com 的 Discuz 论坛运行在已 EOL 的 PHP 5.6**，攻击者通过 Discuz 已知漏洞获取 www 用户权限后投放恶意程序。
+
+**强制规则（Rule 10）**：
+1. **PHP 5.6 必须升级**到至少 7.4，推荐 8.0+
+2. **Discuz 目录权限**收紧：`uc_server/data/`、`data/cache/` 禁执行 PHP
+3. **Nginx 层封堵**：`/uc_server/`、`/misc.php`、`.sql/.bak` 等路径 deny all
+4. **PHP disable_functions**：禁用 `exec,system,passthru,shell_exec,proc_open,popen`
+5. **www 用户**：shell 设为 `/sbin/nologin`，密码随机化并锁定
+6. **定期扫描**：每周运行 `threat_scanner_v2.sh`，详见「分布式算力管控 SKILL §11」
+
+**修复步骤**：
+```bash
+# 1. 宝塔面板 → 软件商店 → 安装 PHP 7.4
+# 2. 安装 Discuz 必要扩展：mysql,gd,curl,mbstring,xml,openssl
+# 3. 备份数据库和站点文件
+mysqldump -u root -p 数据库名 > /tmp/discuz_backup.sql
+tar -czf /tmp/discuz_files_backup.tar.gz /www/wwwroot/论坛路径/
+# 4. 宝塔面板 → 站点设置 → 切换 PHP 版本到 7.4
+# 5. 测试站点功能
+# 6. 确认无问题后卸载 PHP 5.6
+```
+
+**完整攻防体系**见：`01_卡资（金）/金仓_存储备份/分布式算力管控/SKILL.md` 第十一节。
 
 ---
 

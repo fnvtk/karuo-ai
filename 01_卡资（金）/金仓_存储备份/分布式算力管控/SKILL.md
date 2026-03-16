@@ -1,18 +1,20 @@
 ---
 name: 分布式算力管控
-description: PCDN/矿机/GPU节点自动扫描与一键部署
-triggers: 算力、PCDN、矿机、GPU、网心云、甜糖、节点
+description: PCDN/矿机/GPU节点自动扫描与一键部署 + 分布式节点安全攻防体系
+triggers: 算力、PCDN、矿机、GPU、网心云、甜糖、节点、攻防、入侵检测、挖矿木马、Mirai、僵尸网络、PHP漏洞、Discuz安全、服务器安全
 owner: 金仓
 group: 金
-version: "1.0"
-updated: "2026-02-16"
+version: "2.0"
+updated: "2026-02-20"
 ---
 
 # 🖥️ 分布式算力管控
 
-> **金仓** 负责 | 一键扫描 · 一键部署 · 自动绑定 · 收益变现
+> **金仓** 负责 | 一键扫描 · 一键部署 · 自动绑定 · 收益变现 · **安全攻防**
 >
 > **核心目标**：给一个 IP/网段，自动扫描可用设备 → 自动SSH登录 → 一键安装PCDN/矿机 → 绑定卡若账号 → 获得收益
+>
+> **安全目标**：所有分布式节点和服务器具备入侵检测、攻击防御、漏洞修复能力，防止被反向利用为僵尸网络/挖矿肉鸡
 
 ---
 
@@ -209,6 +211,10 @@ cred = db["device_credentials"].find_one({"ip": "目标IP"})
 | 🔗 **自动绑定** | 部署后输出管理页面地址，引导绑定卡若账号 | 自动 |
 | 📊 **机群监控** | 查看所有已部署节点的状态和收益 | `fleet_monitor.py` |
 | 🛡️ **安全防护** | SSH加固、威胁扫描、入侵清除 | `threat_scanner.sh` |
+| 🔍 **攻击识别** | Mirai/挖矿/PHP漏洞 5大攻击类型识别与分析 | 第十一节 |
+| 🛡️ **节点安全基线** | SSH/防火墙/应用层/www用户全面加固 | `node_security_baseline_check.sh` |
+| 🚨 **应急响应** | 隔离→证据保全→清理→加固→验证 5步流程 | `threat_scanner_v2.sh --fix` |
+| 🔒 **PHP/Discuz 防护** | PHP 5.6 升级 + Discuz 加固 + Nginx 路径封堵 | 第十一节 §11.3 |
 
 ### 支持的算力类型
 
@@ -235,7 +241,8 @@ cred = db["device_credentials"].find_one({"ip": "目标IP"})
 │       ├── storage/                 ← wxnode(节点身份) + .onething_data(激活数据)
 │       └── scripts/                 ← chroot_start.sh + rc.d_wxedge.sh
 ├── references/
-│   ├── 攻击链分析_20260201.md       ← 真实入侵案例分析
+│   ├── 攻击链分析_KR宝塔_202602.md  ← KR宝塔 Mirai+挖矿入侵实战分析
+│   ├── PHP56_Discuz漏洞防护指南.md   ← PHP 5.6 / Discuz 专项防护
 │   └── 已部署节点清单.md            ← 所有已部署设备记录
 ├── scripts/
 │   ├── pcdn_auto_deploy.py          ← ⭐ 核心：自动扫描+登录+部署（Python）
@@ -250,9 +257,12 @@ cred = db["device_credentials"].find_one({"ip": "目标IP"})
 │   ├── fleet_monitor.py             ← 机群监控（状态+收益）
 │   ├── fleet_status.sh              ← 单机状态查询
 │   │
-│   ├── threat_scanner.sh            ← 威胁扫描
+│   ├── threat_scanner.sh            ← 威胁扫描（基础版）
+│   ├── threat_scanner_v2.sh         ← 威胁扫描（增强版，含 7 项检查）
 │   ├── threat_cleaner.sh            ← 威胁清除
-│   └── ssh_hardening.sh             ← SSH加固
+│   ├── ssh_hardening.sh             ← SSH加固
+│   ├── node_security_baseline_check.sh  ← 节点安全基线检查
+│   └── php_hardening.sh             ← PHP/Discuz 安全加固
 ```
 
 ---
@@ -663,45 +673,654 @@ bash scripts/fleet_status.sh
 
 ---
 
-## 十一、安全与防护
+## 十一、安全与攻防体系（防守为核心 · 基于真实攻防实战）
 
-### 11.1 部署后安全加固
+> **定位**：本节是分布式算力管控的**安全防线**，基于 2026-02 KR宝塔服务器遭受 Mirai 僵尸网络 + 挖矿木马入侵的**真实攻防实战**提炼。
+> **核心原则**：**攻击分析 70%（知己知彼）+ 防守执行 30%（对症下药）**。理解攻击才能有效防守。
+
+---
+
+### 11.1 攻击模式识别（知己知彼 · 五大威胁类型）
+
+#### 类型一：Mirai 僵尸网络（DDoS + SSH 扫描）
+
+| 维度 | 详情 |
+|:---|:---|
+| **目的** | 将服务器变成僵尸节点，对外发起 DDoS 攻击和 SSH 端口扫描，扩大感染范围 |
+| **入侵方式** | PHP 应用漏洞 / 弱密码 → 获取 www 用户权限 → 上传恶意二进制 |
+| **特征进程** | `zusvavbox`（伪装系统进程）、`kthreadd` 伪装、`/tmp/.update`（SSH 扫描器/投放器） |
+| **持久化** | `.bashrc`/`.profile` 注入、systemd user timer、watchdog 守护脚本 |
+| **网络特征** | 大量对外 TCP:22 连接（SSH 扫描）、连接矿池或 C2 服务器 |
+| **危害等级** | 🔴 严重 — 触发云厂商违规告警，可导致服务器被封停 |
+
+**IOC 指标**：
+```bash
+# 进程特征
+ps aux | grep -E 'zusvavbox|kthreadd.*\[|\.update|xmrig|minerd'
+# 网络特征（大量对外 22 端口连接）
+ss -antp | awk '$5~/:22$/ && $1=="ESTAB"' | wc -l
+# 文件特征
+ls -la /tmp/.update /tmp/.systemdpw/ /home/www/c3pool/ 2>/dev/null
+# 持久化检查
+grep -r 'zusvavbox\|\.update\|c3pool' /home/www/.bashrc /home/www/.profile 2>/dev/null
+systemctl --user -M www@ list-timers 2>/dev/null
+```
+
+#### 类型二：挖矿木马（CPU 盗用）
+
+| 维度 | 详情 |
+|:---|:---|
+| **目的** | 利用服务器 CPU 挖门罗币（XMR），挖矿收益归攻击者 |
+| **特征** | CPU 长期 100%、高负载、`xmrig`/`xmr-stak`/`minerd`/`cpuminer` 进程 |
+| **隐蔽手段** | 重命名为 `kthreadd`/`kworker`/`systemd-xxx` 等系统进程名 |
+| **矿池连接** | `c3pool.com`、`pool.hashvault.pro`、`nanopool.org`、`minexmr.com`、`supportxmr.com` |
+| **矿池端口** | 3333, 5555, 7777, 14433, 14444, 45700 |
+
+#### 类型三：PHP 应用漏洞利用（⚠️ 重点防护对象）
+
+| 维度 | 详情 |
+|:---|:---|
+| **目标应用** | Discuz! 论坛（PHP 5.6）、phpMyAdmin、WordPress、ThinkPHP |
+| **漏洞类型** | 远程代码执行（RCE）、文件上传、SQL 注入、反序列化、已知 CVE |
+| **PHP 5.6 已知严重漏洞** | CVE-2019-11043（PHP-FPM RCE）、CVE-2015-6835（use-after-free）、CVE-2016-5385（httpoxy）等 |
+| **Discuz! 专项漏洞** | `misc.php` RCE、`/uc_server/` 未授权、模板注入、`/data/cache/` 可写 |
+| **攻击链** | 扫描 Discuz 版本 → 匹配 CVE → 上传 WebShell → 提权 → 投放挖矿/僵尸程序 |
+| **⚠️ 弱点** | **PHP 5.6 已于 2018 年底 EOL，不再有安全补丁** — 这是 KR 宝塔被入侵的根本原因 |
+
+**PHP 5.6 + Discuz 已知攻击路径**：
+```
+1. 攻击者扫描 → 发现 www.lkdie.com / db.lkdie.com 运行 Discuz (PHP 5.6)
+2. 利用 Discuz 已知漏洞（misc.php / uc_server / 文件上传）获取 WebShell
+3. 以 www 用户身份在服务器上执行命令
+4. 上传 zusvavbox（挖矿木马）和 /tmp/.update（SSH 扫描器）
+5. 写入 /home/www/.bashrc 和 .profile 实现持久化
+6. 创建 systemd user timer 定期检查并重启恶意程序
+7. 同时挖矿（CPU 100%）+ 对外 SSH 扫描（TCP:22）
+8. 触发腾讯云「对外攻击」违规告警
+```
+
+#### 类型四：SSH 暴力破解
+
+| 维度 | 详情 |
+|:---|:---|
+| **特征** | `/var/log/secure` 中大量 `Failed password` / `Invalid user` |
+| **目标端口** | 22、2222、22022 等 SSH 端口 |
+| **防护** | fail2ban + iptables recent + MaxStartups/MaxAuthTries |
+
+#### 类型五：容器逃逸与供应链攻击
+
+| 维度 | 详情 |
+|:---|:---|
+| **场景** | PCDN/矿机 Docker 容器被恶意镜像替换，或容器逃逸到宿主机 |
+| **防护** | 只用官方镜像 + 镜像哈希校验 + `--no-new-privileges` |
+
+---
+
+### 11.2 真实攻击链分析（KR 宝塔 2026-02 实战）
+
+> **攻击类型**：Mirai 变种僵尸网络 + 加密挖矿  
+> **攻击时间**：2026 年 2 月  
+> **受害服务器**：kr宝塔 43.139.27.93（腾讯云 2核4G）  
+> **入侵入口**：Discuz 论坛（PHP 5.6）— www.lkdie.com / db.lkdie.com
+
+#### 完整攻击链路（7 步）
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ 攻击链路（Attack Kill Chain）                                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ① 侦察（Reconnaissance）                                       │
+│     攻击者扫描公网 IP → 发现 Discuz (PHP 5.6)                    │
+│     工具：masscan / zmap / Shodan                                │
+│           │                                                     │
+│           ▼                                                     │
+│  ② 漏洞利用（Exploitation）                                      │
+│     利用 Discuz 已知漏洞获取 WebShell                            │
+│     → 以 www 用户身份执行命令                                     │
+│           │                                                     │
+│           ▼                                                     │
+│  ③ 投放（Delivery）                                              │
+│     wget/curl 从 C2 下载恶意二进制                               │
+│     → /tmp/.update（SSH 扫描器 + 投放器）                         │
+│     → /home/www/c3pool/（矿机配置）                              │
+│     → zusvavbox（Mirai 变种 + xmrig 矿机）                       │
+│           │                                                     │
+│           ▼                                                     │
+│  ④ 持久化（Persistence）                                         │
+│     a. /home/www/.bashrc 注入启动命令                             │
+│     b. /home/www/.profile 注入启动命令                            │
+│     c. systemd user timer 定时检查 + 重启                         │
+│     d. watchdog 脚本 — 主进程被杀后自动重启                       │
+│           │                                                     │
+│           ▼                                                     │
+│  ⑤ 执行（Execution）                                             │
+│     a. zusvavbox 启动 → CPU 100%（挖矿）                         │
+│     b. /tmp/.update 启动 → 对外 SSH:22 扫描                      │
+│     c. 伪装为 kthreadd 等系统进程名                               │
+│           │                                                     │
+│           ▼                                                     │
+│  ⑥ C2 通信（Command & Control）                                  │
+│     连接矿池 c3pool.com:13333                                    │
+│     连接 C2 控制服务器接收扫描指令                                │
+│           │                                                     │
+│           ▼                                                     │
+│  ⑦ 横向传播（Lateral Movement）                                  │
+│     对外 SSH:22 扫描 → 弱密码服务器 → 投放同款木马               │
+│     → 被腾讯云检测为「对外攻击」→ 违规告警                       │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### 攻击核心设计分析
+
+| 维度 | 攻击者设计 | 我方弱点 |
+|:---|:---|:---|
+| **入口** | 选择 PHP 5.6 EOL 应用 | **Discuz 运行在已停止维护的 PHP 5.6** |
+| **权限** | www 用户足够（无需 root） | www 用户有 shell 权限、可执行任意二进制 |
+| **隐蔽** | 进程名伪装为 kthreadd | 没有实时进程监控告警 |
+| **持久化** | 4 种方式并行 | 清一种不够，必须全清 |
+| **收益** | 挖矿 + 扫描双线程 | CPU 100% 但无主动告警机制 |
+| **扩散** | 自动化 SSH 扫描扩散 | 无 OUTPUT 规则限制对外连接 |
+
+#### 清理与修复记录
+
+```bash
+# ===== 1. 杀进程 =====
+kill -9 $(pgrep -f zusvavbox)
+kill -9 $(pgrep -f '/tmp/.update')
+pkill -9 -u www -f 'xmrig|minerd|c3pool'
+
+# ===== 2. 清文件 =====
+rm -rf /tmp/.update /tmp/.systemdpw/ /home/www/c3pool/
+rm -f /dev/shm/.x* /var/tmp/.cache/
+
+# ===== 3. 清持久化 =====
+# .bashrc / .profile — 删除恶意注入行
+sed -i '/zusvavbox\|\.update\|c3pool/d' /home/www/.bashrc /home/www/.profile
+# systemd user timer
+systemctl --user -M www@ stop zusvavbox.timer 2>/dev/null
+rm -f /home/www/.config/systemd/user/zusvavbox.*
+# crontab
+crontab -u www -r 2>/dev/null
+
+# ===== 4. 锁 www 用户 =====
+usermod -s /sbin/nologin www
+passwd -l www
+# 随机化 www 密码（防止弱密码被再次利用）
+echo "www:$(openssl rand -base64 32)" | chpasswd
+
+# ===== 5. iptables 封堵对外攻击 =====
+iptables -A OUTPUT -p tcp --dport 22 -m owner --uid-owner www -j DROP
+iptables -A OUTPUT -p tcp --dport 22 -m state --state NEW -m recent \
+  --set --name SSH_OUT
+iptables -A OUTPUT -p tcp --dport 22 -m state --state NEW -m recent \
+  --update --seconds 60 --hitcount 5 --name SSH_OUT -j DROP
+```
+
+---
+
+### 11.3 PHP 5.6 / Discuz 专项防护（⚠️ 入侵根因修复）
+
+> **核心结论**：PHP 5.6 是被入侵的根本原因。Discuz 论坛运行在已 EOL 的 PHP 上，等于裸奔。
+
+#### 11.3.1 PHP 5.6 已知严重漏洞（部分）
+
+| CVE | 类型 | 影响 | CVSS |
+|:---|:---|:---|:---|
+| CVE-2019-11043 | PHP-FPM RCE | 远程代码执行 | 9.8 |
+| CVE-2016-5385 | httpoxy | HTTP 代理劫持 | 8.1 |
+| CVE-2015-6835 | use-after-free | 远程代码执行 | 7.5 |
+| CVE-2016-7124 | 反序列化绕过 | 认证绕过 | 7.5 |
+| CVE-2015-8994 | 路径信息泄露 | 信息泄露 | 5.3 |
+
+#### 11.3.2 Discuz 专项加固清单
+
+```bash
+# ===== 1. 升级 PHP（优先级最高）=====
+# 最低升级到 PHP 7.4，推荐 PHP 8.0+
+# 宝塔面板操作：软件商店 → 安装 PHP 7.4/8.0 → 站点设置 → 切换 PHP 版本
+
+# ===== 2. Discuz 目录权限收紧 =====
+# 关闭危险目录的执行权限
+chmod 000 /www/wwwroot/论坛路径/uc_server/data/
+chmod 644 /www/wwwroot/论坛路径/config/config_global.php
+chmod 644 /www/wwwroot/论坛路径/config/config_ucenter.php
+# 禁止 data/cache/template 等目录执行 PHP
+find /www/wwwroot/论坛路径/data/ -name "*.php" -exec rm -f {} \;
+
+# ===== 3. Nginx 层防护（拦截常见攻击路径）=====
+# 添加到站点 Nginx 配置的 server 块中
+# location ~* /(uc_server|uc_client|source|data/cache)/.*\.(php|php5)$ {
+#     deny all;
+# }
+# location ~* /misc\.php { deny all; }
+# location ~* \.(sql|bak|old|orig|swp)$ { deny all; }
+# location ~* /config/ { deny all; }
+
+# ===== 4. PHP 安全配置 =====
+# php.ini 关键设置
+# disable_functions = exec,system,passthru,shell_exec,proc_open,popen,dl,pcntl_exec
+# expose_php = Off
+# allow_url_fopen = Off
+# allow_url_include = Off
+# open_basedir = /www/wwwroot/论坛路径/:/tmp/
+# upload_max_filesize = 2M
+# max_execution_time = 30
+
+# ===== 5. 文件完整性监控 =====
+# 生成基线
+find /www/wwwroot/论坛路径/ -type f -name "*.php" -exec md5sum {} \; > /root/discuz_baseline.md5
+# 定期检查
+md5sum -c /root/discuz_baseline.md5 --quiet 2>/dev/null | head -20
+```
+
+#### 11.3.3 PHP 升级路径与兼容性
+
+| Discuz 版本 | 支持 PHP | 建议 |
+|:---|:---|:---|
+| Discuz! X3.4 | PHP 5.6 - 7.4 | 升级到 PHP 7.4 |
+| Discuz! X3.5 | PHP 7.0 - 8.1 | 升级到 X3.5 + PHP 8.0 |
+| Discuz! Q | PHP 7.2+ | 如果可以，迁移到 Discuz! Q |
+
+**升级步骤**：
+```bash
+# 1. 宝塔面板安装新版 PHP（如 7.4）
+# 2. 安装 Discuz 所需扩展：mysql, gd, curl, mbstring, xml, openssl
+# 3. 备份数据库：mysqldump -u root -p 数据库名 > /tmp/discuz_backup.sql
+# 4. 备份站点文件：tar -czf /tmp/discuz_files_backup.tar.gz /www/wwwroot/论坛路径/
+# 5. 在宝塔面板切换站点 PHP 版本
+# 6. 测试站点功能
+# 7. 确认无问题后删除 PHP 5.6
+```
+
+---
+
+### 11.4 节点安全基线（部署前必检 · 每台节点强制）
+
+> 每台分布式算力节点（PCDN、矿机、云服务器）部署前和定期巡检时必须通过以下基线。
+
+#### 11.4.1 SSH 加固清单
+
+```bash
+# /etc/ssh/sshd_config 关键配置
+Port 22022                          # 改非默认端口
+PermitRootLogin prohibit-password   # 禁密码 root 登录
+MaxAuthTries 3                      # 最多 3 次认证
+MaxStartups 3:50:10                 # 防暴力并发
+PasswordAuthentication no           # 建议：仅密钥认证
+AllowUsers root@指定IP              # 限制来源 IP
+ClientAliveInterval 300
+ClientAliveCountMax 2
+```
+
+#### 11.4.2 防火墙基线（iptables）
+
+```bash
+# ===== INPUT 规则 =====
+# 放行已建立连接
+iptables -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+# 放行 loopback
+iptables -A INPUT -i lo -j ACCEPT
+# SSH 限速（60 秒内最多 5 次新连接）
+iptables -A INPUT -p tcp --dport 22022 -m state --state NEW \
+  -m recent --set --name SSH_IN
+iptables -A INPUT -p tcp --dport 22022 -m state --state NEW \
+  -m recent --update --seconds 60 --hitcount 5 --name SSH_IN -j DROP
+# 放行 SSH
+iptables -A INPUT -p tcp --dport 22022 -j ACCEPT
+# 放行 HTTP/HTTPS
+iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+# 放行宝塔面板（仅限管理 IP）
+iptables -A INPUT -p tcp --dport 9988 -s 管理IP -j ACCEPT
+# 放行 PCDN 端口（如有）
+iptables -A INPUT -p tcp --dport 18888 -j ACCEPT
+# 默认拒绝
+iptables -P INPUT DROP
+
+# ===== OUTPUT 规则（关键！防止被利用为跳板）=====
+# www 用户禁止对外 SSH
+iptables -A OUTPUT -p tcp --dport 22 -m owner --uid-owner www -j DROP
+# 非 root 用户限制对外 SSH 速率
+iptables -A OUTPUT -p tcp --dport 22 -m state --state NEW \
+  -m recent --set --name SSH_OUT
+iptables -A OUTPUT -p tcp --dport 22 -m state --state NEW \
+  -m recent --update --seconds 60 --hitcount 5 --name SSH_OUT -j DROP
+```
+
+#### 11.4.3 应用层防护
+
+```bash
+# 1. www 用户安全加固
+usermod -s /sbin/nologin www          # 禁止 www 用户 shell 登录
+passwd -l www                          # 锁定密码
+crontab -u www -r 2>/dev/null         # 清空 www 的 crontab
+
+# 2. /tmp 防执行
+mount -o remount,noexec,nosuid /tmp    # 禁止 /tmp 下执行二进制
+# 永久生效：/etc/fstab 加 noexec,nosuid
+
+# 3. PHP-FPM 安全
+# pm = ondemand（按需启动，减少攻击面）
+# pm.max_children = 10（限制并发）
+# security.limit_extensions = .php（只允许 .php 后缀）
+
+# 4. fail2ban 配置
+apt install fail2ban -y  # 或 yum install fail2ban
+systemctl enable fail2ban
+# /etc/fail2ban/jail.local
+# [sshd]
+# enabled = true
+# port = 22022
+# maxretry = 3
+# bantime = 3600
+# findtime = 600
+```
+
+#### 11.4.4 安全基线检查脚本
+
+```bash
+#!/bin/bash
+# node_security_baseline_check.sh — 节点安全基线快速检查
+echo "===== 安全基线检查 ====="
+
+echo "--- SSH 配置 ---"
+grep -E '^(Port|PermitRootLogin|MaxAuthTries|PasswordAuthentication)' /etc/ssh/sshd_config
+
+echo "--- www 用户状态 ---"
+getent passwd www | awk -F: '{print "Shell:"$7, "Home:"$6}'
+passwd -S www 2>/dev/null | awk '{print "密码状态:"$2}'
+
+echo "--- /tmp 挂载选项 ---"
+mount | grep '/tmp ' | grep -o 'noexec' || echo "⚠️ /tmp 未设 noexec"
+
+echo "--- fail2ban 状态 ---"
+systemctl is-active fail2ban 2>/dev/null || echo "⚠️ fail2ban 未运行"
+
+echo "--- iptables OUTPUT SSH 规则 ---"
+iptables -L OUTPUT -n | grep -c 'dpt:22.*DROP' && echo "✅ OUTPUT SSH 限制已设" || echo "⚠️ 无 OUTPUT SSH 限制"
+
+echo "--- PHP 版本 ---"
+php -v 2>/dev/null | head -1
+[ "$(php -v 2>/dev/null | head -1 | grep -c '5\.6')" -gt 0 ] && echo "🔴 PHP 5.6 已 EOL！必须升级" || echo "✅ PHP 版本可接受"
+
+echo "--- 可疑进程检查 ---"
+ps aux | grep -E 'xmrig|zusvavbox|kdevtmpfsi|minerd|c3pool|\.update' | grep -v grep
+[ $? -ne 0 ] && echo "✅ 无可疑进程"
+
+echo "--- 可疑 /tmp 可执行文件 ---"
+find /tmp /var/tmp /dev/shm -type f -executable 2>/dev/null | head -10
+[ $? -ne 0 ] && echo "✅ /tmp 无可执行文件"
+
+echo "===== 检查完成 ====="
+```
+
+---
+
+### 11.5 自动化威胁检测与响应
+
+#### 11.5.1 增强版 IOC 检测特征库
+
+```yaml
+# ===== 恶意文件路径（发现即删除）=====
+malicious_paths:
+  - /tmp/.update
+  - /tmp/.systemdpw/
+  - /tmp/.X11-unix/.rsync/
+  - /tmp/.ICE-unix/.*
+  - /home/www/c3pool/
+  - /home/www/.config/sys-update-daemon
+  - /var/tmp/.cache/
+  - /dev/shm/.x*
+  - /dev/shm/.ice*
+  - /root/.configrc/
+  - /usr/local/bin/.hidden/
+
+# ===== 恶意进程名（发现即杀）=====
+malicious_processes:
+  - xmrig, xmr-stak, minerd, cpuminer, ccminer
+  - kdevtmpfsi, kinsing, sys-update-daemon
+  - zusvavbox, bioset, kthreadd_fake
+  - solrd, networkservice, crypto-pool
+  - \.update, \.rsync, \.ice
+
+# ===== 矿池域名/IP（发现连接即告警）=====
+mining_pools:
+  - c3pool.com
+  - pool.hashvault.pro
+  - nanopool.org
+  - minexmr.com
+  - supportxmr.com
+  - pool.supportxmr.com
+  - gulf.moneroocean.stream
+  - auto.c3pool.org
+
+# ===== 矿池端口 =====
+mining_ports: [3333, 5555, 7777, 13333, 14433, 14444, 45700]
+
+# ===== 持久化路径（必须定期检查）=====
+persistence_paths:
+  - /home/www/.bashrc
+  - /home/www/.profile
+  - /home/www/.config/systemd/user/
+  - /var/spool/cron/www
+  - /etc/cron.d/
+  - /etc/rc.local
+  - /usr/local/etc/rc.d/
+```
+
+#### 11.5.2 威胁扫描脚本（增强版 threat_scanner.sh）
+
+```bash
+#!/bin/bash
+# threat_scanner_v2.sh — 分布式节点威胁全面扫描
+# 用法：bash threat_scanner_v2.sh [--fix]（加 --fix 自动清理）
+FIX_MODE="${1:-}"
+ALERT=0
+
+echo "========== 分布式节点威胁扫描 v2 =========="
+echo "时间: $(date '+%Y-%m-%d %H:%M:%S')"
+echo "主机: $(hostname) ($(hostname -I | awk '{print $1}'))"
+echo ""
+
+# --- 1. 可疑进程扫描 ---
+echo "--- [1/7] 可疑进程 ---"
+SUSPECTS=$(ps aux | grep -Ei 'xmrig|zusvavbox|kdevtmpfsi|minerd|cpuminer|c3pool|\.update|kinsing|solrd|crypto' | grep -v grep)
+if [ -n "$SUSPECTS" ]; then
+    echo "🔴 发现可疑进程:"
+    echo "$SUSPECTS"
+    ALERT=1
+    if [ "$FIX_MODE" = "--fix" ]; then
+        echo "$SUSPECTS" | awk '{print $2}' | xargs -r kill -9
+        echo "✅ 已杀掉可疑进程"
+    fi
+else
+    echo "✅ 无可疑进程"
+fi
+
+# --- 2. 高 CPU 进程（>80%）---
+echo ""
+echo "--- [2/7] 高 CPU 进程 ---"
+ps aux --sort=-%cpu | awk 'NR<=6 && $3>80 {print "⚠️ CPU "$3"%: "$11" (PID:"$2" USER:"$1")"}'
+
+# --- 3. 恶意文件检查 ---
+echo ""
+echo "--- [3/7] 恶意文件路径 ---"
+for p in /tmp/.update /tmp/.systemdpw /tmp/.X11-unix/.rsync /home/www/c3pool \
+         /dev/shm/.x /var/tmp/.cache /root/.configrc; do
+    if ls -d ${p}* 2>/dev/null | head -1 > /dev/null 2>&1; then
+        echo "🔴 发现: $p"
+        ALERT=1
+        [ "$FIX_MODE" = "--fix" ] && rm -rf ${p}* && echo "  ✅ 已删除"
+    fi
+done
+[ $ALERT -eq 0 ] && echo "✅ 无恶意文件路径"
+
+# --- 4. /tmp 可执行文件 ---
+echo ""
+echo "--- [4/7] /tmp 可执行文件 ---"
+EXEC_FILES=$(find /tmp /var/tmp /dev/shm -type f -executable 2>/dev/null)
+if [ -n "$EXEC_FILES" ]; then
+    echo "⚠️ 发现可执行文件:"
+    echo "$EXEC_FILES" | head -10
+    ALERT=1
+    if [ "$FIX_MODE" = "--fix" ]; then
+        echo "$EXEC_FILES" | xargs -r rm -f
+        echo "✅ 已删除"
+    fi
+else
+    echo "✅ /tmp 无可执行文件"
+fi
+
+# --- 5. 持久化检查 ---
+echo ""
+echo "--- [5/7] 持久化机制 ---"
+for f in /home/www/.bashrc /home/www/.profile; do
+    if grep -qE 'zusvavbox|\.update|c3pool|xmrig|minerd|curl.*\|.*sh|wget.*\|.*sh' "$f" 2>/dev/null; then
+        echo "🔴 $f 中发现恶意注入"
+        ALERT=1
+        [ "$FIX_MODE" = "--fix" ] && sed -i '/zusvavbox\|\.update\|c3pool\|xmrig\|minerd/d' "$f" && echo "  ✅ 已清理"
+    fi
+done
+# systemd user timer
+if ls /home/www/.config/systemd/user/*.timer 2>/dev/null | head -1 > /dev/null 2>&1; then
+    echo "🔴 发现 www 用户 systemd timer"
+    ls /home/www/.config/systemd/user/*.timer 2>/dev/null
+    ALERT=1
+fi
+# crontab
+if crontab -u www -l 2>/dev/null | grep -v '^#' | grep -q .; then
+    echo "🔴 www 用户有 crontab 任务:"
+    crontab -u www -l 2>/dev/null
+    ALERT=1
+fi
+[ $ALERT -eq 0 ] && echo "✅ 无持久化机制"
+
+# --- 6. 矿池连接检查 ---
+echo ""
+echo "--- [6/7] 矿池/C2 连接 ---"
+POOL_CONN=$(ss -antp | grep -E ':3333|:5555|:7777|:13333|:14433|:14444|:45700' | grep ESTAB)
+if [ -n "$POOL_CONN" ]; then
+    echo "🔴 发现矿池连接:"
+    echo "$POOL_CONN"
+    ALERT=1
+else
+    echo "✅ 无矿池连接"
+fi
+# 对外 SSH 扫描检查
+SSH_OUT=$(ss -antp | awk '$5~/:22$/ && $1=="ESTAB"' | wc -l)
+if [ "$SSH_OUT" -gt 10 ]; then
+    echo "🔴 对外 SSH 连接数异常: $SSH_OUT"
+    ALERT=1
+else
+    echo "✅ 对外 SSH 连接正常 ($SSH_OUT)"
+fi
+
+# --- 7. PHP 版本检查 ---
+echo ""
+echo "--- [7/7] PHP 安全 ---"
+PHP_VER=$(php -v 2>/dev/null | head -1)
+if echo "$PHP_VER" | grep -q '5\.[0-6]'; then
+    echo "🔴 PHP 版本过旧: $PHP_VER（必须升级！）"
+    ALERT=1
+elif [ -n "$PHP_VER" ]; then
+    echo "✅ PHP: $PHP_VER"
+else
+    echo "ℹ️ 未安装 PHP"
+fi
+
+echo ""
+echo "=========================================="
+if [ $ALERT -gt 0 ]; then
+    echo "🔴 检测到安全威胁！请立即处理。"
+else
+    echo "✅ 节点安全状态良好。"
+fi
+```
+
+#### 11.5.3 应急响应流程（发现入侵后）
+
+```
+发现入侵告警
+    │
+    ▼
+┌──────────────────────────────┐
+│ 1. 立即隔离                   │
+│    - iptables 限制 OUTPUT      │
+│    - 杀掉所有可疑进程          │
+│    - 禁止 www 用户 shell       │
+└──────────┬───────────────────┘
+           ▼
+┌──────────────────────────────┐
+│ 2. 证据保全                   │
+│    - 截图/记录可疑进程列表      │
+│    - 保存网络连接快照          │
+│    - 备份 .bashrc/.profile     │
+└──────────┬───────────────────┘
+           ▼
+┌──────────────────────────────┐
+│ 3. 全面清理                   │
+│    - 删除恶意文件              │
+│    - 清除所有持久化机制        │
+│    - 检查并清理 crontab        │
+│    - 检查 systemd timer        │
+└──────────┬───────────────────┘
+           ▼
+┌──────────────────────────────┐
+│ 4. 加固                       │
+│    - 升级 PHP（如 5.6 → 7.4+）│
+│    - 应用 iptables 规则        │
+│    - /tmp 设 noexec            │
+│    - 安装/配置 fail2ban        │
+│    - 锁定 www 用户             │
+└──────────┬───────────────────┘
+           ▼
+┌──────────────────────────────┐
+│ 5. 验证                       │
+│    - 运行 threat_scanner --fix │
+│    - 检查 CPU/负载恢复正常     │
+│    - 确认无对外异常连接        │
+│    - 确认站点正常访问          │
+└──────────────────────────────┘
+```
+
+---
+
+### 11.6 防守策略矩阵（按攻击类型对症下药）
+
+| 攻击类型 | 防守措施 | 检测方式 | 响应方式 | 脚本 |
+|:---|:---|:---|:---|:---|
+| **Mirai 僵尸网络** | OUTPUT iptables + www 禁 shell + fail2ban | 对外 SSH 连接数监控 | 杀进程 + 清持久化 + 封 IP | `threat_cleaner.sh` |
+| **挖矿木马** | /tmp noexec + www 无 shell + 进程白名单 | CPU 100% + 可疑进程名 + 矿池端口 | 杀进程 + 删文件 + 清 crontab | `threat_scanner.sh --fix` |
+| **PHP 漏洞利用** | **升级 PHP** + disable_functions + Nginx 路径封堵 + WAF | WebShell 扫描 + 文件完整性 + 异常 PHP 日志 | 删 WebShell + 升级 + 加固目录权限 | `php_hardening.sh` |
+| **SSH 暴力破解** | 非默认端口 + 密钥认证 + fail2ban + iptables recent | /var/log/secure Failed password 计数 | fail2ban 自动封 IP | `ssh_hardening.sh` |
+| **容器逃逸** | `--no-new-privileges` + 镜像哈希校验 + 定期更新 | 宿主机异常进程 | 停容器 + 检查宿主机 | 手动 |
+
+### 11.7 定期巡检计划
+
+| 频率 | 巡检内容 | 执行方式 |
+|:---|:---|:---|
+| **每日** | CPU/负载/对外连接数 | fleet_monitor.py |
+| **每周** | 威胁扫描 + 可疑进程 + /tmp 检查 | threat_scanner_v2.sh |
+| **每月** | PHP 版本检查 + 安全基线全量检查 | node_security_baseline_check.sh |
+| **每季度** | Discuz/应用版本检查 + 依赖更新 | 手动 |
+| **即时** | 收到云厂商告警 | 应急响应流程（11.5.3） |
+
+### 11.8 部署后安全加固（原有 · 保留）
 
 ```bash
 # SSH加固（在部署完PCDN后执行）
 bash scripts/ssh_hardening.sh --level medium
 ```
 
-### 11.2 威胁扫描
+### 11.9 威胁扫描工具
 
 ```bash
-bash scripts/threat_scanner.sh   # 检查是否被入侵
-bash scripts/threat_cleaner.sh   # 清除恶意程序
-```
-
-### 11.3 IOC检测特征库
-
-```yaml
-malicious_paths:
-  - /tmp/.systemdpw/
-  - /tmp/.X11-unix/.rsync/
-  - ~/.config/sys-update-daemon
-  - ~/c3pool/
-  - /var/tmp/.cache/
-  - /dev/shm/.x*
-
-malicious_processes:
-  - xmrig, xmr-stak, minerd, cpuminer
-  - kdevtmpfsi, kinsing, sys-update-daemon
-
-mining_pools:
-  - pool.hashvault.pro
-  - c3pool.com
-  - nanopool.org
-  - minexmr.com
-  - supportxmr.com
-
-mining_ports: [3333, 5555, 7777, 14433, 14444, 45700]
+bash scripts/threat_scanner.sh        # 基础检查
+bash scripts/threat_scanner_v2.sh     # 增强版（推荐）
+bash scripts/threat_scanner_v2.sh --fix  # 增强版 + 自动清理
+bash scripts/threat_cleaner.sh        # 深度清除
 ```
 
 ---
