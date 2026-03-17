@@ -747,7 +747,46 @@ systemctl --user -M www@ list-timers 2>/dev/null
 | **目标端口** | 22、2222、22022 等 SSH 端口 |
 | **防护** | fail2ban + iptables recent + MaxStartups/MaxAuthTries |
 
-#### 类型五：容器逃逸与供应链攻击
+#### 类型五：Docker API 暴露攻击（⚠️ 2026-03 新发现 · 真正入侵根因）
+
+| 维度 | 详情 |
+|:---|:---|
+| **目的** | 通过暴露的 Docker API（2375 端口）远程控制服务器，植入挖矿/后门 |
+| **入侵方式** | Docker daemon 配置 `-H tcp://0.0.0.0:2375` 无认证 → 任何人可远程执行容器命令 |
+| **攻击手法** | `docker exec` 进入已有容器 → 下载恶意二进制 → 写入 systemd 持久化 |
+| **特征** | busybox:latest 镜像（经典 Docker 利用镜像）、隐藏二进制 `/.Dj9joc9QhUb46rxZIan562mFq`、`cdngdn.service` |
+| **伪装** | 进程名伪装为 `-bash`，实际为挖矿程序，占用 165% CPU |
+| **持久化** | systemd service `cdngdn.service`（Restart=always）指向 `/var/spool/.system/.system` |
+| **危害等级** | 🔴 极严重 — Docker API 等于 root 权限，攻击者可做任何事 |
+
+**IOC 指标（2026-03 实战）**：
+```bash
+# Docker API 暴露检查（必须为空或不可达）
+curl -s http://127.0.0.1:2375/version 2>/dev/null
+ss -tlnp | grep 2375
+# 可疑 Docker 镜像
+docker images | grep -i busybox
+# 隐藏的 systemd 服务
+systemctl list-unit-files --state=enabled | grep -Ev 'network|sshd|crond|nginx|php|bt|mysql|redis|firewalld'
+# 根目录隐藏文件
+ls -la / | grep '^\.\.'
+find / -maxdepth 1 -name ".*" -type f 2>/dev/null
+# /var/spool 隐藏目录
+find /var/spool/ -name ".*" -type d 2>/dev/null
+```
+
+**防护措施**：
+```bash
+# 1. Docker daemon 绝不暴露 TCP（仅用 unix socket）
+# /etc/systemd/system/docker.service 或 /usr/lib/systemd/system/docker.service
+# ExecStart 中删除 -H tcp://0.0.0.0:2375
+# 2. iptables 封堵 2375
+iptables -A INPUT -p tcp --dport 2375 -j DROP
+# 3. 删除可疑镜像
+docker rmi busybox:latest 2>/dev/null
+```
+
+#### 类型六：容器逃逸与供应链攻击
 
 | 维度 | 详情 |
 |:---|:---|
@@ -758,10 +797,12 @@ systemctl --user -M www@ list-timers 2>/dev/null
 
 ### 11.2 真实攻击链分析（KR 宝塔 2026-02 实战）
 
-> **攻击类型**：Mirai 变种僵尸网络 + 加密挖矿  
-> **攻击时间**：2026 年 2 月  
+> **攻击类型**：Mirai 变种僵尸网络 + 加密挖矿 + Docker API 利用  
+> **攻击时间**：2026 年 2-3 月（持续入侵）  
 > **受害服务器**：kr宝塔 43.139.27.93（腾讯云 2核4G）  
-> **入侵入口**：Discuz 论坛（PHP 5.6）— www.lkdie.com / db.lkdie.com
+> **入侵入口**：  
+> - **主入口（2026-03 确认）**：Docker API 2375 端口暴露公网无认证  
+> - **辅助入口（2026-02）**：Discuz 论坛（PHP 5.6）— www.lkdie.com / db.lkdie.com
 
 #### 完整攻击链路（7 步）
 
@@ -816,12 +857,26 @@ systemctl --user -M www@ list-timers 2>/dev/null
 
 | 维度 | 攻击者设计 | 我方弱点 |
 |:---|:---|:---|
-| **入口** | 选择 PHP 5.6 EOL 应用 | **Discuz 运行在已停止维护的 PHP 5.6** |
-| **权限** | www 用户足够（无需 root） | www 用户有 shell 权限、可执行任意二进制 |
-| **隐蔽** | 进程名伪装为 kthreadd | 没有实时进程监控告警 |
-| **持久化** | 4 种方式并行 | 清一种不够，必须全清 |
-| **收益** | 挖矿 + 扫描双线程 | CPU 100% 但无主动告警机制 |
+| **入口 1（主）** | Docker API 2375 暴露 = root 权限 | **Docker daemon 监听 0.0.0.0:2375 无认证** |
+| **入口 2（辅）** | 选择 PHP 5.6 EOL 应用 | **Discuz 运行在已停止维护的 PHP 5.6** |
+| **权限** | Docker API = root；www 用户也够 | Docker 无认证 + www 有 shell + iptables 为空 |
+| **隐蔽** | 进程名伪装为 `-bash`/`kthreadd`，文件名随机化 | 没有实时进程监控告警 |
+| **持久化** | systemd service（Restart=always）+ .bashrc + crontab | 清一种不够，必须全清 |
+| **收益** | 挖矿双线程（165% CPU） | CPU 100% 但无主动告警机制 |
 | **扩散** | 自动化 SSH 扫描扩散 | 无 OUTPUT 规则限制对外连接 |
+| **防火墙** | iptables 规则为空 | **服务器完全无 iptables 防护** |
+
+#### 2026-03 新攻击链（Docker API 入侵）
+
+```
+攻击者扫描公网 → 发现 43.139.27.93:2375 Docker API 无认证
+    → curl http://43.139.27.93:2375/version（确认可用）
+    → docker exec 进入已有容器（wantui）
+    → 下载恶意二进制 → 写入 /.Dj9joc9QhUb46rxZIan562mFq
+    → 创建 systemd service cdngdn.service（Restart=always）
+    → 持久化在 /var/spool/.system/.system
+    → 启动挖矿（165% CPU，伪装为 -bash）
+```
 
 #### 清理与修复记录
 
@@ -989,7 +1044,26 @@ iptables -A OUTPUT -p tcp --dport 22 -m state --state NEW \
   -m recent --update --seconds 60 --hitcount 5 --name SSH_OUT -j DROP
 ```
 
-#### 11.4.3 应用层防护
+#### 11.4.3 Docker 安全基线（⚠️ 优先级最高）
+
+```bash
+# 1. Docker API 绝不暴露 TCP（这是 KR 宝塔被入侵的真正根因）
+# 检查：ss -tlnp | grep 2375 应该为空
+ss -tlnp | grep 2375 && echo "🔴 Docker API 暴露！立即修复" || echo "✅ Docker API 安全"
+
+# 2. 检查 Docker daemon 配置
+grep -r 'tcp://0.0.0.0' /etc/docker/ /usr/lib/systemd/system/docker.service 2>/dev/null
+# 如发现 -H tcp://0.0.0.0:2375，立即删除该参数
+
+# 3. 检查可疑 Docker 镜像
+docker images | grep -i 'busybox\|alpine.*latest' 2>/dev/null
+
+# 4. iptables 封堵 Docker API 端口
+iptables -C INPUT -p tcp --dport 2375 -j DROP 2>/dev/null || \
+  iptables -A INPUT -p tcp --dport 2375 -j DROP
+```
+
+#### 11.4.4 应用层防护
 
 ```bash
 # 1. www 用户安全加固
@@ -1024,6 +1098,9 @@ systemctl enable fail2ban
 #!/bin/bash
 # node_security_baseline_check.sh — 节点安全基线快速检查
 echo "===== 安全基线检查 ====="
+
+echo "--- Docker API（最高优先级）---"
+ss -tlnp | grep -q 2375 && echo "🔴 Docker API 2375 暴露！立即关闭" || echo "✅ Docker API 安全"
 
 echo "--- SSH 配置 ---"
 grep -E '^(Port|PermitRootLogin|MaxAuthTries|PasswordAuthentication)' /etc/ssh/sshd_config
@@ -1291,6 +1368,7 @@ fi
 
 | 攻击类型 | 防守措施 | 检测方式 | 响应方式 | 脚本 |
 |:---|:---|:---|:---|:---|
+| **Docker API 暴露** ⚠️ | **禁止 TCP 监听** + iptables DROP 2375 + 删 busybox | `ss -tlnp \| grep 2375` + Docker 镜像审计 | 关闭 TCP + 删恶意镜像/容器 + 清 systemd | 手动 + baseline |
 | **Mirai 僵尸网络** | OUTPUT iptables + www 禁 shell + fail2ban | 对外 SSH 连接数监控 | 杀进程 + 清持久化 + 封 IP | `threat_cleaner.sh` |
 | **挖矿木马** | /tmp noexec + www 无 shell + 进程白名单 | CPU 100% + 可疑进程名 + 矿池端口 | 杀进程 + 删文件 + 清 crontab | `threat_scanner.sh --fix` |
 | **PHP 漏洞利用** | **升级 PHP** + disable_functions + Nginx 路径封堵 + WAF | WebShell 扫描 + 文件完整性 + 异常 PHP 日志 | 删 WebShell + 升级 + 加固目录权限 | `php_hardening.sh` |

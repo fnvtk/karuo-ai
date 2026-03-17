@@ -61,6 +61,7 @@ kr宝塔: qcWubCdlfFjS2b2DMT1lzPFaDfmv1cBT
 8. **执行形式强制顺序**：宝塔服务器上任何操作，**一律按「宝塔 API → SSH → TAT」顺序尝试**。能通过宝塔 API 完成的先用 API；API 不可用（超时、IP 校验失败等）再用 SSH 在机内执行；SSH 不可用再用腾讯云 TAT。不得跳过顺序。
 9. **前置检查（强制）**：每次对服务器做**修改类操作**（改配置、改站点、改 Node 项目、重启服务等）之前，**必须先检查目标项目及周边项目/应用**（如通过宝塔 API `get_project_list` 看 Node 项目状态、或 SSH 看进程与端口），确认修改不会导致其他应用不可用后再执行；执行后再次确认目标与周边状态正常。
 10. **PHP 5.6 / Discuz 防护（强制）**：发现 PHP 5.6 **必须升级**（至少 7.4）；Discuz 站点必须加固目录权限、Nginx 路径封堵、PHP disable_functions；www 用户 shell 设为 `/sbin/nologin` 并锁定密码。详见 Q6 及「分布式算力管控 SKILL §11.3」。
+11. **Docker API 安全（强制 · 最高优先级）**：Docker daemon **禁止** TCP 监听（`-H tcp://0.0.0.0:2375`），仅用 unix socket。iptables 必须 DROP 2375 端口。发现 `busybox:latest` 镜像立即删除并排查入侵。2026-03 KR 宝塔被入侵的真正根因就是 Docker API 暴露。详见「分布式算力管控 SKILL §11.1 类型五」。
 
 ---
 
