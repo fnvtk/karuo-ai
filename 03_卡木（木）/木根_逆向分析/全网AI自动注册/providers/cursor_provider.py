@@ -141,8 +141,12 @@ class CursorProvider(BaseProvider):
                     except Exception:
                         pass
                 log.info(f"  [4/6] 密码已填写 (Playwright)")
+                otp_selector = (
+                    'input[data-index="0"], [data-index="0"], '
+                    'input[maxlength="1"], input[inputmode="numeric"]'
+                )
                 try:
-                    page.wait_for_selector('input[data-index="0"], [data-index="0"]', state="visible", timeout=60000)
+                    page.wait_for_selector(otp_selector, state="visible", timeout=60000)
                 except Exception:
                     pass
                 code = self.email_service.wait_for_code(
@@ -152,8 +156,14 @@ class CursorProvider(BaseProvider):
                 if not code:
                     log.error(f"  [5/6] 验证码获取超时")
                     return None
+                otp_inputs = page.locator(
+                    'input[data-index], input[maxlength="1"], input[inputmode="numeric"]'
+                )
                 for i, digit in enumerate(str(code)):
-                    page.locator(f'input[data-index="{i}"], [data-index="{i}"]').first.fill(digit, timeout=8000)
+                    try:
+                        otp_inputs.nth(i).fill(digit, timeout=5000)
+                    except Exception:
+                        page.locator(f'input[data-index="{i}"]').first.fill(digit, timeout=5000)
                     time.sleep(0.15)
                 log.info(f"  [5/6] 验证码已输入: {code} (Playwright)")
                 time.sleep(4)
@@ -232,9 +242,19 @@ class CursorProvider(BaseProvider):
                 time.sleep(2)
                 _handle_turnstile(tab)
 
-            # Step 5: 等待验证码输入框出现后拉取邮件并输入
-            time.sleep(5)
-            otp_el = tab.ele("@data-index=0", timeout=45) or tab.ele("input[data-index='0']", timeout=5)
+            # Step 5: 等待验证码输入框出现后拉取邮件并输入（多种选择器兼容）
+            time.sleep(8)
+            otp_el = None
+            for _ in range(12):
+                otp_el = (
+                    tab.ele("@data-index=0", timeout=3)
+                    or tab.ele("input[data-index='0']", timeout=2)
+                    or tab.ele("input[maxlength='1']", timeout=2)
+                    or tab.ele("input[inputmode='numeric']", timeout=2)
+                )
+                if otp_el:
+                    break
+                time.sleep(2)
             if otp_el:
                 code = self.email_service.wait_for_code(
                     email, email_ctx,
@@ -244,11 +264,15 @@ class CursorProvider(BaseProvider):
                     log.error(f"  [5/6] 验证码获取超时")
                     return None
 
+                inputs = tab.eles("input[data-index]") or tab.eles("input[maxlength='1']") or tab.eles("input[inputmode='numeric']")
                 for i, digit in enumerate(str(code)):
-                    el = tab.ele(f"@data-index={i}", timeout=5) or tab.ele(f"input[data-index='{i}']", timeout=3)
-                    if el:
-                        el.input(digit)
-                        time.sleep(0.1)
+                    if i < len(inputs):
+                        inputs[i].input(digit)
+                    else:
+                        el = tab.ele(f"@data-index={i}", timeout=2) or tab.ele(f"input[data-index='{i}']", timeout=2)
+                        if el:
+                            el.input(digit)
+                    time.sleep(0.1)
                 log.info(f"  [5/6] 验证码已输入: {code}")
                 time.sleep(5)
             else:
