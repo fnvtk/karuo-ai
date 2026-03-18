@@ -404,7 +404,8 @@
 | 15  | 飞书             | [https://www.feishu.cn](https://www.feishu.cn)                         |                                                         |                |                                    |
 | 16  | v0.dev         | [https://v0.dev](https://v0.dev)                                       |                                                         |                |                                    |
 | 17  | Cursor         | [https://cursor.com](https://cursor.com)                               |                                                         |                |                                    |
-| 18  | （其他）           |                                                                        |                                                         |                |                                    |
+| 18  | **PokePay（虚拟信用卡）** | [https://app.pokepay.cc](https://app.pokepay.cc)                   | 手机 15880802661 / 邮箱 zhiqun@qq.com                       | `key123456`    | 虚拟 Visa/Master 卡，USDT 充值，邀请码 365888 |
+| 19  | （其他）           |                                                                        |                                                         |                |                                    |
 
 
 *密码列请在本机按 8.1 打开 Chrome 或钥匙串查看后填入；填完后本文件即成为「本机 + 网站」账号密码的集中调取文档。*
