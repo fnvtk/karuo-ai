@@ -10,6 +10,7 @@
 用法：
   python collect_chat_daily.py           # 仅收集今日，每日一次
   python collect_chat_daily.py --all     # 全量历史按修改日期分类（不写 stamp）
+  python collect_chat_daily.py --export-to <目录>   # 将全部 Agent 对话导出到指定目录（如 卡若Ai的文件夹）
 """
 
 import re
@@ -29,32 +30,43 @@ STAMP_FILE = STRUCTURED / "last_chat_collect_date.txt"
 PROCESSED_FILE = STRUCTURED / "processed_sessions.json"
 HEALTH_FILE = STRUCTURED / "memory_health.json"
 
-# 项目目录名 -> 工作台中文名（未列出的用目录名）
+# 项目目录名 -> 工作台中文名（未列出的用目录名）。导出时扫描本机 ~/.cursor/projects 下所有工作台。
 PROJECT_TO_WORKSPACE_CN = {
     "Users-karuo-Documents-AI": "卡若AI",
     "Users-karuo-Documents-AI-02": "卡若AI-02",
-    "Users-karuo-Documents-3-ai-code-workspace": "卡若AI工作区",
-    "Users-karuo-Documents-3-code-workspace": "开发工作区",
-    "Users-karuo-Documents-3-Synologo-NAs-code-workspace": "群晖NAS工作区",
-    "Users-karuo-Documents-3-Synologo-NAs2-code-workspace": "群晖NAS2工作区",
-    "Users-karuo-Documents-3-Synologo-NAs3-code-workspace": "群晖NAS3工作区",
-    "Users-karuo-Documents-3-mbti-code-workspace": "MBTI工作区",
-    "Users-karuo-Documents-3-soul-code-workspace": "Soul工作区",
-    "Users-karuo-Documents-3-soul": "Soul",
-    "Users-karuo-Documents-3-MBTI": "MBTI",
-    "Users-karuo-Documents-4": "文档4",
-    "Users-karuo-Documents-4-4-Web": "Web工作区",
+    "Users-karuo-Documents": "个人文档",
     "Users-karuo-Documents-1-3": "文档1-3",
     "Users-karuo-Documents-1-4": "文档1-4",
     "Users-karuo-Documents-2": "文档2",
+    "Users-karuo-Documents-2-AI": "文档2-AI",
     "Users-karuo-Documents-2-cunkebao-v3": "存客宝v3",
+    "Users-karuo-Documents-2-soul": "文档2-Soul",
     "Users-karuo-Documents-3": "文档3",
+    "Users-karuo-Documents-3-ai-code-workspace": "卡若AI工作区",
+    "Users-karuo-Documents-3-code-workspace": "开发工作区",
+    "Users-karuo-Documents-3-mbti-code-workspace": "MBTI工作区",
+    "Users-karuo-Documents-3-MBTI": "MBTI",
+    "Users-karuo-Documents-3-soul": "Soul",
+    "Users-karuo-Documents-3-soul-code-workspace": "Soul工作区",
+    "Users-karuo-Documents-3-Synologo-NAs-code-workspace": "群晖NAS工作区",
+    "Users-karuo-Documents-3-Synologo-NAs2-code-workspace": "群晖NAS2工作区",
+    "Users-karuo-Documents-3-Synologo-NAs3-code-workspace": "群晖NAS3工作区",
     "Users-karuo-Documents-1-3-soul": "Soul文档",
+    "Users-karuo-Documents-4": "文档4",
+    "Users-karuo-Documents-4-4-Web": "Web工作区",
+    "Users-karuo-Documents-4-Synologo-NAs": "文档4-群晖",
+    "Users-karuo-Documents-8": "文档8",
+    "Users-karuo-Documents-8-clawdbot": "文档8-clawdbot",
+    "Users-karuo-Documents-cunkebao": "存客宝",
+    "Users-karuo-Documents-New": "文档New",
     "Users-karuo-3-code-workspace": "开发3",
+    "Users-karuo-Library-Application-Support-Cursor-Workspaces-1770112432466-workspace-json": "Cursor工作区",
+    "Users-karuo-Library-Application-Support-Cursor-Workspaces-1767952329506-workspace-json": "Cursor工作区2",
+    "Users-karuo-Library-CloudStorage-SynologyDrive": "群晖云盘",
+    "Users-karuo-Library-CloudStorage-SynologyDrive-AI": "群晖云盘-AI",
+    "Users-karuo-Library-Mobile-Documents-com-apple-CloudDocs-Documents": "iCloud婼瑄",
     "Applications-Navicat-Premium-app": "Navicat",
     "Applications-Navicat-Premium-2-app": "Navicat2",
-    "Users-karuo-Library-Application-Support-Cursor-Workspaces-1770112432466-workspace-json": "Cursor工作区",
-    "Users-karuo-Library-CloudStorage-SynologyDrive": "群晖云盘",
 }
 
 # 关键词 -> Skill 下 对话记录 相对路径（以人为导向：01_卡资（金）等）
@@ -380,9 +392,74 @@ def run_all_history():
     print(f"[collect_chat_daily] 全量完成：共 {total} 个对话，按日期写入 {len(by_date)} 天。")
     return 0
 
+
+def run_export_to(export_base: str):
+    """将 Cursor 全部 Agent 对话导出到指定目录（如 卡若Ai的文件夹）。结构：<目录>/Cursor_Agent_对话/YYYY-MM-DD/<工作台>/<中文名>_<id>.txt"""
+    export_base = Path(export_base).resolve()
+    out_root = export_base / "Cursor_Agent_对话"
+    items = collect_all_transcripts()
+    if not items:
+        print("[collect_chat_daily] 未发现任何 Agent 对话文件，跳过导出。")
+        return 0
+    by_date = defaultdict(list)
+    for x in items:
+        by_date[x["modified"]].append(x)
+    total_copied = 0
+    by_workspace_total = defaultdict(int)
+    summary_lines = [
+        "# Cursor Agent 对话导出汇总（本机所有工作台）",
+        "",
+        f"> 导出时间：{now_ts()}",
+        "> 范围：本机 ~/.cursor/projects 下**所有工作台**的 agent-transcripts，不限于当前工作台。",
+        "",
+        "## 按日期",
+        "",
+        "| 日期 | 对话数 | 工作台 |",
+        "|:---|:---|:---|",
+    ]
+    for day_iso in sorted(by_date.keys()):
+        day_items = by_date[day_iso]
+        day_dir = out_root / day_iso
+        day_dir.mkdir(parents=True, exist_ok=True)
+        by_ws = defaultdict(list)
+        for item in day_items:
+            cn_title = get_chinese_title(item["path"])
+            safe_title = sanitize_filename(cn_title)
+            ws_cn = workspace_cn(item["project"])
+            dest_name = f"{safe_title}_{item['stem']}.txt"
+            proj_sub = day_dir / sanitize_filename(ws_cn)
+            proj_sub.mkdir(parents=True, exist_ok=True)
+            dest_file = proj_sub / dest_name
+            try:
+                copy_redacted(item["path"], dest_file)
+                total_copied += 1
+                by_workspace_total[ws_cn] += 1
+                by_ws[ws_cn].append(dest_name)
+            except Exception as e:
+                print(f"[collect_chat_daily] 导出失败 {item['path']}: {e}")
+        ws_list = ", ".join(sorted(by_ws.keys()))
+        summary_lines.append(f"| {day_iso} | {len(day_items)} | {ws_list} |")
+    summary_lines.extend([
+        "",
+        "## 统计",
+        f"- 总对话数：{len(items)}",
+        f"- 导出文件数：{total_copied}",
+        f"- 日期数：{len(by_date)}",
+        "",
+    ])
+    out_root.mkdir(parents=True, exist_ok=True)
+    (out_root / "导出汇总.md").write_text("\n".join(summary_lines), encoding="utf-8")
+    print(f"[collect_chat_daily] 导出完成：共 {total_copied} 个对话 -> {out_root}")
+    return 0
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] in ("--all", "-a", "all"):
         return run_all_history()
+    if len(sys.argv) > 2 and sys.argv[1] in ("--export-to", "-e"):
+        return run_export_to(sys.argv[2])
+    if len(sys.argv) == 2 and sys.argv[1].startswith("--export-to="):
+        return run_export_to(sys.argv[1].split("=", 1)[1])
     return run_daily_only()
 
 if __name__ == "__main__":

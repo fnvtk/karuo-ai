@@ -367,6 +367,7 @@ def main():
     parser.add_argument("--input", "-i", type=str, help="输入JSON文件路径")
     parser.add_argument("--output", "-o", type=str, help="输出HTML文件路径")
     parser.add_argument("--interactive", action="store_true", help="交互式输入")
+    parser.add_argument("--no-open", action="store_true", help="生成后不询问是否打开（用于脚本调用）")
     
     args = parser.parse_args()
     
@@ -404,8 +405,8 @@ def main():
     print(f"\n✅ 生成成功: {output_path}")
     print(f"📂 用浏览器打开查看效果")
     
-    # macOS自动打开
-    if sys.platform == "darwin":
+    # macOS自动打开（--no-open 时跳过，便于脚本调用）
+    if sys.platform == "darwin" and not getattr(args, "no_open", False):
         open_it = input("\n是否立即打开？(y/n): ")
         if open_it.lower() == "y":
             os.system(f'open "{output_path}"')

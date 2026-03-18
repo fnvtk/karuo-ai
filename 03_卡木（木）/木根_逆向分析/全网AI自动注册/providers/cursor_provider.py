@@ -1,9 +1,10 @@
 """
 Cursor 自动注册 Provider
-浏览器模式 — 使用 DrissionPage 自动填表 + Turnstile 绕过。
+优先 DrissionPage，失败时回退到 Playwright（兼容 Chromium 148+ / ARM Mac）。
 参考: github.com/ddCat-main/cursor-auto-register
 """
 
+import os
 import time
 import random
 import logging
@@ -18,6 +19,7 @@ log = logging.getLogger("auto_register")
 
 SIGNUP_URL = "https://authenticator.cursor.sh/sign-up"
 SETTINGS_URL = "https://www.cursor.com/settings"
+
 
 
 def _handle_turnstile(tab):
@@ -57,15 +59,21 @@ class CursorProvider(BaseProvider):
         self.browser_config = config.get("browser", {})
 
     def _create_browser(self):
+        # 参考 ddCat-main/cursor-auto-register browser_utils：auto_port() + headless()
         from DrissionPage import ChromiumPage, ChromiumOptions
         co = ChromiumOptions()
-        if self.browser_config.get("headless", True):
-            co.set_argument("--headless=new")
         co.set_argument("--disable-blink-features=AutomationControlled")
         co.set_argument("--disable-features=AutomationControlled")
         co.set_argument("--no-sandbox")
         co.set_argument("--disable-gpu")
+        co.set_argument("--disable-dev-shm-usage")
+        co.set_argument("--remote-allow-origins=*")
         co.set_argument("--window-size=1920,1080")
+        co.auto_port()
+        use_headless = self.browser_config.get("headless", True)
+        if use_headless:
+            co.set_argument("--headless=new")
+        co.headless(use_headless)
         co.set_pref("webgl.vendor", "NVIDIA Corporation")
         co.set_pref("webgl.renderer", "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060)")
         if self.browser_config.get("chrome_path"):
@@ -73,7 +81,109 @@ class CursorProvider(BaseProvider):
         proxy = self.config.get("proxy", {})
         if proxy.get("enabled"):
             co.set_proxy(f"{proxy['type']}://{proxy['host']}:{proxy['port']}")
+        co.set_retry(15, 2)
         return ChromiumPage(co)
+
+    def _register_with_playwright(
+        self, email: str, email_ctx: dict, password: str, first: str, last: str
+    ) -> Optional[AccountResult]:
+        """Playwright 备用路径（Chromium 148+ / ARM Mac 兼容）"""
+        try:
+            from playwright.sync_api import sync_playwright
+        except ImportError:
+            log.warning("[Cursor] 未安装 playwright，跳过 Playwright 回退")
+            return None
+        signup_url = self.provider_config.get("signup_url", SIGNUP_URL)
+        settings_url = self.provider_config.get("settings_url", SETTINGS_URL)
+        headless = self.browser_config.get("headless", True)
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=headless, args=["--no-sandbox"])
+            try:
+                page = browser.new_page()
+                page.goto(signup_url, wait_until="domcontentloaded", timeout=45000)
+                time.sleep(5)
+                log.info(f"  [1/6] 打开注册页面 (Playwright)")
+                page.wait_for_selector('input', state="visible", timeout=25000)
+                time.sleep(1)
+                inputs = page.locator('input[type="text"], input[type="email"], input:not([type])')
+                n = inputs.count()
+                if n >= 3:
+                    inputs.nth(0).fill(first)
+                    time.sleep(0.15)
+                    inputs.nth(1).fill(last)
+                    time.sleep(0.15)
+                    inputs.nth(2).fill(email)
+                else:
+                    page.locator('input[name="first_name"], input[name="firstName"]').first.fill(first)
+                    time.sleep(0.15)
+                    page.locator('input[name="last_name"], input[name="lastName"]').first.fill(last)
+                    time.sleep(0.15)
+                    page.locator('input[name="email"], input[type="email"]').first.fill(email)
+                time.sleep(0.5)
+                page.locator('button[type="submit"], input[type="submit"], [type="submit"]').first.click()
+                time.sleep(3)
+                log.info(f"  [2/6] 已提交基本信息 (Playwright)")
+                try:
+                    cf = page.frame_locator("iframe[src*='turnstile'], iframe[title*='Widget']").first
+                    cf.locator("input").click(timeout=5000)
+                    time.sleep(2)
+                except Exception:
+                    pass
+                log.info(f"  [3/6] Turnstile 处理 (Playwright)")
+                pwd_el = page.locator('input[name="password"]')
+                if pwd_el.count() > 0:
+                    pwd_el.fill(password)
+                    time.sleep(0.5)
+                    page.click('button[type="submit"]')
+                    time.sleep(2)
+                    try:
+                        cf.locator("input").click(timeout=3000)
+                    except Exception:
+                        pass
+                log.info(f"  [4/6] 密码已填写 (Playwright)")
+                try:
+                    page.wait_for_selector('input[data-index="0"], [data-index="0"]', state="visible", timeout=60000)
+                except Exception:
+                    pass
+                code = self.email_service.wait_for_code(
+                    email, email_ctx,
+                    timeout=self.config.get("registration", {}).get("otp_timeout", 120),
+                )
+                if not code:
+                    log.error(f"  [5/6] 验证码获取超时")
+                    return None
+                for i, digit in enumerate(str(code)):
+                    page.locator(f'input[data-index="{i}"], [data-index="{i}"]').first.fill(digit, timeout=8000)
+                    time.sleep(0.15)
+                log.info(f"  [5/6] 验证码已输入: {code} (Playwright)")
+                time.sleep(4)
+                page.goto(settings_url, wait_until="domcontentloaded", timeout=20000)
+                time.sleep(3)
+                cookies = page.context.cookies()
+                token, user = "", ""
+                for c in cookies:
+                    if c.get("name") == "WorkosCursorSessionToken":
+                        val = c.get("value", "")
+                        parts = val.split("%3A%3A")
+                        if len(parts) >= 2:
+                            user, token = parts[0], parts[1]
+                        break
+                if token:
+                    log.info(f"  [6/6] Token 提取成功 (Playwright)! user={user[:16]}...")
+                    return AccountResult(
+                        provider="cursor",
+                        email=email,
+                        password=password,
+                        api_key="",
+                        access_token=token,
+                        refresh_token="",
+                        account_id=user,
+                        name=f"{first} {last}",
+                        extra={"cookie_value": f"{user}%3A%3A{token}"},
+                    )
+            finally:
+                browser.close()
+        return None
 
     def register(self) -> Optional[AccountResult]:
         email, email_ctx = self.email_service.generate_email()
@@ -122,8 +232,9 @@ class CursorProvider(BaseProvider):
                 time.sleep(2)
                 _handle_turnstile(tab)
 
-            # Step 5: 获取并输入验证码
-            otp_el = tab.ele("@data-index=0", timeout=15)
+            # Step 5: 等待验证码输入框出现后拉取邮件并输入
+            time.sleep(5)
+            otp_el = tab.ele("@data-index=0", timeout=45) or tab.ele("input[data-index='0']", timeout=5)
             if otp_el:
                 code = self.email_service.wait_for_code(
                     email, email_ctx,
@@ -133,13 +244,13 @@ class CursorProvider(BaseProvider):
                     log.error(f"  [5/6] 验证码获取超时")
                     return None
 
-                for i, digit in enumerate(code):
-                    el = tab.ele(f"@data-index={i}", timeout=5)
+                for i, digit in enumerate(str(code)):
+                    el = tab.ele(f"@data-index={i}", timeout=5) or tab.ele(f"input[data-index='{i}']", timeout=3)
                     if el:
                         el.input(digit)
                         time.sleep(0.1)
                 log.info(f"  [5/6] 验证码已输入: {code}")
-                time.sleep(3)
+                time.sleep(5)
             else:
                 log.warning(f"  [5/6] 未检测到验证码输入框，可能已自动跳过")
 
@@ -177,7 +288,17 @@ class CursorProvider(BaseProvider):
                 return None
 
         except Exception as e:
-            log.error(f"[Cursor] 注册异常: {e}")
+            err_msg = str(e)
+            if any(x in err_msg for x in ("连接失败", "404", "Handshake", "timeout", "getFrameTree")):
+                log.warning(f"[Cursor] DrissionPage 连接失败，尝试 Playwright 回退: {err_msg[:80]}")
+                try:
+                    return self._register_with_playwright(
+                        email, email_ctx, password, first, last
+                    )
+                except Exception as pw_e:
+                    log.error(f"[Cursor] Playwright 回退失败: {pw_e}")
+            else:
+                log.error(f"[Cursor] 注册异常: {e}")
             return None
         finally:
             if browser:

@@ -2,7 +2,7 @@
 """
 飞书运营报表 · Soul 派对效果数据写入（按场次竖列、数字类型、不填比率）
 - 只填前 10 项：主题、时长、Soul推流人数、进房人数、人均时长、互动数量、礼物、灵魂力、增加关注、最高在线
-- 推流进房率、1分钟进多少人、加微率 由表格公式自动计算，导入时不填
+- 推流人数为 0 时不填（留空），有数据才填；推流进房率、1分钟进多少人、加微率 由表格公式自动计算，导入时不填
 - 数值按数字类型写入（非文本），便于表格公式与图表
 """
 import os
@@ -79,6 +79,20 @@ PARTY_VIDEO_LINKS = {
     '119': 'https://cunkebao.feishu.cn/minutes/obcnbrc925796a6u4c667931',
     '124': 'https://cunkebao.feishu.cn/minutes/obcne7q5dto13494k9a56881',
     '126': 'https://cunkebao.feishu.cn/minutes/obcnha23t28fxfq8g8h5392d',
+    '127': 'https://cunkebao.feishu.cn/minutes/obcnhybw322112tad6916v8r',
+}
+
+# 团队会议（飞书妙记）链接：场次 → 完整 URL，填表时写入「团队会议」行对应列（row 31）
+TEAM_MEETING_LINKS = {
+    '113': 'https://cunkebao.feishu.cn/minutes/obcn6yjq6866c3gl4ibd72vr',
+    '114': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcne7k3msifq',
+    '116': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcn81825en52vt3eqoo482e',
+    '117': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcn9phnds9a96ma6t8ixa3z',
+    '118': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcnaee1h83l1s169e3a18qp',
+    '119': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcnbrc925796a6u4c667931',
+    '124': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcne7k3msifq',
+    '126': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcng991jg3114b2nj99548d',
+    '127': 'https://cunkebao.feishu.cn/minutes/obcnhxs8usi8c7n27a9f66ux',
 }
 
 # 小程序当日运营数据：日期号 → {访问次数, 访客, 交易金额}，填表时自动写入对应日期列
@@ -167,6 +181,24 @@ def _write_party_video_link(token, spreadsheet_token, sheet_id, vals, col_letter
         print(f'✅ 已写入派对录屏链接 → {col_letter}{row_num}')
     else:
         print(f'⚠️ 派对录屏链接写入未成功: {code} {body}')
+
+
+def _write_team_meeting_link(token, spreadsheet_token, sheet_id, vals, col_letter, session):
+    """若有该场次的团队会议链接，写入「团队会议」行对应列（如 S31）。"""
+    link = (TEAM_MEETING_LINKS or {}).get(session, '').strip()
+    if not link:
+        return
+    row_num = _find_row_for_keyword(vals, ['团队会议'])
+    if row_num is None:
+        row_num = 31
+    rng = f"{sheet_id}!{col_letter}{row_num}:{col_letter}{row_num}"
+    code, body = update_sheet_range(token, spreadsheet_token, rng, [[link]], value_input_option='USER_ENTERED')
+    if code == 401 or body.get('code') in (99991677, 99991663):
+        return
+    if code == 200 and body.get('code') in (0, None):
+        print(f'✅ 已写入团队会议链接 → {col_letter}{row_num}')
+    else:
+        print(f'⚠️ 团队会议链接写入未成功: {code} {body}')
 
 
 def load_token():
@@ -371,7 +403,12 @@ def main():
         print('❌ 无法获取飞书 Token，请先运行 auto_log.py 完成授权')
         sys.exit(1)
     raw = (row + [None] * EFFECT_COLS)[:EFFECT_COLS]
-    values = [_to_cell_value(raw[0])] + [_to_cell_value(raw[i]) for i in range(1, EFFECT_COLS)]
+    # 推流人数（第2项）为 0 时留空不填，有数据才填
+    def _cell(i):
+        if i == 1 and (raw[i] == 0 or raw[i] is None):
+            return ''
+        return _to_cell_value(raw[i])
+    values = [_cell(i) for i in range(EFFECT_COLS)]
     spreadsheet_token = WIKI_NODE_OR_SPREADSHEET_TOKEN
     month = SESSION_MONTH.get(session, 2)
     sheet_id = get_sheet_id_by_month(token, spreadsheet_token, month)
@@ -460,6 +497,7 @@ def main():
                 _write_session_label(token, spreadsheet_token, sheet_id, col_letter, session)
                 _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter, month=month)
                 _write_party_video_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
+                _write_team_meeting_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
                 _maybe_send_group(session, raw)
                 return
             print(f'⚠️ 写入成功但校验未通过：{msg}')
@@ -485,6 +523,7 @@ def main():
                     _write_session_label(token, spreadsheet_token, sheet_id, col_letter, session)
                     _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter, month=month)
                     _write_party_video_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
+                    _write_team_meeting_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
                     _maybe_send_group(session, raw)
                     return
                 print(f'⚠️ 逐格写入成功但校验未通过：{msg}')
