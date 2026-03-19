@@ -82,6 +82,7 @@ cd "/Users/karuo/Documents/开发/2、私域银行/神射手" && docker compose 
 ```
 
 - 玩值电竞网站**不用 pnpm dev**，一律在神射手目录用 Docker 启动；访问：http://localhost:3001
+- **不要在玩值电竞App 目录执行 docker compose up**，玩值已并入 website 编排，仅神射手目录起一份，避免重复
 - 若仅需本机开发调试（非对外访问），可在玩值电竞App 目录 `pnpm dev`，但对外/正式访问以 Docker 为准
 
 ---

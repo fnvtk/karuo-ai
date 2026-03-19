@@ -18,7 +18,7 @@
 | 项目名 | 容器名 | 端口 | 编排位置 | 说明 |
 |:---|:---|:--:|:---|:---|
 | 神射手 | website-shensheshou | **3117** | `开发/2、私域银行/神射手/docker-compose.yml` | 与玩值电竞、OpenClaw、n8n 同文件启动 |
-| 玩值电竞 Web | website-wanzhi-web | **3001** | 同上 | 同上 |
+| 玩值电竞 Web | website-wanzhi-web | **3001** | 同上 | 同上；**仅此一处部署**，玩值电竞App 目录不再单独编排 |
 | n8n | website-n8n | **5678** | 同上 | 工作流自动化，镜像 docker.n8n.io/n8nio/n8n |
 | 抖音解析 API | website-douyin-api | **3099** | 同上 | 供 n8n「一键下载抖音视频文案」工作流调用 |
 | OpenClaw 网关 | website-openclaw-gateway | **18789** / **18790** | 同上 | 镜像 openclaw:local 需在 OpenClaw 项目内先 build；配置用 `openclaw/.env` |
@@ -66,3 +66,4 @@
 | 2026-03-01 | 开发端口与部署端口隔离，各项目开发端口见「项目与端口注册表」 |
 | 2026-03-01 | OpenClaw 网关迁入 website 编排，容器名 website-openclaw-gateway，端口 18789/18790；启动同神射手目录 |
 | 2026-03-04 | n8n 归入 website 编排，容器名 website-n8n，端口 5678；神射手目录 docker compose 启动 |
+| 2026-03-19 | 玩值电竞仅保留神射手编排一处部署，玩值电竞App 目录不再单独 docker compose 起站 |

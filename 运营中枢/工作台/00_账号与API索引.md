@@ -100,6 +100,18 @@
 | 说明           | 必须用 API 或 Web 创建仓库才能显示在界面；禁止 SSH mkdir+init；推送统一用 HTTPS                                                                                                                     |
 
 
+### api123.icu（UnifiedLLM 中转，阿猫 Mac 默认直连）
+
+| 项        | 值                                                                 |
+| --------- | ------------------------------------------------------------------ |
+| 控制台/取 Key | [https://api123.icu/console](https://api123.icu/console)          |
+| 使用教程      | [https://api123.icu/about](https://api123.icu/about)（图文在页面下方） |
+| Base URL  | `https://api123.icu`（部分客户端需 `https://api123.icu/v1`，按软件要求） |
+| API Key（阿猫 Mac 直连用） | `sk-h7VW10iTSSXo6xJXe44nI1vUhsEcG3H8Z9XyFmWABvhaD4ZW`             |
+| 默认模型     | `claude-sonnet-4-6`                                               |
+| 说明        | 阿猫 Mac 上 Cursor/Claude Code/LobeChat 等默认 API 填此 Base URL + 上表 Key；详见《Claude_Code_api123配置说明》 |
+
+
 ---
 
 ## 二、数据库（明文）
