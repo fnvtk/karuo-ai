@@ -108,8 +108,53 @@ echo "[$(date)] sync_quwanzhi_ssl done" >> /var/log/sync_quwanzhi_ssl.log
 
 ## 4. 非 quwanzhi.com 域名（lkdie.com / lytiao.com）
 
-- 若站点使用 `*.lkdie.com`、`*.lytiao.com` 等，需在宝塔「网站」→ 对应站点「SSL」中单独申请/续签或使用自有证书。
-- 当前自动流程仅覆盖「解析到本机且 server_name 为 *.quwanzhi.com」的站点。
+### 4.1 现状（2026-03-19 更新）
+
+- `*.lkdie.com` 和 `*.lytiao.com` 通配符证书已通过 **acme.sh + 阿里云 DNS API（DNS-01 验证）** 申请。
+- 证书存放路径：`/root/.acme.sh/*.lkdie.com_ecc/` 和 `/root/.acme.sh/*.lytiao.com_ecc/`
+- 域名 DNS 托管在**阿里云（hichina.com）**，acme.sh 使用 `Ali_Key`/`Ali_Secret` 进行 DNS-01 验证。
+- 自动续签：已创建 `/etc/cron.daily/acme_renew`（每日执行 `acme.sh --cron` + 部署脚本）。
+
+### 4.2 使用 lkdie.com / lytiao.com 通配符的站点
+
+| 站点 | 域名 | 使用证书 |
+|------|------|----------|
+| www.lkdie.com | www.lkdie.com | `*.lkdie.com` |
+| s.lkdie.com | s.lkdie.com | `*.lkdie.com` |
+| feishu.lkdie.com | feishu.lkdie.com | `*.lkdie.com` |
+| aisy.lytiao.com | aisy.lytiao.com | `*.lytiao.com` |
+| dygq1.lytiao.com | dygq1.lytiao.com | `*.lytiao.com`（DNS 指向 1.12.230.80，需注意） |
+| zhijipro.lytiao.com | zhijipro.lytiao.com | `*.lytiao.com` |
+| word | word.lkdie.com | `*.lytiao.com` |
+
+### 4.3 方案 D：SSH 一键修复 lkdie.com / lytiao.com（过期时执行）
+
+```bash
+# 续签 lkdie.com + lytiao.com 通配符证书
+sshpass -p 'Zhiqun1984' ssh -o StrictHostKeyChecking=no -p 22022 root@43.139.27.93 '
+/root/.acme.sh/acme.sh --renew -d "*.lkdie.com" -d "lkdie.com" --ecc --force 2>&1 | tail -5
+/root/.acme.sh/acme.sh --renew -d "*.lytiao.com" -d "lytiao.com" --ecc --force 2>&1 | tail -5
+'
+
+# 部署到各站点
+sshpass -p 'Zhiqun1984' ssh -o StrictHostKeyChecking=no -p 22022 root@43.139.27.93 '
+CERT_DIR="/www/server/panel/vhost/cert"
+LKDIE_SRC="/root/.acme.sh/*.lkdie.com_ecc"
+LYTIAO_SRC="/root/.acme.sh/*.lytiao.com_ecc"
+for site in www.lkdie.com s.lkdie.com feishu.lkdie.com; do
+  [ -d "$CERT_DIR/$site" ] && cp -f "$LKDIE_SRC/fullchain.cer" "$CERT_DIR/$site/fullchain.pem" && cp -f "$LKDIE_SRC/*.lkdie.com.key" "$CERT_DIR/$site/privkey.pem"
+done
+for site in aisy.lytiao.com dygq1.lytiao.com zhijipro.lytiao.com word; do
+  [ -d "$CERT_DIR/$site" ] && cp -f "$LYTIAO_SRC/fullchain.cer" "$CERT_DIR/$site/fullchain.pem" && cp -f "$LYTIAO_SRC/*.lytiao.com.key" "$CERT_DIR/$site/privkey.pem"
+done
+nginx -t && nginx -s reload && echo "lkdie+lytiao SSL synced and nginx reloaded"
+'
+```
+
+### 4.4 注意事项
+
+- `dygq1.lytiao.com` DNS 解析到 `1.12.230.80`（另一台服务器），本服务器上的证书已部署但实际不生效，需在目标服务器上也部署证书。
+- lkdie.com / lytiao.com 证书使用 acme.sh（非宝塔内置续签），续签周期独立。
 
 ---
 
@@ -124,4 +169,7 @@ echo "[$(date)] sync_quwanzhi_ssl done" >> /var/log/sync_quwanzhi_ssl.log
 
 ---
 
-**总结**：以后碰到 kr宝塔 SSL 到期，优先执行 **2.1 方案 A** 两条命令（重置冷却 + 通配符覆盖）；长期可加 **2.2 方案 B** 每周同步 + 确保宝塔「续签Let's Encrypt证书」每日运行。
+**总结**：以后碰到 kr宝塔 SSL 到期：
+- **quwanzhi.com**：执行 **2.1 方案 A**（重置冷却 + 通配符覆盖）
+- **lkdie.com / lytiao.com**：执行 **4.3 方案 D**（acme.sh 续签 + 部署到站点）
+- **长期**：方案 B 每周同步 + `/etc/cron.daily/acme_renew` 自动续签
