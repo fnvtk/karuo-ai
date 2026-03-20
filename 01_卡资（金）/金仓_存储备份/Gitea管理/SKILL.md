@@ -55,6 +55,26 @@ git push -u gitea main
 
 ---
 
+## 四（续）、添加仓库协作者（拉取+推送权限）
+
+为仓库添加协作者、赋予**写权限**（pull + push）。协作者必须**已在 Gitea 注册**，按**用户名**添加。
+
+```bash
+# permission: read=只读拉取, write=拉取+推送, admin=完全权限
+curl -u "fnvtk:zhiqun1984" -X PUT "http://open.quwanzhi.com:3000/api/v1/repos/fnvtk/仓库名/collaborators/用户名" \
+  -H "Content-Type: application/json" -d '{"permission":"write"}'
+```
+
+示例（karuo-ai）：
+```bash
+curl -u "fnvtk:zhiqun1984" -X PUT "http://open.quwanzhi.com:3000/api/v1/repos/fnvtk/karuo-ai/collaborators/用户名" \
+  -H "Content-Type: application/json" -d '{"permission":"write"}'
+```
+
+> API 认证建议使用小写密码 `zhiqun1984`（与推送 HTTPS 一致）。
+
+---
+
 ## 五、已纳入管理的仓库（界面可见）
 
 | 仓库 | Gitea 地址 |

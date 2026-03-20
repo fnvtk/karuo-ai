@@ -464,6 +464,7 @@ Node 项目批量启动、502 修复、EADDRINUSE 等均按主 Skill 操作。SS
 | `宝塔api接口文档.md` | 宝塔API完整接口说明 | `./references/` |
 | `端口配置表.md` | 完整端口分配表 | `./references/` |
 | `常见问题手册.md` | 问题解决方案大全 | `./references/` |
+| `腾讯云_站内信安全消息转发邮箱配置.md` | 站内信/安全消息转发到指定邮箱（消息接收人+消息订阅） | `./references/` |
 | `部署配置模板.md` | JSON配置文件模板 | `./references/` |
 | `系统架构说明.md` | 完整架构图和流程图 | `./references/` |
 

@@ -24,6 +24,17 @@ python qq_mail_fetch.py --limit 50
 python qq_mail_fetch.py --days 7 --limit 20
 ```
 
+## Boss 直聘简历附件批量下载
+
+将邮箱中「Boss直聘」相关邮件的所有附件（简历等）下载到本机「下载」目录下的 `Boss直聘简历` 文件夹：
+
+```bash
+python3 download_boss_zhipin_resumes.py           # 全部
+python3 download_boss_zhipin_resumes.py --days 365  # 仅最近一年（更快）
+```
+
+会扫描收件箱 + 垃圾箱，筛选主题/发件人含「Boss」「直聘」「zhipin」「博聘」的邮件，输出到 `~/Downloads/Boss直聘简历/`。
+
 ## 登录失败排查
 
 若出现 `Login fail`，请检查：

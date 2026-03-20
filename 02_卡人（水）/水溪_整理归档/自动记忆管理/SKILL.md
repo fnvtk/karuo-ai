@@ -19,9 +19,9 @@ updated: "2026-02-16"
 ## 🎯 核心功能
 
 ### 1. 自动读取记忆
-- 每次对话开始时，自动读取 `/Users/karuo/Documents/个人/记忆.md`
-- 读取分类记忆目录下的所有文档
-- 将记忆内容作为上下文，指导AI行为
+- 每次对话开始时，自动读取 `/Users/karuo/Documents/个人/1、卡若：本人/记忆.md`（唯一记忆源）
+- 可选从 **MongoDB** 调取：库 `karuo_site`，集合 `记忆条目`（中文字段、分类清晰），便于对话中按分类/标签/关键词/最近 N 条快速检索
+- 将记忆内容作为上下文，指导 AI 行为
 
 ### 2. 自动识别优质内容
 识别以下类型的优质内容：
@@ -64,17 +64,39 @@ updated: "2026-02-16"
 ### 手动触发
 用户说：`记住这个` `存入记忆` `更新记忆`
 
+### 从 MongoDB 调取记忆（对话中快速检索）
+记忆已同步到唯一 MongoDB（`karuo_site.记忆条目`），可用以下命令在对话中按需调取：
+
+| 需求 | 命令 |
+|:---|:---|
+| 统计 | `python3 记忆系统/query_memory.py --stats` |
+| 最近 N 条 | `python3 记忆系统/query_memory.py --最近 20` |
+| 按分类 | `python3 记忆系统/query_memory.py --分类 固定偏好` |
+| 按标签 | `python3 记忆系统/query_memory.py --标签 规则` |
+| 按日期 | `python3 记忆系统/query_memory.py --日期 2026-03-15` |
+| 关键词 | `python3 记忆系统/query_memory.py --关键词 飞书` |
+
+脚本路径：`02_卡人（水）/水溪_整理归档/记忆系统/query_memory.py`。同步 记忆.md → MongoDB：`python3 sync_memory_to_mongo.py`（全量）、`--dry` 仅解析不写入。
+
 ---
 
 ## 🔧 技术实现
 
-### 核心脚本
-`scripts/memory_manager.py` - 记忆管理核心逻辑
+### 核心脚本与 MongoDB
 
-**主要功能**：
+| 脚本/模块 | 用途 |
+|:---|:---|
+| `scripts/memory_manager.py` | 记忆管理：读 记忆.md、分类、写入 记忆.md |
+| 记忆系统/`memory_mongo.py` | MongoDB 读写：库 `karuo_site`，集合 `记忆条目`（中文字段） |
+| 记忆系统/`sync_memory_to_mongo.py` | 将 记忆.md 解析后同步到 MongoDB（去重） |
+| 记忆系统/`query_memory.py` | 按分类/标签/日期/关键词/最近 N 条查询，输出中文易读 |
+
+**MongoDB 记忆条目**：与 记忆.md 对应；分类为「固定偏好」「近期目标」「每日沉淀」，标签为规则、原则、项目、技术、人脉、工具、读书笔记等。对话中需要快速调取时，可执行 `python3 query_memory.py --最近 20` 或 `--关键词 飞书`、`--分类 固定偏好` 等。
+
+**主要功能**（memory_manager.py）：
 1. `read_memory()` - 读取所有记忆文档
 2. `classify_content()` - 使用本地模型分类内容
-3. `save_memory()` - 保存到对应位置
+3. `save_memory()` - 保存到对应位置（记忆.md）；同步到 MongoDB 需另跑 `sync_memory_to_mongo.py` 或由调用方双写）
 4. `format_entry()` - 格式化记忆条目
 
 ### 调用示例

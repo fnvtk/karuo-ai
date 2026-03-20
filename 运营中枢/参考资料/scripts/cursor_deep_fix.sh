@@ -2,16 +2,28 @@
 # Cursor 深度修复脚本（解决反复崩溃 / code 5 / Reopen 弹窗）
 # 使用：Cmd+Q 完全退出 Cursor → 执行本脚本 → 重新打开 Cursor
 # 说明见：运营中枢/参考资料/Cursor闪退排查_20260304.md
+#
+# ⚠️ 重要：本脚本会移走整个 state.vscdb（当 >200MB 时），
+#    因此会清掉【所有 Agent 列表】和【所有聊天对话记录】。
+#    若不能接受丢失对话，请改用 cursor_slim_db.sh（只清缓存，保留全部对话）。
 
 set -euo pipefail
 
 CURSOR_SUPPORT="$HOME/Library/Application Support/Cursor"
 TRASH_DIR="$HOME/.Trash/cursor_cleanup_$(date +%Y%m%d_%H%M%S)"
 
-# ── 检查 Cursor 是否在运行 ──
-if pgrep -f "Cursor.app" >/dev/null 2>&1; then
-  echo "⚠️  Cursor 正在运行！请先 Cmd+Q 完全退出后再执行。"
-  exit 1
+# ── 若 Cursor 在运行则先强制退出 Cursor 及所有相关进程 ──
+if pgrep -f "Cursor" >/dev/null 2>&1; then
+  echo "🛑 检测到 Cursor 正在运行，正在强制退出 Cursor 及相关进程..."
+  killall Cursor 2>/dev/null || true
+  sleep 3
+  pkill -9 -f "Cursor" 2>/dev/null || true
+  sleep 2
+  if pgrep -f "Cursor" >/dev/null 2>&1; then
+    echo "⚠️  无法完全退出，请从「活动监视器」中手动结束所有 Cursor 相关进程后重试。"
+    exit 1
+  fi
+  echo "   ✅ Cursor 已退出，继续执行..."
 fi
 
 echo "🔧 Cursor 深度修复开始..."

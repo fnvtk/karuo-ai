@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>卡若AI · 每次对话逻辑流程图</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    body {
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      margin: 24px;
+      background: #fafafa;
+      color: #1a1a1a;
+    }
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #666;
+      font-size: 0.9rem;
+      margin-bottom: 24px;
+    }
+    .mermaid {
+      background: #fff;
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+    .note {
+      margin-top: 24px;
+      padding: 12px 16px;
+      background: #f0f7ff;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <h1>卡若AI · 每次对话逻辑流程图</h1>
+  <p class="subtitle">记忆接入 MongoDB 后的完整流程（更新后）</p>
+
+  <div class="mermaid">
+flowchart TB
+    A[对话开始] --> B[读 BOOTSTRAP]
+    B --> C[读 SKILL_REGISTRY]
+    C --> D[读 记忆.md]
+    D --> E{需补充记忆?}
+    E -->|是| F[query_memory 调取 MongoDB]
+    E -->|否| G[技能匹配]
+    F --> G
+    G --> H[热技能速查或全表]
+    H --> I[读 SKILL.md]
+    I --> J[思考拆解 MAX Mode]
+    J --> K[执行]
+    K --> L{对话中需调取记忆?}
+    L -->|是| M[query_memory]
+    L -->|否| N[继续]
+    M --> N
+    N --> O{写入新记忆?}
+    O -->|是| P[冲突检测]
+    P --> Q[写 记忆.md]
+    Q --> R[可选 同步到 MongoDB]
+    O -->|否| S[两轮验证]
+    R --> S
+    S --> T[复盘五块]
+    T --> U[对话结束]
+    U --> V[可选 归档 Gitea 飞书]
+  </div>
+
+  <p style="margin-top:16px;font-weight:bold;">记忆检索顺序（按需时依次查找）</p>
+  <div class="mermaid">
+flowchart LR
+    W1[CURRENT_STATE] --> W2[任务结果卡] --> W3[记忆.md] --> W4[MongoDB记忆条目] --> W5[对话归档]
+  </div>
+
+  <p style="margin-top:24px;font-weight:bold;">复盘五块（带图标 · 每块必写）</p>
+  <div class="mermaid">
+flowchart LR
+    R1["🎯 目标·结果·达成率"] --> R2["📌 过程"] --> R3["💡 反思"] --> R4["📝 总结"] --> R5["▶ 下一步执行"]
+  </div>
+  <div class="note" style="margin-top:8px;">
+    <strong>复盘格式</strong>：标题 <code>[卡若复盘]（YYYY-MM-DD HH:mm）</code>，下接五块，每块<strong>图标 + 小标题</strong>。<br>
+    🎯 目标+结果+达成率（≤30字） → 📌 过程 1 2 3 → 💡 反思 1～3 点 → 📝 总结 → ▶ 下一步执行（关联未完成项）。详见 <code>卡若复盘格式_固定规则.md</code>。
+  </div>
+
+  <div class="note">
+    <strong>记忆检索顺序</strong>（按需时按此顺序查找）：① CURRENT_STATE → ② 任务结果卡 → ③ 记忆.md → ④ MongoDB 记忆条目（query_memory，不可用时降级读 记忆.md）→ ⑤ daily_digest / ⑥ 对话归档（MongoDB 实时读，不可用时用 fallback）/ archive。<br>
+    <strong>卡若 AI 唯一数据库</strong>：karuo_site（记忆条目、对话记录、消息内容）。聊天记录以 MongoDB 为主、实时调用；context_recall 不可用时读 fallback/recent_chats_fallback.json。
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'neutral',
+      flowchart: {
+        useMaxWidth: true,
+        htmlLabels: true,
+        curve: 'basis'
+      }
+    });
+  </script>
+</body>
+</html>

@@ -32,6 +32,7 @@
 | MCP/连接MCP | `02_卡人（水）/水桥_平台对接/MCP管理/SKILL.md` |
 | Soul运营报表 | `02_卡人（水）/水桥_平台对接/飞书管理/运营报表_SKILL.md` |
 | 项目管理/卡若创业派对 | `02_卡人（水）/水岸_项目管理/SKILL.md` |
+| 聊天记录/对话存储/聊天归档 | `01_卡资（金）/金仓_存储备份/聊天记录管理/SKILL.md` |
 
 ## 四、MAX Mode（默认）
 
@@ -60,7 +61,9 @@
 
 ## 六、记忆
 
-- **检索顺序**：① CURRENT_STATE.md → ② 任务结果卡 structured/tasks/ → ③ 记忆.md → ④ daily_digest + agent_results → ⑤ 对话归档 → ⑥ archive/
+- **检索顺序**：① CURRENT_STATE.md → ② 任务结果卡 structured/tasks/ → ③ 记忆.md → ④ **MongoDB 记忆条目**（karuo_site.记忆条目，按分类/标签/关键词/最近 N 条调取；**不可用时 query_memory 自动降级为读 记忆.md**）→ ⑤ daily_digest + agent_results → ⑥ **对话归档**（MongoDB 对话记录/消息内容，**实时从 MongoDB 读取**；不可用时用最近对话本地 fallback）→ ⑦ archive/
+- **卡若 AI 唯一数据库**：本机调用一律使用 **karuo_site**（唯一 MongoDB 27017），含记忆条目、对话记录、消息内容等；聊天记录不依赖 Cursor 本地库，以 MongoDB 为主、归档后同步写 fallback。
+- **MongoDB 记忆**：记忆.md 可同步至唯一 MongoDB（`python3 记忆系统/sync_memory_to_mongo.py`）；对话中快速调取用 `python3 记忆系统/query_memory.py --最近 20` 或 `--关键词 xxx`、`--分类 固定偏好`。详见自动记忆管理 SKILL。
 - **写入前冲突检测**：`python memory_conflict_check.py "内容"`
 - **记忆路径**：`/Users/karuo/Documents/个人/1、卡若：本人/记忆.md`（单文件，以卡若角色参与）
 

@@ -38,7 +38,7 @@
 |:---|:---|
 | **KR / KR_*** | 神射手 用户资产、估值等 |
 | **wanzhi_esports** | 玩值电竞 App（网站、API） |
-| **karuo_site** | 卡若ai网站（官网与控制台全量数据：技能、网关、工作流、任务、用户、前端/后端配置等） |
+| **karuo_site** | 卡若ai网站（官网与控制台全量数据）；**卡若 AI 主库**：记忆条目、**对话记录**、**消息内容**（聊天记录一律存此库、实时调用；MongoDB 不可用时记忆降级 记忆.md、聊天降级 fallback/recent_chats_fallback.json） |
 | 其他业务库 | 按需在该实例下新建，不另起 MongoDB 容器 |
 
 ---
@@ -51,6 +51,23 @@
 
 ---
 
+## 数据恢复与正确挂载（必读）
+
+**唯一数据目录**：宿主机 `/Users/karuo/数据库/mongodb/data`（约 225GB）。数据必须通过**宿主机路径挂载**，不能改用 Docker 命名卷，否则会看到“空库”。
+
+**正确启动方式**（恢复或日常启动）：
+
+```bash
+cd "/Users/karuo/Documents/开发/2、私域银行/数据中台/系统基座/config"
+docker compose -f docker-compose-mongodb.yml up -d mongodb
+```
+
+**错误原因说明**：若用其他编排或 `docker run` 启动了同名容器且未挂载上述路径，而是用了 Docker 卷（如 `mongodb_data`），则容器内是空库，宿主机上的 200+GB 数据不会出现在库里。**务必只用数据中台这份 compose 起 datacenter_mongodb**。
+
+**验证数据已挂载**：`docker inspect datacenter_mongodb` 中应看到 `"/Users/karuo/数据库/mongodb/data" -> "/data/db"`。
+
+---
+
 ## 版本记录
 
 | 日期 | 变更 |
@@ -59,3 +76,4 @@
 | 2026-02-26 | 新增 datacenter 分组约定；所有数据库相关 Docker 项目归入 datacenter，website 通过 datacenter_network 连接 |
 | 2026-02-27 | website 分组扩展：卡若ai网站、玩值大屏、Soul 创业实验归入 website；详见 `website分组清单.md` |
 | 2026-03-01 | 新增库 karuo_site；强制约定：新生成数据/配置一律只放唯一 MongoDB，不新建实例、不单独 27018 |
+| 2026-03-19 | 恢复 225GB 数据：因容器曾用错误卷挂载导致“空库”；补充「数据恢复与正确挂载」说明，强制用数据中台 compose 启动 |

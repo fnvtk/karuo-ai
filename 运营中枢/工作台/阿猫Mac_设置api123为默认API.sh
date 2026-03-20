@@ -8,12 +8,12 @@ CLAUDE_DIR="$HOME/.claude"
 SETTINGS="$CLAUDE_DIR/settings.json"
 BASE_URL="https://api123.icu"
 API_KEY="sk-h7VW10iTSSXo6xJXe44nI1vUhsEcG3H8Z9XyFmWABvhaD4ZW"
-MODEL="claude-sonnet-4-6"
+# 使用 Sonnet 4.5 避免 api123 default 分组 503（4.6 通道可能不可用）
+MODEL="claude-sonnet-4-5-20250929"
 
 mkdir -p "$CLAUDE_DIR"
-# 保留已有配置，仅更新 api base 与 key（Claude Code 常用字段）
+# 保留已有配置，写入 CLI 用的 model/env 与旧版 anthropic* 字段
 if [ -f "$SETTINGS" ]; then
-  # 用 Python 合并，避免 jq 依赖
   python3 -c "
 import json, os
 p = '$SETTINGS'
@@ -23,8 +23,13 @@ if os.path.exists(p):
         data = json.load(f)
 data['anthropicBaseUrl'] = '$BASE_URL'
 data['anthropicApiKey'] = '$API_KEY'
-if 'defaultModel' not in data or not data.get('defaultModel'):
-    data['defaultModel'] = '$MODEL'
+data['defaultModel'] = '$MODEL'
+data['model'] = '$MODEL'
+if 'env' not in data:
+    data['env'] = {}
+data['env']['ANTHROPIC_API_KEY'] = '$API_KEY'
+data['env']['ANTHROPIC_BASE_URL'] = '$BASE_URL'
+data['env']['ANTHROPIC_MODEL'] = '$MODEL'
 with open(p, 'w') as f:
     json.dump(data, f, indent=2, ensure_ascii=False)
 print('已更新:', p)
@@ -32,11 +37,17 @@ print('已更新:', p)
 else
   cat > "$SETTINGS" << EOF
 {
+  "model": "$MODEL",
   "anthropicBaseUrl": "$BASE_URL",
   "anthropicApiKey": "$API_KEY",
-  "defaultModel": "$MODEL"
+  "defaultModel": "$MODEL",
+  "env": {
+    "ANTHROPIC_API_KEY": "$API_KEY",
+    "ANTHROPIC_BASE_URL": "$BASE_URL",
+    "ANTHROPIC_MODEL": "$MODEL"
+  }
 }
 EOF
   echo "已创建: $SETTINGS"
 fi
-echo "api123.icu 已设为默认 API，重启 Cursor/Claude Code 后生效。"
+echo "api123.icu 已设为默认 API，模型为 $MODEL（避免 503）。请完全退出 Claude Code 后重新打开生效。"
