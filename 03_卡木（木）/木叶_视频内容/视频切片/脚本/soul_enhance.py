@@ -64,6 +64,12 @@ CROP_VF = "crop=568:1080:508:0,crop=498:1080:35:0"
 VERTICAL_W, VERTICAL_H = 498, 1080
 OVERLAY_X = 543  # 508+35，与历史 483+60 对齐，避免封面/字幕错位
 
+# 竖屏「全画面入画」：不裁中间竖条；整幅横版等比缩放入 498×1080，上下黑边（letterbox）
+VERTICAL_FIT_FULL_VF = (
+    "scale=w=498:h=1080:force_original_aspect_ratio=decrease:flags=lanczos,"
+    "pad=498:1080:(ow-iw)/2:(oh-ih)/2:color=black"
+)
+
 
 def _overlay_x_from_crop_vf(crop_vf: str):
     """从两段 crop 解析字幕/封面叠在横版上的 x：crop=W:1080:X:0,crop=498:1080:Y:0 → X+Y"""
@@ -81,13 +87,14 @@ def build_typewriter_subtitle_images(
     temp_dir,
     out_w,
     out_h,
-    cover_duration,
+    subtitle_overlay_start,
     min_step_sec=0.05,
     max_steps_per_line=28,
 ):
     """
     将每条字幕拆成多帧：同一时间段内前缀逐字（逐段）变长，读起来更顺、更像跟读语音。
     长句按步数上限均分字符，避免单条 concat 段过多。
+    subtitle_overlay_start：最早显示字幕的时间轴（秒），须 ≥ 封面结束 + 留白。
     """
     sub_images = []
     img_idx = 0
@@ -96,7 +103,7 @@ def build_typewriter_subtitle_images(
         if not safe_text or not safe_text.strip():
             continue
         s, e = float(sub["start"]), float(sub["end"])
-        s = max(s, cover_duration)
+        s = max(s, subtitle_overlay_start)
         if s >= e - 0.02:
             continue
         dur = e - s
@@ -299,6 +306,11 @@ STYLE = {
     }
 }
 
+# 字幕与语音同步的全局延迟补偿（秒）；封面后留白再叠字幕；封面标题汉字上限（须在本文件先于 _limit_cover_title_cjk 定义）
+SUBTITLE_DELAY_SEC = 2.0
+SUBS_START_AFTER_COVER_SEC = 3.0
+COVER_TITLE_MAX_CJK = 6
+
 # ============ 工具函数 ============
 
 def get_font(font_path, size):
@@ -337,6 +349,21 @@ def _normalize_title_for_display(title: str) -> str:
         s = s.replace(char, " ")
     s = re.sub(r"\s+", " ", s).strip()
     return s
+
+
+def _limit_cover_title_cjk(text: str, max_cjk: int = COVER_TITLE_MAX_CJK) -> str:
+    """封面标题最多保留 max_cjk 个汉字（含汉字即计数）；超长截断，避免封面字过小或换行过多。"""
+    if not text or max_cjk <= 0:
+        return text or ""
+    out = []
+    n_cjk = 0
+    for ch in text:
+        if "\u4e00" <= ch <= "\u9fff":
+            n_cjk += 1
+            if n_cjk > max_cjk:
+                break
+        out.append(ch)
+    return "".join(out).strip()
 
 
 # macOS/APFS 文件名允许的中文标点（保留刺激性标题所需的标点）
@@ -447,14 +474,6 @@ def _detect_clip_pts_offset(clip_path: str) -> float:
     except Exception:
         pass
     return 0.0
-
-
-# 字幕与语音同步的全局延迟补偿（秒）
-# batch_clip -ss input seeking 导致实际切割比请求早 0~3 秒（关键帧对齐）
-# 字幕按 highlights.start_time 算相对时间，会比实际音频提前
-# 加正值延迟 = 字幕往后推 = 与声音更同步
-# 2025-03 实测：Soul派对直播视频关键帧间距 2-4 秒，补偿需约 2.0s
-SUBTITLE_DELAY_SEC = 2.0  # 增大到 2.0，避免字幕超前于说话
 
 
 def _is_noise_line(text: str) -> bool:
@@ -625,9 +644,9 @@ def _sec_to_srt_time(sec):
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
-def write_clip_srt(srt_path, subtitles, cover_duration):
-    """写出用于烧录的 SRT（仅保留封面结束后的字幕，时间已相对片段）"""
-    safe_start = cover_duration + 0.3
+def write_clip_srt(srt_path, subtitles, cover_duration, subs_after_cover_sec=SUBS_START_AFTER_COVER_SEC):
+    """写出用于烧录的 SRT（仅保留封面结束+留白后的字幕，时间已相对片段）"""
+    safe_start = cover_duration + subs_after_cover_sec + 0.3
     lines = []
     idx = 1
     for sub in subtitles:
@@ -726,8 +745,11 @@ def get_video_info(video_path):
         '-of', 'json', video_path
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)
-    info = json.loads(result.stdout)
-    stream = info['streams'][0]
+    info = json.loads(result.stdout or "{}")
+    streams = info.get("streams") or []
+    if not streams:
+        raise ValueError(f"ffprobe 无视频流: {video_path}")
+    stream = streams[0]
     
     # 获取时长
     cmd2 = [
@@ -909,31 +931,39 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
 # ============ 字幕图片生成 ============
 
 def create_subtitle_image(text, width, height, output_path):
-    """创建字幕图片（关键词加粗加大突出）。竖屏 498 宽时字号略小、保证居中且不溢出。"""
+    """创建字幕图片（关键词加粗加大突出）。498 竖条时居中；全幅横版时偏下居中（为 --vertical-fit-full）。"""
     style = STYLE['subtitle']
     
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    # 竖屏窄幅时缩小字号，保证整行在画面内且居中
     base_size = style['font_size']
     if (width, height) == (VERTICAL_W, VERTICAL_H):
         base_size = min(base_size, 38)
+    elif height == 1080 and width >= 1280:
+        # 1920×1080 全画面叠字：字号略大，条带靠下，避免挡脸
+        base_size = min(max(base_size, 46), 56)
     font = get_font(FONT_BOLD, base_size)
     text_w, text_h = get_text_size(draw, text, font)
-    while text_w > width - 80 and base_size > 24:
+    margin_x = 120 if width >= 1280 else 80
+    while text_w > width - margin_x and base_size > 24:
         base_size -= 2
         font = get_font(FONT_BOLD, base_size)
         text_w, text_h = get_text_size(draw, text, font)
     kw_size = base_size + style.get('keyword_size_add', 4)
     kw_font = get_font(FONT_HEAVY, kw_size)
     
-    # 字幕完全居中（水平+垂直正中间）；竖屏时限制在界面内不超出
     base_x = (width - text_w) // 2
     if (width, height) == (VERTICAL_W, VERTICAL_H):
         pad = 24
         base_x = max(pad, min(width - pad - text_w, base_x))
-    base_y = (height - text_h) // 2
+        base_y = (height - text_h) // 2
+    elif height == 1080 and width >= 1280:
+        pad = 40
+        base_x = max(pad, min(width - pad - text_w, base_x))
+        base_y = height - text_h - 100
+    else:
+        base_y = (height - text_h) // 2
     
     # 背景条（不超出画布）
     padding = 15
@@ -1085,10 +1115,11 @@ def _parse_clip_index(filename: str) -> int:
 
 def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_path,
                  force_burn_subs=False, skip_subs=False, vertical=False,
-                 crop_vf=None, overlay_x=None, typewriter_subs=False):
-    """增强单个切片。vertical=True 时最后裁成竖屏 498x1080 直出成片。
-    crop_vf / overlay_x：场次取景微调（先截 20% 帧对一下小程序黑框再填）。
-    typewriter_subs：同一条字幕时间内前缀逐字渐显（更跟口型）。
+                 crop_vf=None, overlay_x=None, typewriter_subs=False,
+                 vertical_fit_full=False):
+    """增强单个切片。vertical=True 时最后输出 498×1080。
+    vertical_fit_full：不裁中间竖条；整幅画面等比缩放入 498×1080 + 上下黑边，前后内容都可见。
+    否则沿用 crop 竖条（全画面标定深色带）。
     """
     
     print(f"  输入: {os.path.basename(clip_path)}", flush=True)
@@ -1108,17 +1139,28 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     hook_text = _normalize_title_for_display(raw_title) or raw_title or '精彩切片'
     # 封面文字同样做安全处理
     hook_text = apply_platform_safety(hook_text)
+    hook_text = _limit_cover_title_cjk(hook_text, COVER_TITLE_MAX_CJK) or hook_text
     cover_duration = STYLE['cover']['duration']
+    subtitle_overlay_start = cover_duration + SUBS_START_AFTER_COVER_SEC
     
-    # 竖屏成片：封面/字幕按 498x1080 做，叠在裁切区域，文字与字幕在竖屏上完整且居中
-    out_w, out_h = (VERTICAL_W, VERTICAL_H) if vertical else (width, height)
-    vf_use = (crop_vf or CROP_VF).strip() if vertical else CROP_VF
-    ox = overlay_x
-    if vertical and ox is None and crop_vf:
-        ox = _overlay_x_from_crop_vf(crop_vf)
-    if vertical and ox is None:
-        ox = OVERLAY_X
-    overlay_pos = f"{int(ox)}:0" if vertical else "0:0"
+    # 竖屏：默认封面/字幕按 498×1080 叠在竖条上；全画面模式按原分辨率全屏叠加再整体缩放
+    if vertical and vertical_fit_full:
+        out_w, out_h = width, height
+        vf_use = ""
+        overlay_pos = "0:0"
+    elif vertical:
+        out_w, out_h = VERTICAL_W, VERTICAL_H
+        vf_use = (crop_vf or CROP_VF).strip()
+        ox = overlay_x
+        if ox is None and crop_vf:
+            ox = _overlay_x_from_crop_vf(crop_vf)
+        if ox is None:
+            ox = OVERLAY_X
+        overlay_pos = f"{int(ox)}:0"
+    else:
+        out_w, out_h = width, height
+        vf_use = CROP_VF
+        overlay_pos = "0:0"
     
     # 1. 生成封面
     print(f"  [1/5] 封面生成中…", flush=True)
@@ -1198,7 +1240,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
             print(f"  ✓ 字幕解析 ({len(subtitles)}条)，将烧录为{mode}字幕", flush=True)
         if typewriter_subs:
             sub_images = build_typewriter_subtitle_images(
-                subtitles, temp_dir, out_w, out_h, cover_duration
+                subtitles, temp_dir, out_w, out_h, subtitle_overlay_start
             )
         else:
             for i, sub in enumerate(subtitles):
@@ -1254,10 +1296,10 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         #   duration X.XXX
         # 最后一行不写 duration（用于循环/截断防报错）
         concat_lines = []
-        prev_end = cover_duration  # 字幕从封面结束后开始
+        prev_end = subtitle_overlay_start  # 字幕从「封面结束 + SUBS_START_AFTER_COVER_SEC」起
 
         for img in sub_images:
-            sub_start = max(img['start'], cover_duration)
+            sub_start = max(img['start'], subtitle_overlay_start)
             sub_end = img['end']
             if sub_start >= sub_end:
                 continue
@@ -1327,15 +1369,26 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         if result.stderr:
             print(f"     {str(result.stderr)[:300]}", file=sys.stderr)
     
-    # 5.4 输出：竖屏则裁成 498x1080 直出（高光区域裁剪，成片必做）
-    print(f"  [5/5] 竖屏裁剪中（498×1080）…", flush=True)
-    if vertical:
+    # 5.4 输出：竖屏 498×1080（竖条裁剪 或 全画面 letterbox）
+    print(f"  [5/5] 竖屏输出（498×1080）…", flush=True)
+    if vertical and vertical_fit_full:
+        r = subprocess.run([
+            'ffmpeg', '-y', '-i', current_video,
+            '-vf', VERTICAL_FIT_FULL_VF, '-c:a', 'copy', output_path
+        ], capture_output=True, text=True)
+        if r.returncode == 0 and os.path.exists(output_path):
+            print(f"  ✓ 全画面缩放+上下黑边完成（未裁中间竖条）", flush=True)
+        else:
+            print(f"  ❌ 全画面缩放失败: {(r.stderr or '')[:400]}", file=sys.stderr)
+            shutil.copy(current_video, output_path)
+            print(f"  ⚠ 已回退为未缩放版本", flush=True)
+    elif vertical:
         r = subprocess.run([
             'ffmpeg', '-y', '-i', current_video,
             '-vf', vf_use, '-c:a', 'copy', output_path
         ], capture_output=True, text=True)
         if r.returncode == 0 and os.path.exists(output_path):
-            print(f"  ✓ 竖屏裁剪完成", flush=True)
+            print(f"  ✓ 竖屏竖条裁剪完成", flush=True)
         else:
             print(f"  ❌ 竖屏裁剪失败: {(r.stderr or '')[:300]}", file=sys.stderr)
             shutil.copy(current_video, output_path)
@@ -1378,6 +1431,11 @@ def main():
         action="store_true",
         help="字幕在同一条时间内前缀逐字渐显（更通顺、更跟读）",
     )
+    parser.add_argument(
+        "--vertical-fit-full",
+        action="store_true",
+        help="竖屏成片不裁中间竖条：整幅 16:9 等比缩放入 498×1080，上下黑边，画面显示全；封面/字幕先叠满横版再缩放",
+    )
     args = parser.parse_args()
     
     clips_dir = Path(args.clips) if args.clips else CLIPS_DIR
@@ -1404,12 +1462,14 @@ def main():
     overlay_x_arg = getattr(args, "overlay_x", -1)
     overlay_x_arg = None if overlay_x_arg < 0 else overlay_x_arg
     typewriter = getattr(args, "typewriter_subs", False)
+    vfit = getattr(args, "vertical_fit_full", False)
     print(
         f"功能: 封面+字幕+加速10%+去语气词"
         + ("+竖屏498x1080" if vertical else "")
+        + ("+全画面letterbox(不裁竖条)" if vertical and vfit else "")
         + ("+逐字字幕" if typewriter else "")
     )
-    if vertical and crop_vf_arg:
+    if vertical and crop_vf_arg and not vfit:
         print(f"取景: --crop-vf {crop_vf_arg}")
     print(f"输入: {clips_dir}")
     print(f"输出: {output_dir}" + ("（成片，文件名=标题）" if title_only else ""))
@@ -1439,6 +1499,9 @@ def main():
         
         if getattr(args, 'title_only', False):
             title = (highlight_info.get('title') or highlight_info.get('hook_3sec') or clip_path.stem)
+            title = _limit_cover_title_cjk(
+                _normalize_title_for_display(str(title)) or str(title), COVER_TITLE_MAX_CJK
+            ) or str(title)
             name = sanitize_filename(title) + '.mp4'
             output_path = output_dir / name
         else:
@@ -1458,6 +1521,7 @@ def main():
                 crop_vf=crop_vf_arg or None,
                 overlay_x=overlay_x_arg,
                 typewriter_subs=typewriter,
+                vertical_fit_full=vfit,
             ):
                 success_count += 1
         finally:

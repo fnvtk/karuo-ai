@@ -105,7 +105,31 @@ def main():
     parser = argparse.ArgumentParser(description="Soul 切片一体化流水线")
     parser.add_argument("--video", "-v", required=True, help="输入视频路径")
     parser.add_argument("--output", "-o", help="输出目录（默认：视频同目录下 视频名_output）")
-    parser.add_argument("--clips", "-n", type=int, default=8, help="切片数量")
+    parser.add_argument("--clips", "-n", type=int, default=8, help="切片数量（--ops-short 且未改 -n 时默认 24）")
+    parser.add_argument(
+        "--highlight-preset",
+        choices=["long", "ops-short"],
+        default="long",
+        help="高光识别 preset：long=60～300 秒深度切片；ops-short=15～30 秒运营密度切片",
+    )
+    parser.add_argument(
+        "--ops-short",
+        action="store_true",
+        help="运营短切片一键：preset=ops-short，未指定 -n 时用 24 条",
+    )
+    parser.add_argument("--min-clip-sec", type=float, default=None, help="传给 identify_highlights --min-duration")
+    parser.add_argument("--max-clip-sec", type=float, default=None, help="传给 identify_highlights --max-duration")
+    parser.add_argument(
+        "--ops-jingju-hotspot",
+        action="store_true",
+        help="高光 prompt 强调京剧梗+热点（可与 ops-short 同用）",
+    )
+    parser.add_argument(
+        "--prompt-min-sec",
+        type=float,
+        default=None,
+        help="传给 identify_highlights：送模型的 SRT 从该秒之后截取（ops-short 默认 450）",
+    )
     parser.add_argument("--skip-transcribe", action="store_true", help="跳过转录（已有 transcript.srt）")
     parser.add_argument("--skip-highlights", action="store_true", help="跳过高光识别（已有 highlights.json）")
     parser.add_argument("--skip-clips", action="store_true", help="跳过切片（已有 clips/，仅重新增强）")
@@ -121,6 +145,11 @@ def main():
     parser.add_argument("--montage-max-clips", type=int, default=8, help="快速混剪最多取多少条片段")
     parser.add_argument("--montage-seconds", type=float, default=4.0, help="快速混剪每条截取秒数")
     args = parser.parse_args()
+
+    if getattr(args, "ops_short", False):
+        args.highlight_preset = "ops-short"
+        if args.clips == 8:
+            args.clips = 24
 
     video_path = Path(args.video).resolve()
     if not video_path.exists():
@@ -148,7 +177,7 @@ def main():
     print("=" * 60)
     print(f"输入视频: {video_path}")
     print(f"输出目录: {base_dir}")
-    print(f"切片数量: {args.clips}")
+    print(f"切片数量: {args.clips} ｜ 高光 preset: {args.highlight_preset}")
     print("=" * 60)
 
     # 0. 强制重转录时删除旧产物（含 audio 以重提完整音频）
@@ -201,16 +230,26 @@ def main():
 
     # 2. 高光识别
     if not args.skip_highlights:
+        hl_cmd = [
+            sys.executable,
+            str(SCRIPT_DIR / "identify_highlights.py"),
+            "--transcript", str(transcript_path),
+            "--output", str(highlights_path),
+            "--clips", str(args.clips),
+            "--preset", str(args.highlight_preset),
+        ]
+        if args.min_clip_sec is not None:
+            hl_cmd.extend(["--min-duration", str(args.min_clip_sec)])
+        if args.max_clip_sec is not None:
+            hl_cmd.extend(["--max-duration", str(args.max_clip_sec)])
+        if getattr(args, "ops_jingju_hotspot", False):
+            hl_cmd.append("--ops-jingju-hotspot")
+        if getattr(args, "prompt_min_sec", None) is not None:
+            hl_cmd.extend(["--prompt-min-sec", str(args.prompt_min_sec)])
         run(
-            [
-                sys.executable,
-                str(SCRIPT_DIR / "identify_highlights.py"),
-                "--transcript", str(transcript_path),
-                "--output", str(highlights_path),
-                "--clips", str(args.clips),
-            ],
-            "高光识别（Ollama→规则）",
-            timeout=180,
+            hl_cmd,
+            "高光识别（API→Ollama→规则）",
+            timeout=600,
         )
     if not highlights_path.exists():
         print(f"❌ 需要 highlights.json: {highlights_path}")
@@ -283,7 +322,11 @@ def main():
     ]
     if getattr(args, "skip_subs", False):
         enhance_cmd.append("--skip-subs")
-    if getattr(args, "force_burn_subs", False):
+    if use_two_folders:
+        enhance_cmd.extend(["--vertical", "--title-only"])
+    if (getattr(args, "force_burn_subs", False) or use_two_folders) and not getattr(
+        args, "skip_subs", False
+    ):
         enhance_cmd.append("--force-burn-subs")
     enhance_timeout = max(900, 600 + len(clips_list) * 90)  # 约 90 秒/片
     ok = run(enhance_cmd, "增强处理（封面+字幕+加速）", timeout=enhance_timeout, check=False)

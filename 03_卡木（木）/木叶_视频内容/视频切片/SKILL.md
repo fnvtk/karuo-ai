@@ -2,9 +2,9 @@
 name: 视频切片
 description: Soul派对视频切片 + 快速混剪 + 切片动效包装（片头/片尾/程序化）+ 剪映思路借鉴（智能剪口播/镜头分割）。触发词含视频剪辑、切片发布、快速混剪、切片动效包装、程序化包装、片头片尾。
 group: 木
-triggers: 视频剪辑、切片发布、字幕烧录、全画面标定、竖屏裁剪、飞书录屏白边、**快速混剪、混剪预告、快剪串联、切片动效包装、程序化包装、片头片尾、批量封面、视频包装**、镜头切分、场景检测
+triggers: 视频剪辑、切片发布、字幕烧录、全画面标定、竖屏裁剪、飞书录屏白边、**快速混剪、混剪预告、快剪串联、切片动效包装、程序化包装、片头片尾、批量封面、视频包装**、镜头切分、场景检测、**运营短切片、15秒切片、30秒切片、京剧梗、热点密度切片**
 owner: 木叶
-version: "1.4"
+version: "1.5"
 updated: "2026-03-20"
 ---
 
@@ -24,7 +24,20 @@ updated: "2026-03-20"
             提取后立即繁转简+修正错误    封面+字幕(已简体)+加速10%+去语气词
 ```
 
-**切片时长**：每段为**完整的一个片段**，时长 **30 秒～300 秒**，由该完整片段起止时间决定。**标题**用一句**刺激性观点**（见 `Soul竖屏切片_SKILL.md`）。
+**切片时长（两种模式）**：
+
+| 模式 | 单段时长 | 条数/场（建议） | 选题侧重 |
+|------|-----------|-----------------|----------|
+| **深度切片（默认）** | **30 秒～300 秒**，完整语义单元 | 6～10 | 提问→回答、整场观点 |
+| **运营短切片** | **15～30 秒**（可 `--min-duration` / `--max-duration` 微调） | **20～30**（默认脚本 **24**） | **京剧/戏曲比喻梗**、**当场热点词**、强反差金句，适合抖音高密度测试 |
+
+运营短切片流程与深度切片相同（转录 → `identify_highlights` → `batch_clip` → `soul_enhance`），区别在 **高光 preset** 与 **prompt**：`identify_highlights.py --preset ops-short` 会在提示词中要求模型**整场均匀取点**，并优先京剧相关比喻/唱腔梗与热点表达；过滤逻辑会**丢弃**短于 15 秒或长于 30 秒的区间（深度模式只卡最短 60 秒、不卡上限）。
+
+**开场 ASR 噪声**：派对录播常在开场出现同一短句循环（如「我看你不太好」），会把模型注意力锁死在前几分钟。**ops-short 默认**将送模型的文字稿与成片时间轴**从约 7:30（450 秒）之后**才开始（`--prompt-min-sec`，可改）。若你的场次正片明显更早开始，可改小该值或临时改 `long` 再人工筛 `highlights.json`。
+
+**批量节奏（人工剪辑对齐）**：一场录播可先按 **15～30 条**为一轮做高光与切片，再进成片；多轮叠加时注意 `highlights.json` 备份，避免覆盖。
+
+**标题**：深度模式用一句**刺激性观点**；短切片标题 **4～10 个汉字** 为宜（见 `Soul竖屏切片_SKILL.md`）。
 
 **提问→回答 结构**：若片段内有人提问，前3秒优先展示**提问问题**，再播回答；高光识别填 `question` 且 `hook_3sec` 与之一致，成片整条去语助词。详见 `参考资料/视频结构_提问回答与高光.md`、`参考资料/高光识别提示词.md`。
 
@@ -54,11 +67,28 @@ cd 03_卡木（木）/木叶_视频内容/视频切片/脚本
 conda activate mlx-whisper
 python3 soul_slice_pipeline.py --video "/path/to/soul派对会议第57场.mp4" --clips 6
 
+# 运营短切片（15～30 秒 × 约 24 条，京剧梗+热点优先，两目录+竖屏成片）
+python3 soul_slice_pipeline.py -v "视频.mp4" -o "/path/to/场次_output" --two-folders --ops-short --prefix soul127
+
+# 已转录场次仅重跑高光+切片+成片（省 MLX）
+python3 soul_slice_pipeline.py -v "视频.mp4" -o "/path/to/场次_output" --two-folders --ops-short --skip-transcribe --prefix soul127
+
+# 自定义条数与时长区间
+python3 soul_slice_pipeline.py -v "视频.mp4" -o "/path/to/out" --two-folders --highlight-preset ops-short -n 28 --min-clip-sec 10 --max-clip-sec 30
+
 # 仅重新烧录（字幕转简体后重跑增强）
 python3 soul_slice_pipeline.py -v "视频.mp4" -n 6 --skip-transcribe --skip-highlights --skip-clips
 
 # 切片+成片后，额外生成一条快速混剪
 python3 soul_slice_pipeline.py -v "视频.mp4" -n 8 --two-folders --quick-montage
+```
+
+**分步：仅高光（运营短切片）**
+
+```bash
+python3 identify_highlights.py -t transcript.srt -o highlights.json --preset ops-short -n 24
+# 或显式时长 + 长视频也强调京剧/热点：
+python3 identify_highlights.py -t transcript.srt -o highlights.json --preset ops-short -n 26 --min-duration 15 --max-duration 30 --ops-jingju-hotspot
 ```
 
 流程：**转录 → 字幕转简体 → 高光识别 → 批量切片 → 增强**
@@ -154,6 +184,8 @@ python3 analyze_feishu_ui_crop.py "/path/to/原片.mp4" --at 0.2
 ```
 
 将输出的 `CROP_VF` 传给：`python3 soul_enhance.py ... --vertical --crop-vf '...'`（`OVERLAY_X` 脚本会一并打印；也可用 `--overlay-x` 覆盖）。
+
+**全画面入画（不裁竖条）**：加 `--vertical-fit-full`，整幅 16:9 缩放入 498×1080 + 上下黑边，左右内容都可见。详见 `Soul竖屏切片_SKILL.md` 第六节 B。
 
 详见：`参考资料/竖屏中段裁剪参数说明.md`、`脚本/analyze_feishu_ui_crop.py`。
 
@@ -350,7 +382,7 @@ python3 scripts/burn_subtitles_clean.py -i enhanced.mp4 -s clean.srt -o 成片.m
 | **kill_ffmpeg_when_clip_done.py** | 剪辑结束后自动关掉 ffmpeg（监视剪映/PID 或立即杀） | ⭐ 按需 |
 | **scene_detect_to_highlights.py** | 镜头/场景检测 → highlights.json（PySceneDetect，可接 batch_clip） | ⭐⭐ |
 | chapter_themes_to_highlights.py | 按章节 .md 主题提取片段（本地模型→highlights.json） | ⭐⭐⭐ |
-| identify_highlights.py | 高光识别（API 优先→Ollama→规则，默认 gpt-4o） | ⭐⭐ |
+| identify_highlights.py | 高光识别（API→Ollama→规则；`--preset ops-short` 为 15～30 秒运营密度） | ⭐⭐ |
 | batch_clip.py | 批量切片 | ⭐⭐ |
 | one_video.py | 单视频一键成片 | ⭐⭐ |
 | burn_subtitles_clean.py | 字幕烧录（无阴影） | ⭐ |

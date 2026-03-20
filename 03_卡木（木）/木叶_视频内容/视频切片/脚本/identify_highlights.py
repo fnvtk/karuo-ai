@@ -11,12 +11,19 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 OLLAMA_URL = "http://localhost:11434"
 DEFAULT_CTA = "关注我，每天学一招私域干货"
 CLIP_COUNT = 15
-MIN_DURATION = 60   # 最少 1 分钟
+MIN_DURATION = 60   # 最少 1 分钟（长切片默认）
 MAX_DURATION = 300  # 最多 5 分钟
+# 运营短切片默认：单场产出高密度短视频，便于抖音/热点测试
+OPS_SHORT_MIN = 15
+OPS_SHORT_MAX = 30
+OPS_SHORT_CLIPS = 24
+# 飞书/录屏开场常见 ASR 鬼畜循环，运营短切片喂给模型的文字稿从该秒之后开始（约 7:30）
+OPS_SHORT_PROMPT_MIN_SEC_DEFAULT = 450.0
 # API 默认模型：优先用当前可用最佳（可被 OPENAI_MODEL / OPENAI_MODELS 覆盖）
 DEFAULT_API_MODEL = "gpt-4o"
 
@@ -43,18 +50,27 @@ def parse_srt_segments(srt_path: str) -> list:
     return segments
 
 
-def fallback_highlights(transcript_path: str, clip_count: int) -> list:
-    """规则备用：每段 60-300 秒（1-5 分钟）"""
+def fallback_highlights(
+    transcript_path: str,
+    clip_count: int,
+    min_dur: float = 60,
+    max_dur: float = 300,
+    start_from_sec: float = 0,
+) -> list:
+    """规则备用：按 min_dur～max_dur 均匀切分；可从 start_from_sec 起切（运营短切片对齐正片起点）。"""
     segments = parse_srt_segments(transcript_path)
     if not segments:
         return []
     total = segments[-1]["end_sec"] if segments else 0
-    seg_dur = min(300, max(60, total / clip_count))  # 每段 1-5 分钟
+    start_from_sec = max(0, min(float(start_from_sec), max(0, total - min_dur - 2)))
+    usable = max(0, total - start_from_sec - 2)
+    target = usable / max(1, clip_count)
+    seg_dur = min(max_dur, max(min_dur, target))
     result = []
     for i in range(clip_count):
-        start_sec = int(i * seg_dur)
-        end_sec = min(int(start_sec + seg_dur), int(total - 5))
-        if end_sec <= start_sec + 59:  # 不足 1 分钟跳过
+        start_sec = int(start_from_sec + i * seg_dur)
+        end_sec = min(int(start_sec + seg_dur), int(total - 2))
+        if end_sec <= start_sec + max(5, min_dur - 1):
             continue
         # 找该时间段内的字幕
         texts = [s["text"] for s in segments if s["end_sec"] >= start_sec and s["start_sec"] <= end_sec]
@@ -116,6 +132,40 @@ def srt_to_timestamped_text(srt_path: str, skip_repetitive_head: int = 150) -> s
     return "\n".join(f"[{s}] {t}" for s, t in out)
 
 
+def srt_text_from_min_sec(srt_path: str, min_start_sec: float) -> str:
+    """只保留字幕开始时间 >= min_start_sec 的行，拼成带时间戳文本（削掉开场噪声再送模型）。"""
+    segments = parse_srt_segments(srt_path)
+    if not segments:
+        return ""
+    lines = [
+        f"[{s['start_time']}] {s['text']}"
+        for s in segments
+        if s["start_sec"] >= min_start_sec
+    ]
+    return "\n".join(lines)
+
+
+def _filter_start_not_before(data: list, min_start_sec: float) -> list:
+    """丢弃开始时间早于 min_start_sec 的片段（运营短切片防开场鬼畜）。"""
+    out = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        st = item.get("start_time") or item.get("start") or "00:00:00"
+        if isinstance(st, (int, float)):
+            sec = float(st)
+        else:
+            sec = _parse_time_to_sec(str(st))
+        if sec >= min_start_sec:
+            out.append(item)
+        else:
+            print(
+                f"  过滤过早片段: {item.get('title', '?')} (起 {sec:.0f}s < {min_start_sec:.0f}s)",
+                file=sys.stderr,
+            )
+    return out
+
+
 def _sec_to_hhmmss(sec: float) -> str:
     """秒数转为 HH:MM:SS"""
     s = int(sec)
@@ -140,8 +190,8 @@ def _parse_time_to_sec(t: str) -> float:
     return 0
 
 
-def _filter_short_clips(data: list) -> list:
-    """过滤掉时长 < 60 秒的切片"""
+def _filter_clips_by_duration(data: list, min_sec: float, max_sec: Optional[float]) -> list:
+    """按时长过滤；max_sec 为 None 时不限制上限"""
     result = []
     for item in data:
         if not isinstance(item, dict):
@@ -149,26 +199,95 @@ def _filter_short_clips(data: list) -> list:
         st = item.get("start_time") or item.get("start") or "00:00:00"
         et = item.get("end_time") or item.get("end") or "00:01:00"
         dur = _parse_time_to_sec(et) - _parse_time_to_sec(st)
-        if dur >= 60:
+        ok_min = dur >= min_sec
+        ok_max = max_sec is None or dur <= max_sec
+        if ok_min and ok_max:
             result.append(item)
         else:
-            print(f"  过滤短片段: {item.get('title','?')} (仅{dur:.0f}秒)", file=sys.stderr)
+            why = []
+            if not ok_min:
+                why.append(f"短于{min_sec:.0f}秒")
+            if not ok_max:
+                why.append(f"长于{max_sec:.0f}秒")
+            print(
+                f"  过滤片段: {item.get('title','?')} ({dur:.0f}秒, {','.join(why)})",
+                file=sys.stderr,
+            )
     return result
 
 
-def _build_prompt(transcript: str, clip_count: int) -> str:
+def _ops_short_ai_plausible(
+    data: list,
+    min_dur: float,
+    max_dur: float,
+    min_start_sec: float,
+    min_count: int = 5,
+) -> bool:
+    """运营短切片：AI 必须给出足够条数，且每条时长与起点符合窗口，否则走规则均匀切。"""
+    if not data or not isinstance(data, list) or len(data) < min_count:
+        return False
+    tol = 1.5
+    for item in data:
+        if not isinstance(item, dict):
+            return False
+        st = item.get("start_time") or item.get("start") or "00:00:00"
+        et = item.get("end_time") or item.get("end") or "00:01:00"
+        if isinstance(st, (int, float)):
+            st = _sec_to_hhmmss(float(st))
+        if isinstance(et, (int, float)):
+            et = _sec_to_hhmmss(float(et))
+        try:
+            ssec = _parse_time_to_sec(str(st))
+            esec = _parse_time_to_sec(str(et))
+        except Exception:
+            return False
+        dur = esec - ssec
+        if dur < min_dur - tol or dur > max_dur + tol:
+            return False
+        if min_start_sec > 0 and ssec < min_start_sec - tol:
+            return False
+    return True
+
+
+def _transcript_for_prompt(transcript: str, clip_count: int, min_dur: float) -> str:
+    """长视频多短切片时需要更大上下文，避免高光只落在开头"""
+    if min_dur < 45 or clip_count > 12:
+        cap = 120000
+    else:
+        cap = 5000
+    return transcript[:cap] if len(transcript) > cap else transcript
+
+
+def _build_prompt(
+    transcript: str,
+    clip_count: int,
+    min_dur: float = 60,
+    max_dur: float = 300,
+    ops_jingju_hotspot: bool = False,
+) -> str:
     """构建高光识别 prompt（提问→回答：有提问时 question/hook_3sec 用提问问题）"""
-    txt = transcript[:5000] if len(transcript) > 5000 else transcript
+    txt = _transcript_for_prompt(transcript, clip_count, min_dur)
+    dur_rule = f"每段时长必须严格在 {int(min_dur)}～{int(max_dur)} 秒之间（看时间戳相减），不要输出低于 {int(min_dur)} 秒或超过 {int(max_dur)} 秒的区间。"
+    extra = ""
+    if ops_jingju_hotspot:
+        extra = """
+## 运营短切片选题（优先）
+- 优先剪：说话人用**京剧、戏曲、唱腔、行当、锣鼓**等做的比喻或梗（有趣、反差、易传播）。
+- 其次：当场**热点词**（平台规则、搞钱案例、AI/职场/流量等强刺激观点），一句话能当标题。
+- 仍遵守提问→回答：有提问时 question + hook_3sec 一致。
+- 标题 **4～10 个汉字**，要像抖音封面，忌长句。
+"""
     return f"""识别视频文字稿中的 {clip_count} 个高光片段，直接输出 JSON 数组，第一个字符必须是 [。
 
 重要：每个话题均优先提问→回答。若某片段里有人提问（观众/连麦者问的问题），必须提取提问内容填 question，且 hook_3sec 用该提问；成片前3秒先展示提问，再播回答。
-
+{dur_rule}
+{extra}
 示例（有提问）：
 [{{"title":"普通人怎么敢跟ZF搞","start_time":"01:12:30","end_time":"01:15:30","question":"普通人怎么敢跟ZF搞？","hook_3sec":"普通人怎么敢跟ZF搞？","cta_ending":"{DEFAULT_CTA}","transcript_excerpt":"维权起头跑通就成生意","reason":"提问+回答完整"}}]
 示例（无提问）：
 [{{"title":"起头难","start_time":"00:05:55","end_time":"00:08:00","hook_3sec":"没人起头就起头","cta_ending":"{DEFAULT_CTA}","transcript_excerpt":"起头难跑通就能变成付费服务","reason":"核心观点"}}]
 
-文字稿（从时间戳提取 start_time、end_time，每段 60-300 秒）：
+文字稿（从时间戳提取 start_time、end_time；整场均匀覆盖，不要扎堆在同一分钟）：
 {txt}
 
 直接输出 JSON 数组，以 [ 开头。有提问的片段必须带 question 且 hook_3sec 与 question 一致。"""
@@ -279,18 +398,27 @@ def _build_api_provider_queue() -> list:
     return queue
 
 
-def call_openai_api(transcript: str, clip_count: int, provider: dict) -> str:
+def call_openai_api(
+    transcript: str,
+    clip_count: int,
+    provider: dict,
+    min_dur: float = 60,
+    max_dur: float = 300,
+    ops_jingju_hotspot: bool = False,
+) -> str:
     """调用 OpenAI 兼容 API（Chat Completion），使用指定 base_url / api_key / model。"""
     try:
         from openai import OpenAI
     except ImportError:
         raise RuntimeError("未安装 openai 库，请执行: pip install openai")
-    prompt = _build_prompt(transcript, clip_count)
+    prompt = _build_prompt(
+        transcript, clip_count, min_dur, max_dur, ops_jingju_hotspot=ops_jingju_hotspot
+    )
     system = (
         "你是短视频策划师。用户会提供视频文字稿，你只输出一个 JSON 数组。"
         "若某片段内有人提问（观众/连麦者问的问题），必须提取提问原文填 question，且 hook_3sec 用该提问（前3秒先展示提问再回答）；无提问则 hook_3sec 用金句/悬念。"
         "格式含 title, start_time, end_time, hook_3sec, cta_ending, transcript_excerpt, reason；有提问时加 question。"
-        "禁止输出任何非 JSON 内容。"
+        "必须严格遵守用户给出的单段时长区间（秒）。禁止输出任何非 JSON 内容。"
     )
     client = OpenAI(api_key=provider["api_key"], base_url=provider["base_url"])
     resp = client.chat.completions.create(
@@ -308,15 +436,24 @@ def call_openai_api(transcript: str, clip_count: int, provider: dict) -> str:
     return content
 
 
-def call_ollama(transcript: str, clip_count: int = CLIP_COUNT, model: str = "qwen2.5:3b") -> str:
+def call_ollama(
+    transcript: str,
+    clip_count: int = CLIP_COUNT,
+    model: str = "qwen2.5:3b",
+    min_dur: float = 60,
+    max_dur: float = 300,
+    ops_jingju_hotspot: bool = False,
+) -> str:
     """调用卡若AI本地模型（Ollama），使用 chat 接口避免对话式误判"""
     import requests
-    prompt = _build_prompt(transcript, clip_count)
+    prompt = _build_prompt(
+        transcript, clip_count, min_dur, max_dur, ops_jingju_hotspot=ops_jingju_hotspot
+    )
     system = (
         "你是短视频策划师。用户会提供视频文字稿，你只输出一个 JSON 数组。"
         "若某片段内有人提问（观众/连麦者问的问题），必须提取提问原文填 question，且 hook_3sec 用该提问（前3秒先展示提问再回答）；无提问则 hook_3sec 用金句/悬念。"
         "格式含 title, start_time, end_time, hook_3sec, cta_ending, transcript_excerpt, reason；有提问时加 question。"
-        "禁止输出任何非 JSON 内容。"
+        "必须严格遵守用户给出的单段时长区间（秒）。禁止输出任何非 JSON 内容。"
     )
     try:
         r = requests.post(
@@ -348,14 +485,80 @@ def main():
     parser = argparse.ArgumentParser(description="高光识别 - AI 分析文字稿输出 highlights.json")
     parser.add_argument("--transcript", "-t", required=True, help="transcript.srt 路径")
     parser.add_argument("--output", "-o", required=True, help="highlights.json 输出路径")
-    parser.add_argument("--clips", "-n", type=int, default=CLIP_COUNT, help="切片数量")
+    parser.add_argument("--clips", "-n", type=int, default=None, help="切片数量（默认随 preset）")
+    parser.add_argument(
+        "--preset",
+        choices=["long", "ops-short"],
+        default="long",
+        help="long=单场深度切片 60～300 秒；ops-short=运营短切片 15～30 秒×约24条，京剧梗+热点优先",
+    )
+    parser.add_argument(
+        "--min-duration",
+        type=float,
+        default=None,
+        help="单段最小时长（秒），默认随 preset",
+    )
+    parser.add_argument(
+        "--max-duration",
+        type=float,
+        default=None,
+        help="单段最大时长（秒），默认随 preset；长切片模式可不限制上限则传极大值",
+    )
+    parser.add_argument(
+        "--ops-jingju-hotspot",
+        action="store_true",
+        help="在 prompt 中强调京剧比喻/唱腔梗 + 热点选题（可与 ops-short 同用）",
+    )
+    parser.add_argument(
+        "--prompt-min-sec",
+        type=float,
+        default=None,
+        help="送模型的 SRT 从该秒之后截取；ops-short 默认 450（约7:30），long 默认 0",
+    )
     parser.add_argument("--require-ai", action="store_true", help="必须用 AI 识别，失败则退出不兜底")
     args = parser.parse_args()
+
+    if args.preset == "ops-short":
+        min_dur = float(args.min_duration if args.min_duration is not None else OPS_SHORT_MIN)
+        max_dur = float(args.max_duration if args.max_duration is not None else OPS_SHORT_MAX)
+        clip_n = int(args.clips if args.clips is not None else OPS_SHORT_CLIPS)
+        ops_focus = True  # 运营短切片默认强调京剧梗+热点
+        filter_max_sec = max_dur  # 严格卡上限
+    else:
+        min_dur = float(args.min_duration if args.min_duration is not None else MIN_DURATION)
+        max_dur = float(args.max_duration if args.max_duration is not None else MAX_DURATION)
+        clip_n = int(args.clips if args.clips is not None else CLIP_COUNT)
+        ops_focus = bool(args.ops_jingju_hotspot)
+        filter_max_sec = None  # 与历史一致：只滤掉过短，不因略超 300 秒丢片
+    prompt_min_sec = (
+        float(args.prompt_min_sec)
+        if args.prompt_min_sec is not None
+        else (
+            OPS_SHORT_PROMPT_MIN_SEC_DEFAULT
+            if args.preset == "ops-short"
+            else 0.0
+        )
+    )
     transcript_path = Path(args.transcript)
     if not transcript_path.exists():
         print(f"❌ 文字稿不存在: {transcript_path}", file=sys.stderr)
         sys.exit(1)
-    text = srt_to_timestamped_text(str(transcript_path))
+    if prompt_min_sec > 0:
+        text = srt_text_from_min_sec(str(transcript_path), prompt_min_sec)
+        if len(text) < 400:
+            print(
+                "⚠️ 截断后文字稿过短，回退 srt_to_timestamped_text 全长",
+                file=sys.stderr,
+            )
+            text = srt_to_timestamped_text(str(transcript_path))
+        else:
+            print(
+                f"  运营短切片：送模型文字稿已从 {prompt_min_sec:.0f}s 之后截取（约 {len(text)} 字）",
+                flush=True,
+            )
+    else:
+        text = srt_to_timestamped_text(str(transcript_path))
+    fb_start = float(prompt_min_sec) if args.preset == "ops-short" else 0.0
     if len(text) < 100:
         print("❌ 文字稿过短，请检查 SRT 格式", file=sys.stderr)
         sys.exit(1)
@@ -366,13 +569,29 @@ def main():
     for provider in api_queue:
         try:
             print(f"正在调用 API {provider.get('model', '?')} 分析高光片段...")
-            raw = call_openai_api(text, args.clips, provider)
+            raw = call_openai_api(
+                text,
+                clip_n,
+                provider,
+                min_dur=min_dur,
+                max_dur=max_dur,
+                ops_jingju_hotspot=ops_focus,
+            )
             if not raw:
                 raise ValueError("API 返回空")
             data = _parse_ai_json(raw)
             if data and isinstance(data, list) and len(data) > 0:
-                print(f"  ✓ API ({provider.get('model', '?')}) 成功，识别 {len(data)} 段")
-                break
+                if args.preset == "ops-short" and not _ops_short_ai_plausible(
+                    data, min_dur, max_dur, prompt_min_sec
+                ):
+                    print(
+                        "  API 结果不符合运营短切片规则，丢弃并尝试下一通道",
+                        file=sys.stderr,
+                    )
+                    data = None
+                else:
+                    print(f"  ✓ API ({provider.get('model', '?')}) 成功，识别 {len(data)} 段")
+                    break
         except Exception as e:
             print(f"  API ({provider.get('model', '?')}) 失败: {e}", file=sys.stderr)
             if raw:
@@ -388,13 +607,29 @@ def main():
         for model in OLLAMA_MODELS:
             try:
                 print(f"正在调用 Ollama {model} 分析高光片段...")
-                raw = call_ollama(text, args.clips, model)
+                raw = call_ollama(
+                    text,
+                    clip_n,
+                    model,
+                    min_dur=min_dur,
+                    max_dur=max_dur,
+                    ops_jingju_hotspot=ops_focus,
+                )
                 if not raw:
                     raise ValueError("模型返回空")
                 data = _parse_ai_json(raw)
                 if data and isinstance(data, list) and len(data) > 0:
-                    print(f"  ✓ {model} 成功，识别 {len(data)} 段")
-                    break
+                    if args.preset == "ops-short" and not _ops_short_ai_plausible(
+                        data, min_dur, max_dur, prompt_min_sec
+                    ):
+                        print(
+                            f"  {model} 结果不符合运营短切片规则，尝试下一模型",
+                            file=sys.stderr,
+                        )
+                        data = None
+                    else:
+                        print(f"  ✓ {model} 成功，识别 {len(data)} 段")
+                        break
             except Exception as e:
                 print(f"  {model} 失败: {e}", file=sys.stderr)
                 if raw:
@@ -405,14 +640,16 @@ def main():
             print("❌ 必须用 AI 识别，当前无可用模型或解析失败", file=sys.stderr)
             sys.exit(1)
         print("使用规则备用切分", file=sys.stderr)
-        data = fallback_highlights(str(transcript_path), args.clips)
+        data = fallback_highlights(
+            str(transcript_path), clip_n, min_dur, max_dur, start_from_sec=fb_start
+        )
     if not data:
-        data = fallback_highlights(str(transcript_path), args.clips)
+        data = fallback_highlights(
+            str(transcript_path), clip_n, min_dur, max_dur, start_from_sec=fb_start
+        )
     if not isinstance(data, list):
         data = [data]
-    # 过滤短于 1 分钟的切片
-    data = _filter_short_clips(data)
-    # 统一 start_time/end_time 为 HH:MM:SS（兼容 Ollama 返回秒数）
+    # 先统一时间为 HH:MM:SS，再按时长过滤（兼容模型返回数值秒）
     for item in data:
         if not isinstance(item, dict):
             continue
@@ -422,10 +659,15 @@ def main():
         et = item.get("end_time") or item.get("end")
         if isinstance(et, (int, float)):
             item["end_time"] = _sec_to_hhmmss(et)
+    if args.preset == "ops-short" and prompt_min_sec > 0:
+        data = _filter_start_not_before(data, prompt_min_sec)
+    data = _filter_clips_by_duration(data, min_dur, filter_max_sec)
     # 若 AI 返回的片段全被过滤，用规则备用
     if not data and transcript_path.exists():
-        print("  AI 片段时长无效，改用规则切分（1-5 分钟）", file=sys.stderr)
-        data = fallback_highlights(str(transcript_path), args.clips)
+        print("  AI 片段时长无效，改用规则切分", file=sys.stderr)
+        data = fallback_highlights(
+            str(transcript_path), clip_n, min_dur, max_dur, start_from_sec=fb_start
+        )
     # 强制中文
     print("  确保导出名与封面为简体中文...")
     data = _ensure_chinese_highlights(data)
