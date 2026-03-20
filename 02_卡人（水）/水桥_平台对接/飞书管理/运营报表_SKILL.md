@@ -58,11 +58,11 @@ flowchart LR
 
 | 步 | 动作 | 输入 | 命令 | 输出/校验 |
 |:---|:---|:---|:---|:---|
-| 1 | 填效果数据+小程序+派对录屏+发群 | 场次号 115 | `cd 飞书管理/脚本 && python3 soul_party_to_feishu_sheet.py 115` | 控制台见「已写入」「已同步推送到飞书群」「已写入派对录屏链接」 |
+| 1 | 填效果数据+小程序+派对录屏；（发群需显式开启） | 场次号 115 | `cd 飞书管理/脚本 && python3 soul_party_to_feishu_sheet.py 115` | 默认**不**发群；需发群时先 `export SOUL_PARTY_PUSH_GROUP=1` 再执行，控制台见「已写入」；见「已同步推送到飞书群」 |
 | 2 | 纪要文本入表（可选） | TXT 路径、日期列 4 | `python3 write_party_minutes_from_txt.py "/path/to/soul 派对 115场 20260304.txt" 4` | 控制台见「已写入派对智能纪要到今日总结」 |
 | 3 | 生成纪要图 | 见智能纪要 Skill | JSON→HTML→截图，输出到 `卡若Ai的文件夹/报告/soul_115场_智能纪要_20260304.png` | 得到 PNG 文件 |
-| 4 | 纪要图入表 | PNG 路径、sheet-id、date-col | `python3 feishu_write_minutes_to_sheet.py --party-image "卡若Ai的文件夹/报告/soul_115场_智能纪要_20260304.png" --sheet-id bJR5sA --date-col 4` | 控制台见「已上传派对智能纪要图片」 |
-| 5 | 纪要图发群 | PNG 路径 | `cd 智能纪要/脚本 && python3 send_to_feishu.py --image "卡若Ai的文件夹/报告/soul_115场_智能纪要_20260304.png"` | 飞书群收到长图 |
+| 4 | 今日总结图 + 团队会议图入表 | 两张 PNG、sheet-id、date-col | `python3 feishu_write_minutes_to_sheet.py --party-image "<派对纪要.png>" --team-image "<团队会议.png>" --sheet-id bJR5sA --date-col 4` | 可只传其一；**本脚本不发群** |
+| 5 | 纪要图发群（需你确认后再做） | PNG 路径 | `cd 智能纪要/脚本 && python3 send_to_feishu.py --image "…png"` | 飞书群收到长图 |
 
 **路径约定**：飞书管理脚本目录 = `02_卡人（水）/水桥_平台对接/飞书管理/脚本/`；智能纪要脚本 = `02_卡人（水）/水桥_平台对接/智能纪要/脚本/`；报告输出 = `卡若Ai的文件夹/报告/`。
 

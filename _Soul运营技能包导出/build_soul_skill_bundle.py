@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""打包 Soul 运营全链路：SKILL + 脚本 + Cursor 入口，供复制到另一台电脑。"""
+"""
+【已迁移】请改用永平项目内脚本（会输出 zip 到「下载」）：
+
+  python3 "/Users/karuo/Documents/开发/3、自营项目/一场soul的创业实验-永平/scripts/pack_soul_operation_skills.py"
+
+说明见同仓库：scripts/README_Soul运营技能包.md
+---
+以下为旧版备份逻辑（与 pack_soul_operation_skills.py 等价，可自行删除本文件）。
+打包 Soul 运营全链路：SKILL + 脚本 + Cursor 入口，供复制到另一台电脑。
+"""
 from __future__ import annotations
 
 import os
@@ -20,9 +29,10 @@ WORK_ROOT = KARUO_AI / "_Soul运营技能包导出" / BUNDLE_NAME
 
 
 def ignore_common(dir_name: str, names: list[str]) -> set[str]:
+    skip = {"__pycache__", ".browser_state", "chromium_data", ".DS_Store"}
     ignored = set()
     for n in names:
-        if n == "__pycache__" or n.endswith(".pyc") or n == ".DS_Store":
+        if n in skip or n.endswith(".pyc"):
             ignored.add(n)
     return ignored
 

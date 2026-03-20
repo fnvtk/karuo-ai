@@ -6,7 +6,9 @@
 不发飞书群。
 用法：
   python3 feishu_write_minutes_to_sheet.py [内部会议图片路径] [派对总结图片路径]
-  python3 feishu_write_minutes_to_sheet.py --party-image <图片路径> --sheet-id bJR5sA --date-col 4   # 3月115场
+  python3 feishu_write_minutes_to_sheet.py --party-image <图> --sheet-id bJR5sA --date-col 4   # 今日总结
+  python3 feishu_write_minutes_to_sheet.py --team-image <图> --sheet-id bJR5sA --date-col 20  # 团队会议
+  可同时传 --party-image 与 --team-image（同一 date-col）。本脚本不发飞书群。
 """
 import os
 import sys
@@ -110,6 +112,28 @@ def _resize_image_if_needed(path, max_bytes=MAX_IMAGE_BYTES):
         return data
 
 
+def _find_col_and_rows_for_sheet(token, sheet_id, date_col):
+    """返回 (col_idx 0-based, row_party, row_team) 或失败时 (None, None, None)"""
+    vals = read_range(token, f'{sheet_id}!A1:AG50')
+    if not vals or len(vals) < 2:
+        return None, None, None
+    header = vals[0]
+    col_idx = None
+    for idx, cell in enumerate(header):
+        if str(cell).strip() == str(date_col).strip():
+            col_idx = idx
+            break
+    row_party = row_team = None
+    for ri, row in enumerate(vals):
+        a1 = (row[0] if row and len(row) > 0 else '')
+        a1 = str(a1 or '').strip()
+        if '今日总结' in a1:
+            row_party = ri + 1
+        if '团队会议' in a1 or ('团队' in a1 and '会议' in a1) or ('内部会议' in a1 and '纪要' in a1):
+            row_team = ri + 1
+    return col_idx, row_party, row_team
+
+
 def write_image_to_cell(token, range_str, image_path, name=None):
     """
     飞书 v2 写入图片到单元格：POST .../values_image，body 为 JSON，image 为整数数组（字节流）。
@@ -143,7 +167,8 @@ def main():
     parser = argparse.ArgumentParser(description='上传会议/派对纪要图片到飞书运营报表')
     parser.add_argument('image_internal', nargs='?', default=DEFAULT_IMAGE_INTERNAL, help='内部会议图片路径')
     parser.add_argument('image_party', nargs='?', default=DEFAULT_IMAGE_PARTY, help='派对总结图片路径')
-    parser.add_argument('--party-image', dest='party_image_override', type=str, help='派对纪要图片路径（单独指定时用）')
+    parser.add_argument('--party-image', dest='party_image_override', type=str, help='派对「今日总结」行图片路径')
+    parser.add_argument('--team-image', dest='team_image_override', type=str, help='「团队会议」行图片路径')
     parser.add_argument('--sheet-id', dest='sheet_id_override', type=str, help='工作表 ID，如 3 月用 bJR5sA')
     parser.add_argument('--date-col', dest='date_col_override', type=str, help='日期列号（表头单元格值），如 115 场用 4')
     args = parser.parse_args()
@@ -153,47 +178,52 @@ def main():
     sheet_id = args.sheet_id_override or SHEET_ID
     date_col = args.date_col_override
     party_image_override = (args.party_image_override or '').strip()
+    team_image_override = (args.team_image_override or '').strip()
 
-    if party_image_override and sheet_id and date_col:
-        # 单次上传：派对图片 → 指定 sheet 的「今日总结」行、指定日期列
+    def _upload_one_image(token, col_idx, row_num, img_path, label):
+        if row_num is None:
+            print(f'❌ 未找到「{label}」行')
+            return False
+        range_cell = f'{sheet_id}!{_col_letter(col_idx)}{row_num}:{_col_letter(col_idx)}{row_num}'
+        code, body = write_image_to_cell(token, range_cell, img_path, name=os.path.basename(img_path))
+        if code == 401 or body.get('code') in (99991677, 99991663):
+            t2 = refresh_token()
+            if t2:
+                code, body = write_image_to_cell(t2, range_cell, img_path, name=os.path.basename(img_path))
+        if code == 200 and body.get('code') in (0, None):
+            print(f'✅ 已上传图片到「{label}」→ 日期列 {date_col}（{sheet_id}）')
+            return True
+        print(f'❌ 「{label}」上传失败:', code, body)
+        return False
+
+    if (party_image_override or team_image_override) and sheet_id and date_col:
         token = load_token() or refresh_token()
         if not token:
             print('❌ 无法获取飞书 Token')
             sys.exit(1)
-        if not os.path.exists(party_image_override):
-            print('❌ 图片不存在:', party_image_override)
+        if party_image_override and not os.path.exists(party_image_override):
+            print('❌ 派对图片不存在:', party_image_override)
             sys.exit(1)
-        vals = read_range(token, f'{sheet_id}!A1:AG50')
-        if not vals or len(vals) < 2:
-            print('❌ 读取表格失败')
+        if team_image_override and not os.path.exists(team_image_override):
+            print('❌ 团队会议图片不存在:', team_image_override)
             sys.exit(1)
-        header = vals[0]
-        col_idx = None
-        for idx, cell in enumerate(header):
-            if str(cell).strip() == str(date_col).strip():
-                col_idx = idx
-                break
-        row_party = None
-        for ri, row in enumerate(vals):
-            a1 = (row[0] if row and len(row) > 0 else '')
-            a1 = str(a1 or '').strip()
-            if '今日总结' in a1:
-                row_party = ri + 1
-                break
-        if col_idx is None or row_party is None:
-            print('❌ 未找到日期列', date_col, '或「今日总结」行')
+        col_idx, row_party, row_team = _find_col_and_rows_for_sheet(token, sheet_id, date_col)
+        if col_idx is None:
+            print('❌ 未找到日期列', date_col)
             sys.exit(1)
-        range_cell = f'{sheet_id}!{_col_letter(col_idx)}{row_party}:{_col_letter(col_idx)}{row_party}'
-        code, body = write_image_to_cell(token, range_cell, party_image_override, name=os.path.basename(party_image_override))
-        if code == 401 or body.get('code') in (99991677, 99991663):
-            token = refresh_token()
-            if token:
-                code, body = write_image_to_cell(token, range_cell, party_image_override, name=os.path.basename(party_image_override))
-        if code == 200 and body.get('code') in (0, None):
-            print(f'✅ 已上传派对智能纪要图片到「今日总结」→ {date_col} 列（{sheet_id}）')
-        else:
-            print('❌ 上传失败:', code, body)
-            sys.exit(1)
+        ok_any = False
+        if party_image_override:
+            if _upload_one_image(token, col_idx, row_party, party_image_override, '今日总结'):
+                ok_any = True
+            else:
+                sys.exit(1)
+        if team_image_override:
+            if _upload_one_image(token, col_idx, row_team, team_image_override, '团队会议'):
+                ok_any = True
+            else:
+                sys.exit(1)
+        if ok_any:
+            print('（未发飞书群）')
         return
 
     token = load_token() or refresh_token()
