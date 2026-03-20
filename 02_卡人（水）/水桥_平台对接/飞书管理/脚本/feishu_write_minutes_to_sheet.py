@@ -8,7 +8,8 @@
   python3 feishu_write_minutes_to_sheet.py [内部会议图片路径] [派对总结图片路径]
   python3 feishu_write_minutes_to_sheet.py --party-image <图> --sheet-id bJR5sA --date-col 4   # 今日总结
   python3 feishu_write_minutes_to_sheet.py --team-image <图> --sheet-id bJR5sA --date-col 20  # 团队会议
-  可同时传 --party-image 与 --team-image（同一 date-col）。本脚本不发飞书群。
+  python3 feishu_write_minutes_to_sheet.py --internal-image <图> --sheet-id bJR5sA --date-col 20  # 内部会议纪要
+  可同时传 --party-image、--team-image、--internal-image（同一 date-col）。本脚本不发飞书群。
 """
 import os
 import sys
@@ -113,25 +114,29 @@ def _resize_image_if_needed(path, max_bytes=MAX_IMAGE_BYTES):
 
 
 def _find_col_and_rows_for_sheet(token, sheet_id, date_col):
-    """返回 (col_idx 0-based, row_party, row_team) 或失败时 (None, None, None)"""
+    """返回 (col_idx 0-based, row_party, row_team, row_internal) 或失败时 (None, None, None, None)"""
     vals = read_range(token, f'{sheet_id}!A1:AG50')
     if not vals or len(vals) < 2:
-        return None, None, None
+        return None, None, None, None
     header = vals[0]
     col_idx = None
     for idx, cell in enumerate(header):
         if str(cell).strip() == str(date_col).strip():
             col_idx = idx
             break
-    row_party = row_team = None
+    row_party = row_team = row_internal = None
     for ri, row in enumerate(vals):
         a1 = (row[0] if row and len(row) > 0 else '')
         a1 = str(a1 or '').strip()
         if '今日总结' in a1:
             row_party = ri + 1
-        if '团队会议' in a1 or ('团队' in a1 and '会议' in a1) or ('内部会议' in a1 and '纪要' in a1):
+        if '团队会议' in a1 or ('团队' in a1 and '会议' in a1 and '内部' not in a1):
             row_team = ri + 1
-    return col_idx, row_party, row_team
+        if '内部会议' in a1 and ('纪要' in a1 or '智要' in a1):
+            row_internal = ri + 1
+        elif '内部会议纪要' in a1 or '内部会议智要' in a1:
+            row_internal = ri + 1
+    return col_idx, row_party, row_team, row_internal
 
 
 def write_image_to_cell(token, range_str, image_path, name=None):
@@ -169,6 +174,7 @@ def main():
     parser.add_argument('image_party', nargs='?', default=DEFAULT_IMAGE_PARTY, help='派对总结图片路径')
     parser.add_argument('--party-image', dest='party_image_override', type=str, help='派对「今日总结」行图片路径')
     parser.add_argument('--team-image', dest='team_image_override', type=str, help='「团队会议」行图片路径')
+    parser.add_argument('--internal-image', dest='internal_image_override', type=str, help='「内部会议纪要」行图片路径')
     parser.add_argument('--sheet-id', dest='sheet_id_override', type=str, help='工作表 ID，如 3 月用 bJR5sA')
     parser.add_argument('--date-col', dest='date_col_override', type=str, help='日期列号（表头单元格值），如 115 场用 4')
     args = parser.parse_args()
@@ -179,6 +185,7 @@ def main():
     date_col = args.date_col_override
     party_image_override = (args.party_image_override or '').strip()
     team_image_override = (args.team_image_override or '').strip()
+    internal_image_override = (args.internal_image_override or '').strip()
 
     def _upload_one_image(token, col_idx, row_num, img_path, label):
         if row_num is None:
@@ -196,7 +203,7 @@ def main():
         print(f'❌ 「{label}」上传失败:', code, body)
         return False
 
-    if (party_image_override or team_image_override) and sheet_id and date_col:
+    if (party_image_override or team_image_override or internal_image_override) and sheet_id and date_col:
         token = load_token() or refresh_token()
         if not token:
             print('❌ 无法获取飞书 Token')
@@ -207,7 +214,10 @@ def main():
         if team_image_override and not os.path.exists(team_image_override):
             print('❌ 团队会议图片不存在:', team_image_override)
             sys.exit(1)
-        col_idx, row_party, row_team = _find_col_and_rows_for_sheet(token, sheet_id, date_col)
+        if internal_image_override and not os.path.exists(internal_image_override):
+            print('❌ 内部会议纪要图片不存在:', internal_image_override)
+            sys.exit(1)
+        col_idx, row_party, row_team, row_internal = _find_col_and_rows_for_sheet(token, sheet_id, date_col)
         if col_idx is None:
             print('❌ 未找到日期列', date_col)
             sys.exit(1)
@@ -219,6 +229,11 @@ def main():
                 sys.exit(1)
         if team_image_override:
             if _upload_one_image(token, col_idx, row_team, team_image_override, '团队会议'):
+                ok_any = True
+            else:
+                sys.exit(1)
+        if internal_image_override:
+            if _upload_one_image(token, col_idx, row_internal, internal_image_override, '内部会议纪要'):
                 ok_any = True
             else:
                 sys.exit(1)
