@@ -410,9 +410,9 @@ def main():
         print('❌ 无法获取飞书 Token，请先运行 auto_log.py 完成授权')
         sys.exit(1)
     raw = (row + [None] * EFFECT_COLS)[:EFFECT_COLS]
-    # 推流人数（第2项）为 0 时留空不填，有数据才填
+    # 推流人数（索引2，表格第5行）为 0 或 None 时留空不填，有数值才填
     def _cell(i):
-        if i == 1 and (raw[i] == 0 or raw[i] is None):
+        if i == 2 and (raw[i] == 0 or raw[i] is None):
             return ''
         return _to_cell_value(raw[i])
     values = [_cell(i) for i in range(EFFECT_COLS)]
