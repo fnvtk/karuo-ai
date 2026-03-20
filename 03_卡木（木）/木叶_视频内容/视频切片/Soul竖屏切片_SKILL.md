@@ -1,11 +1,11 @@
 ---
 name: Soul竖屏切片
-description: Soul 派对视频→竖屏成片（498×1080），剪辑→成片两文件夹，MLX 转录→高光识别→batch_clip→soul_enhance（封面+动态字幕同步+去语助词+纠错+违禁词）→visual_enhance v8（苹果毛玻璃浮层+Logo+场次号+段落总结）。可选 LTX AI 生成内容/Retake 重剪。支持基因胶囊打包。
-triggers: Soul竖屏切片、视频切片、热点切片、竖屏成片、派对切片、LTX、AI生成视频、Retake重剪、字幕优化、字幕同步
+description: Soul 派对视频→竖屏成片（498×1080），剪辑→成片两文件夹；竖屏裁剪以全画面 1920×1080 标定（analyze_feishu_ui_crop.py），默认深色带 crop=568@508+居中498、无右侧白边。MLX 转录→高光→batch_clip→soul_enhance（封面+字幕同步+逐字可选+去语助词+纠错+违禁词）→visual_enhance v8 可选。LTX/基因胶囊可选。
+triggers: Soul竖屏切片、视频切片、热点切片、竖屏成片、派对切片、全画面标定、竖屏裁剪、白边、飞书录屏、LTX、AI生成视频、Retake重剪、字幕优化、字幕同步、逐字字幕
 owner: 木叶
 group: 木
-version: "1.3"
-updated: "2026-03-13"
+version: "1.4"
+updated: "2026-03-20"
 ---
 
 # Soul 竖屏切片 · 专用 Skill
@@ -46,6 +46,24 @@ updated: "2026-03-13"
 - **batch_clip**：输出到 `clips/`
 - **soul_enhance -o 成片/ --vertical --title-only**：**文件名 = 封面标题 = highlights 的 title**（去杠：`：｜、—、/` 等替换为空格），名字与标题一致、无序号无杠；字幕烧录（随语音走动）；完整去语助词；竖屏裁剪直出到 `成片/`
 
+### 3.1 全画面参数（必做约定）
+
+竖屏 **裁剪链必须以全画面 1920×1080 为基准**，不能用「凭感觉收窄竖条」替代。
+
+1. **为什么要全画面标定**：飞书录屏右侧常为**桌面白底**；旧式固定 `483+608` 会裁到白边。正确做法是：在全画面上找**小程序深色主体的左右边界**，先取**整段宽 W**，再在 W 内**居中**裁 498。
+2. **当前默认**（`soul_enhance.py` 内建）：`crop=568:1080:508:0,crop=498:1080:35:0`，`OVERLAY_X=543`。与 `analyze_feishu_ui_crop.py` 对 **127 场全画面 20% 帧** 测算一致。
+3. **新场次 / 布局变了**：截一帧全画面（或 `--at 0.2` 从 mp4 抽帧），执行：
+
+```bash
+cd 脚本
+python3 analyze_feishu_ui_crop.py "/path/to/全画面.jpg"
+# 或 python3 analyze_feishu_ui_crop.py "/path/to/原片.mp4" --at 0.2
+```
+
+把打印的 `CROP_VF` 传给成片命令：`--crop-vf 'crop=...'`（可选 `--overlay-x` 与脚本输出一致）。
+
+4. **逐字渐显字幕**（可选）：`--typewriter-subs`，同一条字幕时间内前缀逐字加长，更跟读。
+
 ---
 
 ## 四、高光与切片（30 秒～300 秒）
@@ -84,8 +102,8 @@ updated: "2026-03-13"
 
 | 步骤 | 滤镜 |
 |------|------|
-| 1 | crop=608:1080:483:0 |
-| 2 | crop=498:1080:60:0 |
+| 1 | crop=568:1080:508:0（整段深色小程序主体，不含右侧桌面白边） |
+| 2 | crop=498:1080:35:0（568 内水平居中取 498） |
 
 **输出**：498×1080 竖屏。
 
@@ -103,6 +121,8 @@ python3 batch_clip.py -i "原视频.mp4" -l highlights.json -o clips/ -p soul112
 **3. 成片（竖屏+封面+字幕+去语助词，直出到 成片/）**
 ```bash
 python3 soul_enhance.py -c clips/ -l highlights.json -t transcript.srt -o 成片/ --vertical --title-only --force-burn-subs
+# 可选：逐字字幕 + 本场全画面重算的裁剪（见 3.1）
+python3 soul_enhance.py -c clips/ -l highlights.json -t transcript.srt -o 成片/ --vertical --title-only --force-burn-subs --typewriter-subs --crop-vf "crop=568:1080:508:0,crop=498:1080:35:0"
 ```
 
 **前缀命名注意**：`-p soul119` 这类带场次号的前缀会产生 `soul119_01_xxx.mp4`，`soul_enhance` 会正确识别 `01` 为切片序号（取所有 `_数字_` 中最小值）。

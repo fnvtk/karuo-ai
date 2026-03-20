@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 # 固定参数（与 SKILL 一致）
-CROP_VF = "crop=608:1080:483:0,crop=498:1080:60:0"
+CROP_VF = "crop=568:1080:508:0,crop=498:1080:35:0"
 OUT_SUFFIX = "_竖屏中段"
 
 

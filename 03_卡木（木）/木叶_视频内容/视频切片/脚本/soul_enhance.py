@@ -57,10 +57,77 @@ SILENCE_THRESHOLD = -40  # 静音阈值(dB)
 SILENCE_MIN_DURATION = 0.5  # 最短静音时长(秒)
 
 # Soul 竖屏裁剪（与 soul_vertical_crop 一致，成片直出用）
-CROP_VF = "crop=608:1080:483:0,crop=498:1080:60:0"
-# 竖屏成片时封面/字幕用此尺寸，叠在横版上的 x 位置（与 crop 后保留区域对齐）
+# 飞书录屏典型布局：深色小程序主体约在 x∈[508,1076]，右缘外为桌面白底。
+# 旧参数 483+608=1091 会吃进右侧白边；现改为「整段深色界面入画 + 居中取 498」。
+CROP_VF = "crop=568:1080:508:0,crop=498:1080:35:0"
+# 竖屏成片时封面/字幕用此尺寸，叠在横版上的 x 位置（与 crop 后保留区域左缘一致）
 VERTICAL_W, VERTICAL_H = 498, 1080
-OVERLAY_X = 543  # 1920 下保留区域左缘：483+60
+OVERLAY_X = 543  # 508+35，与历史 483+60 对齐，避免封面/字幕错位
+
+
+def _overlay_x_from_crop_vf(crop_vf: str):
+    """从两段 crop 解析字幕/封面叠在横版上的 x：crop=W:1080:X:0,crop=498:1080:Y:0 → X+Y"""
+    m = re.match(
+        r"crop=\d+:1080:(\d+):0,crop=498:1080:(\d+):0",
+        (crop_vf or "").strip().replace(" ", ""),
+    )
+    if m:
+        return int(m.group(1)) + int(m.group(2))
+    return None
+
+
+def build_typewriter_subtitle_images(
+    subtitles,
+    temp_dir,
+    out_w,
+    out_h,
+    cover_duration,
+    min_step_sec=0.05,
+    max_steps_per_line=28,
+):
+    """
+    将每条字幕拆成多帧：同一时间段内前缀逐字（逐段）变长，读起来更顺、更像跟读语音。
+    长句按步数上限均分字符，避免单条 concat 段过多。
+    """
+    sub_images = []
+    img_idx = 0
+    for sub in subtitles:
+        safe_text = improve_subtitle_punctuation(sub["text"])
+        if not safe_text or not safe_text.strip():
+            continue
+        s, e = float(sub["start"]), float(sub["end"])
+        s = max(s, cover_duration)
+        if s >= e - 0.02:
+            continue
+        dur = e - s
+        chars = list(safe_text)
+        n = len(chars)
+        if n <= 1:
+            img_path = os.path.join(temp_dir, f"sub_{img_idx:04d}.png")
+            create_subtitle_image(safe_text, out_w, out_h, img_path)
+            sub_images.append({"path": img_path, "start": s, "end": e})
+            img_idx += 1
+            continue
+        # 步数：不超过 max_steps，且每步至少 min_step_sec（极短句仍保证可见）
+        num_steps = min(max_steps_per_line, n)
+        num_steps = max(2, num_steps)
+        step_dur = dur / num_steps
+        if step_dur < min_step_sec:
+            num_steps = max(2, int(dur / min_step_sec))
+            step_dur = dur / num_steps
+        for step in range(1, num_steps + 1):
+            end_char = max(1, int(round(n * step / num_steps)))
+            end_char = min(end_char, n)
+            partial = "".join(chars[:end_char])
+            t0 = s + (step - 1) * step_dur
+            t1 = s + step * step_dur if step < num_steps else e
+            if t1 <= t0 + 0.001:
+                continue
+            img_path = os.path.join(temp_dir, f"sub_{img_idx:04d}.png")
+            create_subtitle_image(partial, out_w, out_h, img_path)
+            sub_images.append({"path": img_path, "start": t0, "end": t1})
+            img_idx += 1
+    return sub_images
 
 # 繁转简（OpenCC 优先，否则用映射）
 _OPENCC = None
@@ -1017,8 +1084,12 @@ def _parse_clip_index(filename: str) -> int:
 
 
 def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_path,
-                 force_burn_subs=False, skip_subs=False, vertical=False):
-    """增强单个切片。vertical=True 时最后裁成竖屏 498x1080 直出成片。"""
+                 force_burn_subs=False, skip_subs=False, vertical=False,
+                 crop_vf=None, overlay_x=None, typewriter_subs=False):
+    """增强单个切片。vertical=True 时最后裁成竖屏 498x1080 直出成片。
+    crop_vf / overlay_x：场次取景微调（先截 20% 帧对一下小程序黑框再填）。
+    typewriter_subs：同一条字幕时间内前缀逐字渐显（更跟口型）。
+    """
     
     print(f"  输入: {os.path.basename(clip_path)}", flush=True)
     
@@ -1041,7 +1112,13 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     
     # 竖屏成片：封面/字幕按 498x1080 做，叠在裁切区域，文字与字幕在竖屏上完整且居中
     out_w, out_h = (VERTICAL_W, VERTICAL_H) if vertical else (width, height)
-    overlay_pos = f"{OVERLAY_X}:0" if vertical else "0:0"
+    vf_use = (crop_vf or CROP_VF).strip() if vertical else CROP_VF
+    ox = overlay_x
+    if vertical and ox is None and crop_vf:
+        ox = _overlay_x_from_crop_vf(crop_vf)
+    if vertical and ox is None:
+        ox = OVERLAY_X
+    overlay_pos = f"{int(ox)}:0" if vertical else "0:0"
     
     # 1. 生成封面
     print(f"  [1/5] 封面生成中…", flush=True)
@@ -1117,13 +1194,18 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
             sys.stdout.flush()
             subtitles = []
         else:
-            print(f"  ✓ 字幕解析 ({len(subtitles)}条)，将烧录为随语音走动的字幕", flush=True)
-        for i, sub in enumerate(subtitles):
-            img_path = os.path.join(temp_dir, f'sub_{i:04d}.png')
-            # 应用违禁词替换 + 标点优化（让字幕更清晰、安全）
-            safe_text = improve_subtitle_punctuation(sub['text'])
-            create_subtitle_image(safe_text, out_w, out_h, img_path)
-            sub_images.append({'path': img_path, 'start': sub['start'], 'end': sub['end']})
+            mode = "逐字渐显" if typewriter_subs else "随语音走动"
+            print(f"  ✓ 字幕解析 ({len(subtitles)}条)，将烧录为{mode}字幕", flush=True)
+        if typewriter_subs:
+            sub_images = build_typewriter_subtitle_images(
+                subtitles, temp_dir, out_w, out_h, cover_duration
+            )
+        else:
+            for i, sub in enumerate(subtitles):
+                img_path = os.path.join(temp_dir, f'sub_{i:04d}.png')
+                safe_text = improve_subtitle_punctuation(sub['text'])
+                create_subtitle_image(safe_text, out_w, out_h, img_path)
+                sub_images.append({'path': img_path, 'start': sub['start'], 'end': sub['end']})
     if sub_images:
         print(f"  ✓ 字幕图片 ({len(sub_images)}张)", flush=True)
     
@@ -1250,7 +1332,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     if vertical:
         r = subprocess.run([
             'ffmpeg', '-y', '-i', current_video,
-            '-vf', CROP_VF, '-c:a', 'copy', output_path
+            '-vf', vf_use, '-c:a', 'copy', output_path
         ], capture_output=True, text=True)
         if r.returncode == 0 and os.path.exists(output_path):
             print(f"  ✓ 竖屏裁剪完成", flush=True)
@@ -1280,6 +1362,22 @@ def main():
     parser.add_argument("--title-only", action="store_true", help="输出文件名为纯标题（无序号、无_enhanced），与 --vertical 搭配用于成片")
     parser.add_argument("--skip-subs", action="store_true", help="跳过字幕烧录（原片已有字幕时用）")
     parser.add_argument("--force-burn-subs", action="store_true", help="强制烧录字幕（忽略检测）")
+    parser.add_argument(
+        "--crop-vf",
+        default="",
+        help="竖屏时覆盖裁剪链，如 crop=560:1080:465:0,crop=498:1080:31:0（先对原片 20%% 时长处截帧对齐小程序黑框）",
+    )
+    parser.add_argument(
+        "--overlay-x",
+        type=int,
+        default=-1,
+        help="竖屏时封面/字幕在 1920 横版上的叠加 x；默认 -1 表示用全局或从 --crop-vf 解析",
+    )
+    parser.add_argument(
+        "--typewriter-subs",
+        action="store_true",
+        help="字幕在同一条时间内前缀逐字渐显（更通顺、更跟读）",
+    )
     args = parser.parse_args()
     
     clips_dir = Path(args.clips) if args.clips else CLIPS_DIR
@@ -1302,7 +1400,17 @@ def main():
     print("="*60)
     print("🎬 Soul切片增强" + ("（成片竖屏直出）" if vertical else ""))
     print("="*60)
-    print(f"功能: 封面+字幕+加速10%+去语气词" + ("+竖屏498x1080" if vertical else ""))
+    crop_vf_arg = (getattr(args, "crop_vf", "") or "").strip()
+    overlay_x_arg = getattr(args, "overlay_x", -1)
+    overlay_x_arg = None if overlay_x_arg < 0 else overlay_x_arg
+    typewriter = getattr(args, "typewriter_subs", False)
+    print(
+        f"功能: 封面+字幕+加速10%+去语气词"
+        + ("+竖屏498x1080" if vertical else "")
+        + ("+逐字字幕" if typewriter else "")
+    )
+    if vertical and crop_vf_arg:
+        print(f"取景: --crop-vf {crop_vf_arg}")
     print(f"输入: {clips_dir}")
     print(f"输出: {output_dir}" + ("（成片，文件名=标题）" if title_only else ""))
     print("="*60)
@@ -1338,10 +1446,19 @@ def main():
         
         temp_dir = tempfile.mkdtemp(prefix='enhance_')
         try:
-            if enhance_clip(str(clip_path), str(output_path), highlight_info, temp_dir, str(transcript_path),
-                           force_burn_subs=getattr(args, 'force_burn_subs', False),
-                           skip_subs=getattr(args, 'skip_subs', False),
-                           vertical=getattr(args, 'vertical', False)):
+            if enhance_clip(
+                str(clip_path),
+                str(output_path),
+                highlight_info,
+                temp_dir,
+                str(transcript_path),
+                force_burn_subs=getattr(args, "force_burn_subs", False),
+                skip_subs=getattr(args, "skip_subs", False),
+                vertical=getattr(args, "vertical", False),
+                crop_vf=crop_vf_arg or None,
+                overlay_x=overlay_x_arg,
+                typewriter_subs=typewriter,
+            ):
                 success_count += 1
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)

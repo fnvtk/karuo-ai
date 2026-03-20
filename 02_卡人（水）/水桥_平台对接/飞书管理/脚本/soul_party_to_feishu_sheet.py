@@ -98,6 +98,7 @@ TEAM_MEETING_LINKS = {
     '124': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcne7k3msifq',
     '126': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcng991jg3114b2nj99548d',
     '127': 'https://cunkebao.feishu.cn/minutes/obcnhxs8usi8c7n27a9f66ux',
+    '129': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcnjbn178iy6919od4119ww',
 }
 
 # 小程序当日运营数据：日期号 → {访问次数, 访客, 交易金额}，填表时自动写入对应日期列
@@ -410,12 +411,15 @@ def main():
         print('❌ 无法获取飞书 Token，请先运行 auto_log.py 完成授权')
         sys.exit(1)
     raw = (row + [None] * EFFECT_COLS)[:EFFECT_COLS]
-    # 推流人数（索引2，表格第5行）为 0 或 None 时留空不填，有数值才填
+    # 推流人数（索引2，表格第5行）为 0 或 None 时跳过不填，保留原值
+    # 注意：values数组长度必须保持EFFECT_COLS，但推流人数位置写入时需跳过
     def _cell(i):
         if i == 2 and (raw[i] == 0 or raw[i] is None):
-            return ''
+            return None  # 返回None表示跳过该列，不覆盖原有值
         return _to_cell_value(raw[i])
     values = [_cell(i) for i in range(EFFECT_COLS)]
+    # 记录推流人数位置，写入时跳过
+    skip_push_index = 2 if (raw[2] == 0 or raw[2] is None) else None
     spreadsheet_token = WIKI_NODE_OR_SPREADSHEET_TOKEN
     month = SESSION_MONTH.get(session, 2)
     sheet_id = get_sheet_id_by_month(token, spreadsheet_token, month)
@@ -494,14 +498,48 @@ def main():
 
     if target_col_0based is not None:
         col_letter = _col_letter(target_col_0based)
-        range_col = f"{sheet_id}!{col_letter}3:{col_letter}{2 + len(values)}"
-        values_vertical = [[v] for v in values]
-        code, body = update_sheet_range(token, spreadsheet_token, range_col, values_vertical)
-        if code == 401 or body.get('code') in (99991677, 99991663):
-            token = refresh_and_load_token()
-            if token:
-                code, body = update_sheet_range(token, spreadsheet_token, range_col, values_vertical)
-        if code == 200 and body.get('code') == 0:
+        # 推流人数为None时，使用逐格写入方式，跳过推流人数行（保留原值）
+        if skip_push_index is not None:
+            # 使用逐格写入，跳过推流人数行
+            all_ok = True
+            for r in range(3, 3 + len(values)):
+                val_idx = r - 3
+                if val_idx == skip_push_index:
+                    continue  # 跳过推流人数行，保留原值
+                one_cell = f"{sheet_id}!{col_letter}{r}"
+                code, body = update_sheet_range(token, spreadsheet_token, one_cell, [[values[val_idx]]])
+                if code != 200 or body.get('code') not in (0, None):
+                    if code == 401 or body.get('code') in (99991677, 99991663):
+                        token = refresh_and_load_token()
+                        if token:
+                            code, body = update_sheet_range(token, spreadsheet_token, one_cell, [[values[val_idx]]])
+                    if code != 200 or body.get('code') not in (0, None):
+                        all_ok = False
+                        print('❌ 写入单元格失败:', one_cell, code, body)
+                        break
+            if all_ok:
+                ok, msg = _verify_write(spreadsheet_token, sheet_id, col_letter, values, token)
+                if ok:
+                    print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter} 逐格，推流人数保留原值），校验通过')
+                    _write_session_label(token, spreadsheet_token, sheet_id, col_letter, session)
+                    _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter, month=month)
+                    _write_party_video_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
+                    _write_team_meeting_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
+                    _maybe_send_group(session, raw)
+                    return
+                print(f'⚠️ 逐格写入成功但校验未通过：{msg}')
+            else:
+                print('❌ 逐格写入失败')
+        else:
+            # 推流人数有值，使用批量写入
+            range_col = f"{sheet_id}!{col_letter}3:{col_letter}{2 + len(values)}"
+            values_vertical = [[v] for v in values]
+            code, body = update_sheet_range(token, spreadsheet_token, range_col, values_vertical)
+            if code == 401 or body.get('code') in (99991677, 99991663):
+                token = refresh_and_load_token()
+                if token:
+                    code, body = update_sheet_range(token, spreadsheet_token, range_col, values_vertical)
+            if code == 200 and body.get('code') == 0:
             ok, msg = _verify_write(spreadsheet_token, sheet_id, col_letter, values, token)
             if ok:
                 print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter}3:{col_letter}{2+len(values)}，共{len(values)}格），校验通过')
@@ -516,13 +554,17 @@ def main():
         if err == 90202 or (err and 'range' in str(body.get('msg', '')).lower()):
             all_ok = True
             for r in range(3, 3 + len(values)):
+                val_idx = r - 3
+                # 推流人数（索引2，行号5）为None时跳过写入，保留原值
+                if val_idx == skip_push_index and values[val_idx] is None:
+                    continue
                 one_cell = f"{sheet_id}!{col_letter}{r}"
-                code, body = update_sheet_range(token, spreadsheet_token, one_cell, [[values[r - 3]]])
+                code, body = update_sheet_range(token, spreadsheet_token, one_cell, [[values[val_idx]]])
                 if code != 200 or body.get('code') not in (0, None):
                     if code == 401 or body.get('code') in (99991677, 99991663):
                         token = refresh_and_load_token()
                         if token:
-                            code, body = update_sheet_range(token, spreadsheet_token, one_cell, [[values[r - 3]]])
+                            code, body = update_sheet_range(token, spreadsheet_token, one_cell, [[values[val_idx]]])
                     if code != 200 or body.get('code') not in (0, None):
                         all_ok = False
                         print('❌ 写入单元格失败:', one_cell, code, body)
