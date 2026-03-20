@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """
-从飞书/Soul 录屏的一帧全画面（1920×1080）估计「深色小程序主体」左右边界，
-输出两段 crop + overlay_x，保证界面整段入画、尽量不夹右侧白底。
+从飞书/Soul 录屏的一帧全画面（1920×1080）估计「深色核心」后**扩边到桌面白**，
+默认输出 **仅 crop=包络宽×1080**，保持截图真实横纵比、不横向拉伸；可选 `--squeeze-498` 压宽到 498 或 `--center-in-band` 带内居中裁 498。
 
 用法:
   python3 analyze_feishu_ui_crop.py /path/to/frame.jpg
   python3 analyze_feishu_ui_crop.py /path/to/video.mp4 --at 0.2
+  python3 analyze_feishu_ui_crop.py /path/to/video.mp4 --at 0.2 --save-dir ./裁剪检查
+    → 写入「全画面取样」与「竖条塑形预览 498×1080」，便于对照后再跑 soul_enhance --crop-vf
 """
 
 import argparse
@@ -66,6 +68,27 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("input", type=Path, help="全画面截图 jpg/png 或视频 mp4")
     ap.add_argument("--at", type=float, default=None, help="视频取样比例 0~1，默认 0.2")
+    ap.add_argument(
+        "--save-dir",
+        type=Path,
+        default=None,
+        help="可选：保存全画面标定帧 PNG、竖条 498×1080 预览 PNG、塑形参数 txt",
+    )
+    ap.add_argument(
+        "--strict-core",
+        action="store_true",
+        help="仅用最深色核心宽度（旧逻辑，可能偏窄）；默认会向左右扩到桌面白边",
+    )
+    ap.add_argument(
+        "--center-in-band",
+        action="store_true",
+        help="扩边后在带内居中再裁成 498 宽（不拉伸；带宽不足则退化为 scale 到 498）",
+    )
+    ap.add_argument(
+        "--squeeze-498",
+        action="store_true",
+        help="扩边后横向压到 498 宽（会拉伸变形，仅兼容旧抖音尺寸）",
+    )
     args = ap.parse_args()
 
     arr = load_frame(args.input, args.at)
@@ -78,6 +101,7 @@ def main():
     kernel = np.ones(win) / win
     smooth = np.convolve(np.pad(col_mean, (pad, pad), mode="edge"), kernel, mode="valid")
 
+    # 第一步：找最深色连续区作为「核心」，避免误选整屏平均
     dark = smooth < 105
     best = (0, 0)
     i = 0
@@ -96,25 +120,119 @@ def main():
         print("未找到足够宽的深色带，请换一帧或检查分辨率", file=sys.stderr)
         sys.exit(1)
 
-    # 右缘：深色带结束后出现的持续高亮（白底）
+    # 右缘参考：深色带之后持续高亮（白底）从哪列起
     right = R0
     for x in range(R0, min(R0 + 500, w)):
         if smooth[x] > 195 and col_mean[x] > 200 and x + 5 < w and smooth[x : x + 5].min() > 185:
             right = x
             break
 
-    # 严格包络：只用最长深色块 [L0,R0)，避免把右侧灰白过渡算进画面（用户要求无白边）
-    L = max(0, L0)
-    W_strict = R0 - L0
-    if W_strict < 498:
-        print(f"深色带宽度 {W_strict} < 498，需 scale 或换源", file=sys.stderr)
+    if args.strict_core:
+        L = max(0, L0)
+        W_band = R0 - L0
+    else:
+        # 第二步：从核心向左右扩到「桌面大白」边界（阈值略放宽，避免把浅灰边栏判成「已到边」而过窄）
+        white_mean = 248.0
+        white_smooth = 228.0
+
+        def col_is_desktop_white(x: int) -> bool:
+            if x < 0 or x >= w:
+                return True
+            return col_mean[x] >= white_mean and smooth[x] >= white_smooth
+
+        L = L0
+        while L > 0 and not col_is_desktop_white(L - 1):
+            L -= 1
+
+        R = R0
+        while R < w and not col_is_desktop_white(R):
+            R += 1
+
+        W_band = R - L
+        if W_band < 200:
+            print(
+                f"扩边后宽度 {W_band} 过窄，回退为深色核心 [{L0},{R0})",
+                file=sys.stderr,
+            )
+            L, W_band = max(0, L0), R0 - L0
+
+    if W_band < 200:
+        print(f"可用宽度 {W_band} 过窄，请换一帧", file=sys.stderr)
         sys.exit(1)
-    inner = (W_strict - 498) // 2
-    ox = L + inner
-    vf = f"crop={W_strict}:1080:{L}:0,crop=498:1080:{inner}:0"
-    print(f"# {w}x{h} 最长深色列区间 [{L0},{R0}) 宽={W_strict}；白底高亮约从 x>={right} 起")
+
+    if args.squeeze_498 and args.center_in_band:
+        print("同时指定 --squeeze-498 与 --center-in-band 时以 --center-in-band 为准", file=sys.stderr)
+
+    if args.center_in_band:
+        if W_band >= 498:
+            inner = (W_band - 498) // 2
+            ox = L + inner
+            vf = f"crop={W_band}:1080:{L}:0,crop=498:1080:{inner}:0"
+            mode = "center_crop_498"
+        else:
+            ox = L
+            vf = f"crop={W_band}:1080:{L}:0,scale=498:1080:flags=lanczos"
+            mode = "center_band_fallback_scale498"
+            print(
+                f"包络宽 {W_band}<498，center-in-band 退化为横向 scale 至 498",
+                file=sys.stderr,
+            )
+    elif args.squeeze_498:
+        ox = L
+        vf = f"crop={W_band}:1080:{L}:0,scale=498:1080:flags=lanczos"
+        mode = "squeeze_to_498"
+    else:
+        # 默认：保持包络真实像素比，成片宽 = W_band（常见 560～750，随场次而变）
+        ox = L
+        vf = f"crop={W_band}:1080:{L}:0"
+        mode = "native_aspect_strip"
+
+    geo = "strict_core" if args.strict_core else f"expand_edge"
+    if ",crop=498:1080" in vf.replace(" ", "") or "scale=498:1080" in vf.replace(" ", ""):
+        out_px = 498
+    else:
+        out_px = W_band
+
+    print(
+        f"# {w}x{h} 深色核心 [{L0},{R0}) 宽={R0-L0}；{geo}+{mode}；包络 [{L},{L+W_band}) 宽={W_band}；成片约 {out_px}x1080；白底约 x>={right}"
+    )
     print(f"CROP_VF={vf!r}")
     print(f"OVERLAY_X={ox}")
+    print(f"OUTPUT_SIZE={out_px}x1080")
+
+    if args.save_dir:
+        args.save_dir = args.save_dir.resolve()
+        args.save_dir.mkdir(parents=True, exist_ok=True)
+        ratio = float(args.at) if args.at is not None else 0.2
+        stem = args.input.stem.replace(" ", "_")[:40]
+        u8 = np.clip(arr, 0, 255).astype(np.uint8)
+        full_path = args.save_dir / f"{stem}_全画面_{ratio:.0%}.png"
+        Image.fromarray(u8).save(full_path, optimize=True)
+        strip = u8[:, L : L + W_band, :]
+        if args.center_in_band and W_band >= 498:
+            inner_sv = (W_band - 498) // 2
+            strip_img = Image.fromarray(strip[:, inner_sv : inner_sv + 498, :])
+            strip_name = f"{stem}_竖条预览_498x1080.png"
+        elif (args.center_in_band and W_band < 498) or args.squeeze_498:
+            strip_img = Image.fromarray(strip).resize((498, 1080), Image.LANCZOS)
+            strip_name = f"{stem}_竖条预览_498x1080.png"
+        else:
+            strip_img = Image.fromarray(strip)
+            strip_name = f"{stem}_竖条塑形预览_{W_band}x1080.png"
+        strip_path = args.save_dir / strip_name
+        strip_img.save(strip_path, optimize=True)
+        txt_path = args.save_dir / f"{stem}_塑形裁剪参数.txt"
+        txt_path.write_text(
+            f"# 取样: {args.input.name}  ratio={ratio}\n"
+            f"# 成片宽高（竖条）\n"
+            f"CROP_VF={vf!r}\nOVERLAY_X={ox}\nOUTPUT_SIZE={out_px}x1080\n\n"
+            f"soul_enhance 示例:\n"
+            f'  --crop-vf "{vf}" --overlay-x {ox}\n',
+            encoding="utf-8",
+        )
+        print(f"SAVED_FULL={full_path}")
+        print(f"SAVED_STRIP={strip_path}")
+        print(f"SAVED_TXT={txt_path}")
 
 
 if __name__ == "__main__":

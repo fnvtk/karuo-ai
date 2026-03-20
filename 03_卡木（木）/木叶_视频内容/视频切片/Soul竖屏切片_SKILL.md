@@ -1,25 +1,26 @@
 ---
 name: Soul竖屏切片
-description: Soul 派对视频→竖屏成片（498×1080），剪辑→成片两文件夹；竖屏裁剪以全画面 1920×1080 标定（analyze_feishu_ui_crop.py），默认深色带 crop=568@508+居中498、无右侧白边。MLX 转录→高光→batch_clip→soul_enhance（封面+字幕同步+逐字可选+去语助词+纠错+违禁词）→visual_enhance v8 可选。LTX/基因胶囊可选。
-triggers: Soul竖屏切片、视频切片、热点切片、竖屏成片、派对切片、全画面标定、竖屏裁剪、全画面成片、letterbox、画面显示全、白边、飞书录屏、LTX、AI生成视频、Retake重剪、字幕优化、字幕同步、逐字字幕
+description: Soul 派对视频→竖屏成片；字幕暖色条+金边（与封面墨绿区分）、纠错词表+关键词加大加亮、音轨PTS同步补偿；推荐 --typewriter-subs 逐字渐显。流程含裁剪检查→soul_enhance。MLX→visual_enhance v8 可选。
+triggers: Soul竖屏切片、视频切片、热点切片、竖屏成片、派对切片、裁剪检查、重新截图、全画面标定、竖屏裁剪、全画面成片、letterbox、画面显示全、白边、飞书录屏、LTX、AI生成视频、Retake重剪、字幕优化、字幕同步、逐字字幕
 owner: 木叶
 group: 木
-version: "1.4"
+version: "1.8"
 updated: "2026-03-20"
 ---
 
 # Soul 竖屏切片 · 专用 Skill
 
-> 专门切 Soul 派对视频为**竖屏成片**，用于抖音/首页。**只保留两个文件夹**：剪辑 → 成片。
+> 专门切 Soul 派对视频为**竖屏成片**，用于抖音/首页。**主链路两文件夹**：横版切片 → 成片；另设 **`裁剪检查/`** 仅放 analyze 标定图与 txt（不占「成片」逻辑）。
 
 ---
 
-## 一、两文件夹结构（无 clips_enhanced / clips_竖屏）
+## 一、文件夹结构（主：切片 → 成片）
 
 | 文件夹 | 含义 | 内容 |
 |--------|------|------|
-| **clips/** | 剪辑 | batch_clip 输出的横版切片（soul112_01_标题.mp4） |
-| **成片/** | 成片 | 竖屏 498×1080 + 封面 + 字幕 + 去语助词，文件名为**纯标题**（无序号、无 _enhanced） |
+| **clips/** 或 **切片/** | 剪辑 | batch_clip 输出的横版切片（如 `soul127_01_标题.mp4`） |
+| **成片/** | 成片 | 竖条（高 1080、宽随塑形）+ 封面 + 字幕 + 去语助词，文件名为**纯标题**（无序号、无 _enhanced） |
+| **裁剪检查/**（推荐） | 塑形标定 | `analyze_feishu_ui_crop.py --save-dir` 输出：全画面 PNG、竖条预览、参数 txt；每场成片前先写这里 |
 
 不再单独生成 `clips_enhanced`、`clips_竖屏`；成片由 `soul_enhance` 一步直出到 `成片/`。
 
@@ -40,7 +41,7 @@ updated: "2026-03-20"
 **标准五步**（每步完成再走下一步）：① 分析视频→识别话题→导出话题时间 ② 按高光时刻结构整理（前 3 秒/提问） ③ 按时间节点切片→**切片/** ④ 去语助词（合并到⑤） ⑤ 封面+字幕→**成片/**。详见 `参考资料/热点切片_标准流程.md`。
 
 ```
-原视频 → 转录(MLX) → 高光识别(含 question/hook_3sec，见高光识别提示词) → batch_clip → soul_enhance(成片竖屏直出到 成片/)
+原视频 → 转录(MLX) → 高光识别 → batch_clip → **analyze（裁剪检查）** → **核对预览** → soul_enhance(成片竖屏直出到 成片/)
 ```
 
 - **batch_clip**：输出到 `clips/`
@@ -50,19 +51,63 @@ updated: "2026-03-20"
 
 竖屏 **裁剪链必须以全画面 1920×1080 为基准**，不能用「凭感觉收窄竖条」替代。
 
-1. **为什么要全画面标定**：飞书录屏右侧常为**桌面白底**；旧式固定 `483+608` 会裁到白边。正确做法是：在全画面上找**小程序深色主体的左右边界**，先取**整段宽 W**，再在 W 内**居中**裁 498。
-2. **当前默认**（`soul_enhance.py` 内建）：`crop=568:1080:508:0,crop=498:1080:35:0`，`OVERLAY_X=543`。与 `analyze_feishu_ui_crop.py` 对 **127 场全画面 20% 帧** 测算一致。
+1. **为什么要全画面标定**：飞书录屏右侧常为**桌面白底**；固定左缘+窄宽会裁错。正确做法是：在全画面上找深色主体包络，**扩到桌面白**，再 **`crop=W:1080:L:0`**，**默认不再 `scale=498`**，避免界面横向拉伸。
+2. **当前默认**（`soul_enhance.py` 内建）：与 analyze **默认**一致，仅单段 crop（典型 127 场：`crop=598:1080:493:0`，`OVERLAY_X=493`，成片 **598×1080**）。需要旧版 498 宽时：analyze 加 `--squeeze-498`，或 `--crop-vf` 手动加 `,scale=498:1080:flags=lanczos`；**居中再裁 498** 用 `--center-in-band`。
 3. **新场次 / 布局变了**：截一帧全画面（或 `--at 0.2` 从 mp4 抽帧），执行：
 
 ```bash
 cd 脚本
 python3 analyze_feishu_ui_crop.py "/path/to/全画面.jpg"
-# 或 python3 analyze_feishu_ui_crop.py "/path/to/原片.mp4" --at 0.2
+# 或：原片 20% 时长截帧 + 深色带分析 + 写出对照图（推荐每场先做）
+python3 analyze_feishu_ui_crop.py "/path/to/原片.mp4" --at 0.2 --save-dir "/path/to/场次_output/裁剪检查"
 ```
+
+`--save-dir` 会生成：**全画面取样 PNG**、**竖条预览 PNG**（默认文件名含真实宽如 `…_598x1080.png`；仅 squeeze/center 时为 498 宽）、**塑形裁剪参数 txt**，确认后再成片。
 
 把打印的 `CROP_VF` 传给成片命令：`--crop-vf 'crop=...'`（可选 `--overlay-x` 与脚本输出一致）。
 
 4. **逐字渐显字幕**（可选）：`--typewriter-subs`，同一条字幕时间内前缀逐字加长，更跟读。
+
+### 3.2 每场固定流程：裁剪检查 → 成片
+
+**顺序不要跳**：先塑形标定（截图），肉眼 OK 再跑成片；换场次或飞书/窗口布局变了必须重做 ①。
+
+| 步骤 | 动作 | 说明 |
+|------|------|------|
+| ① 塑形标定 | `analyze_feishu_ui_crop.py` 对**本场原片** `--at 0.2`，`--save-dir` 指向 `场次_output/裁剪检查/` | 生成全画面 PNG、竖条预览（文件名含真实宽如 `…598x1080`）、`塑形裁剪参数.txt`；可随时再跑覆盖 = 「重新截图」 |
+| ② 核对 | 打开 `裁剪检查/` | 竖条包住小程序主体、无意外裁切、无异常大白边 |
+| ③ 成片 | `soul_enhance.py`（见下模板） | 输出 **W×1080** 竖条 + 封面 + 字幕 + 加速；`--title-only` 文件名 = 标题 |
+| ④ 字幕抽检 | 日志里多条「解析后无有效字幕」 | 常见为 `transcript.srt` 后半 ASR 坏段（重复/噪声）；需对原片重跑 MLX Whisper 后再执行 ③ |
+
+**推荐目录结构**（可与下表「clips」并列，名称按你习惯；`-c` 指向实际横版切片目录即可）：
+
+```
+xxx_output/
+  highlights.json
+  transcript.srt
+  切片/              # batch_clip 横版（或 clips/）
+  裁剪检查/          # ① 输出，专放标定 PNG + txt
+  成片/              # ③ 输出 + 目录索引.md
+```
+
+**命令模板**（在 `视频切片/脚本/` 下执行，路径换成本场）：
+
+```bash
+# ① 重新截图 / 塑形标定
+python3 analyze_feishu_ui_crop.py "/path/本场原片.mp4" --at 0.2 --save-dir "/path/xxx_output/裁剪检查"
+
+# ③ 竖屏成片（参数以 ① 终端打印为准；与 soul_enhance 内置默认一致时可省略 --crop-vf / --overlay-x）
+python3 soul_enhance.py \
+  -c "/path/xxx_output/切片" \
+  -l "/path/xxx_output/highlights.json" \
+  -t "/path/xxx_output/transcript.srt" \
+  -o "/path/xxx_output/成片" \
+  --vertical --title-only --force-burn-subs --typewriter-subs \
+  --crop-vf "crop=598:1080:493:0" --overlay-x 493
+```
+
+- 表中 **`crop=598:1080:493:0` / 598×1080** 为 127 场在 `0.2` 取样下的典型值；**每场以 ① 的 `CROP_VF`、`OUTPUT_SIZE`、`OVERLAY_X` 为准**。
+- 本机实测路径示例：`~/Movies/soul视频/第127场_20260318_output/`（子目录 `裁剪检查/`、`切片/`、`成片/`）。
 
 ---
 
@@ -80,10 +125,20 @@ python3 analyze_feishu_ui_crop.py "/path/to/全画面.jpg"
 
 ## 五、成片：封面 + 字幕 + 竖屏
 
-- **封面**：竖屏 498×1080 内**不超出界面**；**半透明质感**（背景 alpha=165）；深色渐变、左上角 Soul logo；**封面显示标题 = 成片文件名 = highlights.title**（去杠、去下划线后一致，无 `：｜—/_`、无序号）；标题文字严格居中、多行自动换行。透明度由 `VERTICAL_COVER_ALPHA` 调节。
-- **字幕**：封面结束后先留**约 3 秒纯画面**（无字幕），再开始叠字幕；字幕**居中**在竖屏内。先尝试**单次 FFmpeg 通道**（一次 pass 完成所有字幕叠加，最快）；若失败自动回退到分批模式（batch_size=40）；语助词在解析阶段已由 `clean_filler_words` 去除。重新加字幕时加 `--force-burn-subs`。⚠️ 注意：当前 FFmpeg 不支持 drawtext/subtitles 滤镜，只能用 PIL 图像 overlay 方案。（脚本常量：`SUBS_START_AFTER_COVER_SEC`，默认 3.0）
+- **封面**：竖条画布内**不超出界面**；**半透明质感**（背景 alpha=165）；深色渐变、左上角 Soul logo；**封面显示标题 = 成片文件名 = highlights.title**（去杠、去下划线后一致，无 `：｜—/_`、无序号）；标题严格居中、多行自动换行。透明度由 `VERTICAL_COVER_ALPHA` 调节。
+- **字幕**：封面结束后先留**约 3 秒纯画面**（无字幕），再开始叠字幕；字幕**居中**在竖条内。先尝试**单次 FFmpeg 通道**（一次 pass 完成所有字幕叠加，最快）；若失败自动回退到分批模式（batch_size=40）；语助词在解析阶段已由 `clean_filler_words` 去除。重新加字幕时加 `--force-burn-subs`。⚠️ 注意：当前 FFmpeg 不支持 drawtext/subtitles 滤镜，只能用 PIL 图像 overlay 方案。（脚本常量：`SUBS_START_AFTER_COVER_SEC`，默认 3.0）
 - **封面标题**：高光 `title` 建议 **4～6 个汉字**；成片内封面主标题最多显示 **6 个汉字**（超长由 `soul_enhance` 自动截断，与文件名 `--title-only` 一致）。
-- **竖屏**：498×1080，crop 参数与 `参考资料/竖屏中段裁剪参数说明.md` 一致
+- **竖屏竖条**：**高固定 1080，宽 = analyze 的 OUTPUT_SIZE**，默认不压 498；细节见 `参考资料/竖屏中段裁剪参数说明.md`
+
+### 字幕样式与同步（soul_enhance 内置）
+
+| 项 | 约定 |
+|----|------|
+| **与封面对比** | 封面为**半透明墨绿渐变**；字幕为**暖深棕圆角条 + 琥珀色描边**，避免与主题绿混成一团 |
+| **纠错** | `transcript.srt` 解析时走 `_improve_subtitle_text`（繁转简、CORRECTIONS 错词、违禁替换、去语助词）；**渲染每一帧前**再走 `improve_subtitle_punctuation`，与口播稿对齐 |
+| **重点词** | `KEYWORDS` 列表命中则**更大字号 + 亮金色**，长词优先匹配 |
+| **逐字渐显** | 推荐成片加 **`--typewriter-subs`**：同一条字幕时间内前缀逐步加长，更贴人声节奏 |
+| **音画对齐** | 默认 `SUBTITLE_DELAY_SEC` + **音轨/视频首帧 PTS 差**按比例补偿（脚本内动态计算），减轻「字比声快」 |
 
 ### ⚠️ 字幕烧录常见坑（已修复）
 
@@ -101,14 +156,14 @@ python3 analyze_feishu_ui_crop.py "/path/to/全画面.jpg"
 
 ## 六、竖屏输出两种模式（成片内嵌）
 
-### A. 竖条模式（默认，小程序无白边）
+### A. 竖条模式（默认，保持界面真实比例）
 
-只取横向**中间深色带**，再裁成 498 宽，适合抖音全屏铺满、不要桌面白边。
+用 `analyze_feishu_ui_crop.py`：**深色核心** → **扩边到桌面白** → **默认仅 `crop=W:1080:L:0`**（成片 W×1080，不横向拉伸）。需要固定 498 宽：加 **`--squeeze-498`** 或在 `CROP_VF` 末尾手动加 `scale=498:1080`；需要带内居中再裁 498：**`--center-in-band`**。
 
-| 步骤 | 滤镜 |
+| 步骤 | 滤镜（127 场典型） |
 |------|------|
-| 1 | crop=568:1080:508:0（整段深色小程序主体，不含右侧桌面白边） |
-| 2 | crop=498:1080:35:0（568 内水平居中取 498） |
+| 1 | `crop=598:1080:493:0`（扩边后的内容包络，输出 598×1080） |
+| 2 | （可选）`,scale=498:1080:flags=lanczos` 或第二段 `crop=498:1080:…:0` |
 
 ### B. 全画面模式（`--vertical-fit-full`）
 
@@ -118,36 +173,57 @@ python3 analyze_feishu_ui_crop.py "/path/to/全画面.jpg"
   `scale=w=498:h=1080:force_original_aspect_ratio=decrease,pad=498:1080:(ow-iw)/2:(oh-ih)/2:color=black`
 - 命令：在原有 `soul_enhance.py ... --vertical --title-only` 上增加 **`--vertical-fit-full`**
 
-**输出**：两种模式均为 **498×1080** 竖屏文件。
+**输出**：竖条模式为 **W×1080**（W 由当场 analyze）；全画面模式仍为 **498×1080**（letterbox 画布）。
 
 ---
 
-## 七、完整命令示例（112 场）
+## 七、完整命令示例（通用 + 127 场路径）
 
-**1. 高光**（当前模型生成 highlights.json，标题用刺激性观点，30～300 秒完整段；语助词与节奏感见 `参考资料/高光识别提示词.md`）
+**0. 塑形（每场先做，见 3.2）**
+```bash
+cd /path/to/卡若AI/03_卡木（木）/木叶_视频内容/视频切片/脚本
+python3 analyze_feishu_ui_crop.py "/path/本场原片.mp4" --at 0.2 --save-dir "/path/xxx_output/裁剪检查"
+```
 
-**2. 剪辑（clips）**
+**1. 高光**（模型生成 highlights.json；语助词与节奏见 `参考资料/高光识别提示词.md`）
+
+**2. 剪辑**
 ```bash
 python3 batch_clip.py -i "原视频.mp4" -l highlights.json -o clips/ -p soul112
+# 或输出到 切片/，则成片时 -c 指向 切片/
 ```
 
-**3. 成片（竖屏+封面+字幕+去语助词，直出到 成片/）**
+**3. 成片**（竖屏条 + 封面 + 字幕 + 去语助词；vf 以 analyze 为准）
 ```bash
 python3 soul_enhance.py -c clips/ -l highlights.json -t transcript.srt -o 成片/ --vertical --title-only --force-burn-subs
-# 可选：逐字字幕 + 本场全画面重算的裁剪（见 3.1）
-python3 soul_enhance.py -c clips/ -l highlights.json -t transcript.srt -o 成片/ --vertical --title-only --force-burn-subs --typewriter-subs --crop-vf "crop=568:1080:508:0,crop=498:1080:35:0"
+# 推荐（逐字 + 与当场 vf 一致）：--typewriter-subs
+python3 soul_enhance.py -c clips/ -l highlights.json -t transcript.srt -o 成片/ --vertical --title-only --force-burn-subs --typewriter-subs --crop-vf "crop=598:1080:493:0" --overlay-x 493
 ```
 
-**前缀命名注意**：`-p soul119` 这类带场次号的前缀会产生 `soul119_01_xxx.mp4`，`soul_enhance` 会正确识别 `01` 为切片序号（取所有 `_数字_` 中最小值）。
+**127 场本机示例**（`~/Movies/soul视频/第127场_20260318_output/`）：
+```bash
+cd ~/Documents/个人/卡若AI/03_卡木（木）/木叶_视频内容/视频切片/脚本
+python3 analyze_feishu_ui_crop.py "$HOME/Movies/soul视频/原视频/soul 派对 127场 20260318.mp4" --at 0.2 --save-dir "$HOME/Movies/soul视频/第127场_20260318_output/裁剪检查"
+python3 soul_enhance.py \
+  -c "$HOME/Movies/soul视频/第127场_20260318_output/切片" \
+  -l "$HOME/Movies/soul视频/第127场_20260318_output/highlights.json" \
+  -t "$HOME/Movies/soul视频/第127场_20260318_output/transcript.srt" \
+  -o "$HOME/Movies/soul视频/第127场_20260318_output/成片" \
+  --vertical --title-only --force-burn-subs --typewriter-subs \
+  --crop-vf "crop=598:1080:493:0" --overlay-x 493
+```
+
+**前缀命名注意**：`-p soul119` 会产生 `soul119_01_xxx.mp4`，`soul_enhance` 取 `_数字_` 中**最小值**为切片序号（如 119→01）。
 
 输出目录结构示例：
 ```
 xxx_output/
-  clips/           # 横版切片
-  成片/            # 竖屏成片，文件名为标题.mp4
-  成片/目录索引.md
   highlights.json
   transcript.srt
+  切片/ 或 clips/   # 横版
+  裁剪检查/         # analyze 输出（PNG + txt）
+  成片/             # 竖屏成片，文件名为标题.mp4
+  成片/目录索引.md
 ```
 
 ---
@@ -156,8 +232,8 @@ xxx_output/
 
 | 项 | 值 |
 |----|-----|
-| 文件夹 | 仅 **clips/**、**成片/** |
-| 成片尺寸 | 498×1080 竖屏 |
+| 文件夹 | **切片（或 clips）** + **成片**；另 **`裁剪检查/`** 放标定素材 |
+| 成片尺寸 | 竖条 **W×1080**（默认 W 由 analyze）；`--vertical-fit-full` 时为 498×1080 letterbox |
 | 成片文件名 | 纯标题（无 01、无 _enhanced） |
 | 单段时长 | 30～300 秒 |
 | 高光/语助词 | 见 `参考资料/高光识别提示词.md` |
@@ -214,7 +290,7 @@ python3 visual_enhance.py -i "soul_enhanced.mp4" -o "成片/标题.mp4" --scenes
 | **音视频同步生成** | LTX-2 **A2V**、音视频同步生成 | 配音/旁白 → 对应画面，补全缺失画面 |
 
 **能力与集成细节**：见 `参考资料/LTX_能力与集成说明.md`（含 Retake、Video extension、多关键帧、Prompt 增强、API/本地/Desktop 接入方式）。  
-**流程约定**：凡 LTX 生成的片段，统一按成片规范（竖屏 498×1080、封面、字幕）经 soul_enhance 输出，与录播切片一致。
+**流程约定**：凡 LTX 生成的片段，统一按成片规范（竖条或 letterbox、封面、字幕）经 soul_enhance 输出，与录播切片一致。
 
 ---
 

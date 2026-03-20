@@ -37,7 +37,12 @@ alwaysApply: true
 - **飞书日志**：直接执行 `write_today_three_focus.py`，不询问
 - **对外输出**：报告/图片 → `/Users/karuo/Documents/卡若Ai的文件夹/` 下对应子目录；图片登记 `图片/图片索引.md`
 - **数据库**：一律用唯一 MongoDB（27017，库名 `karuo_site`）；卡若 AI 调用以此库为主（记忆条目、对话记录、消息内容）
-- **聊天记录**：一律存 MongoDB，实时从 MongoDB 读取/召回；对话结束执行 `python3 01_卡资（金）/金仓_存储备份/聊天记录管理/脚本/realtime_chat_sync.py` 实时同步并优化迭代（自动分类、标签提取、摘要生成）；context_recall 在 MongoDB 不可用时自动读本地 fallback
+- **Mongo 对话留存闭环（每条对话默认格式，复盘块之前完成）**：顺序与说明见 `运营中枢/参考资料/卡若AI_Mongo对话留存闭环.md`。Agent **必须**在本轮回复写出复盘块**之前**执行：
+  1. `python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/聊天记录管理/脚本/realtime_chat_sync.py"`（同步**当前最近** Cursor 会话全量消息，`对话记录`/`消息内容` upsert，**不重复键**；并刷新 `项目分类` 汇总）
+  2. 若用户指定对话 ID：`.../realtime_chat_sync.py --current-conversation-id <UUID>`
+  3. **首次/索引冲突/duplicate key**：`python3 ".../脚本/ensure_mongo_chat_indexes.py"` 或 `realtime_chat_sync.py --ensure-indexes`
+  4. **低频补全本地全部会话**：`.../realtime_chat_sync.py --sync-all`（可选 `--only-new`）
+- **召回**：context_recall 等一律以 MongoDB 为主；不可用时读本地 fallback。可视汇总：官网 **`/console/cursor-archive`**
 - **MD 预览**：Markdown Preview Enhanced 单界面
 - **项目与端口注册表**：有变更时更新 `运营中枢/工作台/项目与端口注册表.md`
 - **专有名词不翻译**：Cursor、GitHub、Gitea、v0、Vercel、MongoDB、Synology、Navicat、宝塔等保留原文

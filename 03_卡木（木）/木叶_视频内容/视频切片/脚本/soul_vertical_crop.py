@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 Soul 竖屏中段裁剪（批量）
-横版 1920×1080 → 竖屏 498×1080，去左右白边。
-参数与 SKILL「Soul 竖屏成片」一致，以后剪辑 Soul 视频统一用此脚本。
+横版 1920×1080 → 竖条（高 1080，宽 = analyze 包络宽，默认不横向压扁）。
+每场先用 analyze_feishu_ui_crop 得到 CROP_VF 后，可改本文件 CROP_VF 或后续加 CLI。
 """
 import argparse
 import re
@@ -11,8 +11,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-# 固定参数（与 SKILL 一致）
-CROP_VF = "crop=568:1080:508:0,crop=498:1080:35:0"
+# 与 soul_enhance 默认一致；他场次请用 analyze_feishu_ui_crop.py 打印的 CROP_VF 覆盖
+# 需旧版 498 宽：在末尾加 ,scale=498:1080:flags=lanczos
+CROP_VF = "crop=598:1080:493:0"
 OUT_SUFFIX = "_竖屏中段"
 
 

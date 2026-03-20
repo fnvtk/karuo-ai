@@ -57,12 +57,12 @@ SILENCE_THRESHOLD = -40  # 静音阈值(dB)
 SILENCE_MIN_DURATION = 0.5  # 最短静音时长(秒)
 
 # Soul 竖屏裁剪（与 soul_vertical_crop 一致，成片直出用）
-# 飞书录屏典型布局：深色小程序主体约在 x∈[508,1076]，右缘外为桌面白底。
-# 旧参数 483+608=1091 会吃进右侧白边；现改为「整段深色界面入画 + 居中取 498」。
-CROP_VF = "crop=568:1080:508:0,crop=498:1080:35:0"
-# 竖屏成片时封面/字幕用此尺寸，叠在横版上的 x 位置（与 crop 后保留区域左缘一致）
-VERTICAL_W, VERTICAL_H = 498, 1080
-OVERLAY_X = 543  # 508+35，与历史 483+60 对齐，避免封面/字幕错位
+# 默认与 analyze_feishu_ui_crop.py（20% 帧、扩边到桌面白 + 横向 scale）典型输出一致；他场次请先跑分析再 --crop-vf。
+# 默认与 analyze_feishu_ui_crop 一致：仅 crop 包络宽×1080，不横向压扁；旧 498 见 --crop-vf 两段裁或 scale。
+CROP_VF = "crop=598:1080:493:0"
+VERTICAL_H = 1080
+VERTICAL_W_LEGACY = 498  # 两段裁 / squeeze-498 时输出宽
+OVERLAY_X = 493
 
 # 竖屏「全画面入画」：不裁中间竖条；整幅横版等比缩放入 498×1080，上下黑边（letterbox）
 VERTICAL_FIT_FULL_VF = (
@@ -72,14 +72,41 @@ VERTICAL_FIT_FULL_VF = (
 
 
 def _overlay_x_from_crop_vf(crop_vf: str):
-    """从两段 crop 解析字幕/封面叠在横版上的 x：crop=W:1080:X:0,crop=498:1080:Y:0 → X+Y"""
-    m = re.match(
-        r"crop=\d+:1080:(\d+):0,crop=498:1080:(\d+):0",
-        (crop_vf or "").strip().replace(" ", ""),
-    )
+    """从滤镜链解析字幕/封面叠在横版上的 x。
+    - 两段 crop：crop=W:1080:X:0,crop=498:1080:Y:0 → X+Y
+    - crop + scale=498：crop=W:1080:L:0,scale=498:1080... → L
+    - 仅 crop 包络：crop=W:1080:L:0 → L"""
+    s = (crop_vf or "").strip().replace(" ", "")
+    m = re.match(r"crop=\d+:1080:(\d+):0,crop=498:1080:(\d+):0", s)
     if m:
         return int(m.group(1)) + int(m.group(2))
+    m = re.match(r"crop=\d+:1080:(\d+):0,scale=498:1080", s)
+    if m:
+        return int(m.group(1))
+    m = re.match(r"^crop=\d+:1080:(\d+):0$", s)
+    if m:
+        return int(m.group(1))
     return None
+
+
+def vertical_out_dimensions_from_vf(crop_vf: str) -> tuple[int, int]:
+    """竖条成片像素尺寸：原生包络宽×1080，或强制 498 宽。"""
+    s = (crop_vf or "").strip().replace(" ", "")
+    if not s:
+        return VERTICAL_W_LEGACY, VERTICAL_H
+    if re.match(r"^crop=\d+:1080:\d+:0,crop=498:1080:\d+:0$", s):
+        return VERTICAL_W_LEGACY, VERTICAL_H
+    if re.search(r",scale=498:1080", s):
+        return VERTICAL_W_LEGACY, VERTICAL_H
+    m = re.match(r"^crop=(\d+):1080:\d+:0$", s)
+    if m:
+        return int(m.group(1)), VERTICAL_H
+    return VERTICAL_W_LEGACY, VERTICAL_H
+
+
+def _is_vertical_strip_canvas(w: int, h: int) -> bool:
+    """竖条成片画布：固定高度 1080、宽度小于全幅横版（封面/字幕走竖条样式）。"""
+    return h == VERTICAL_H and w < 1600
 
 
 def build_typewriter_subtitle_images(
@@ -99,7 +126,7 @@ def build_typewriter_subtitle_images(
     sub_images = []
     img_idx = 0
     for sub in subtitles:
-        safe_text = improve_subtitle_punctuation(sub["text"])
+        safe_text = improve_subtitle_punctuation(_improve_subtitle_text(sub["text"]))
         if not safe_text or not safe_text.strip():
             continue
         s, e = float(sub["start"]), float(sub["end"])
@@ -256,6 +283,10 @@ KEYWORDS = [
     '电商', '创业', '项目', '收益', '流量', '引流',
     '抖音', 'Soul', '微信', '美团', '方法', '技巧', '干货',
     '核心', '关键', '重点', '赚钱', '收入', '利润',
+    # 127 场及同类话题常见词
+    '消耗', '算力', '工资', '月薪', '两万', '2万', '面试', '三面', '实操', '学历',
+    '推流', '三板斧', '后端', '前端', '暴利', '缺口', '保镖', '辅助', '两头扛',
+    '剪辑', '成片', '模型', '规则', '组织',
 ]
 
 # 字体优先级（封面用更好看的字体）
@@ -296,18 +327,22 @@ STYLE = {
     'subtitle': {
         'font_size': 44,
         'color': (255, 255, 255),
-        'outline_color': (25, 25, 25),
+        'outline_color': (20, 12, 8),
         'outline_width': 4,
-        'keyword_color': (255, 200, 50),   # 亮金黄
-        'keyword_outline': (80, 50, 0),    # 深黄描边
-        'keyword_size_add': 4,              # 关键词字号+4
-        'bg_color': (15, 15, 35, 200),
+        'keyword_color': (255, 232, 120),   # 亮金，与条底色对比强
+        'keyword_outline': (90, 55, 0),
+        'keyword_size_add': 6,              # 关键词更大一号，突出重点
+        # 与封面「墨绿半透明」区分：暖深棕底 + 琥珀描边，一眼可辨是字幕条
+        'bg_color': (34, 20, 16, 238),
+        'border_color': (255, 186, 90, 255),
+        'border_width': 2,
         'margin_bottom': 70,
     }
 }
 
 # 字幕与语音同步的全局延迟补偿（秒）；封面后留白再叠字幕；封面标题汉字上限（须在本文件先于 _limit_cover_title_cjk 定义）
-SUBTITLE_DELAY_SEC = 2.0
+# 略抬高默认值，配合下方音轨/视频 PTS 差比例，减少「字先于人」
+SUBTITLE_DELAY_SEC = 2.15
 SUBS_START_AFTER_COVER_SEC = 3.0
 COVER_TITLE_MAX_CJK = 6
 
@@ -799,14 +834,14 @@ def _strip_cover_number_prefix(text):
 
 
 def create_cover_image(hook_text, width, height, output_path, video_path=None):
-    """创建封面贴片。竖屏 498x1080 时：高级渐变背景、文字严格在界面内居中不超出、左上角 Soul logo；封面不显示 123 等序号。"""
+    """创建封面贴片。竖条（高 1080、宽由塑形）时：半透明渐变、文字在条内居中、左上角 Soul logo；不显示切片序号前缀。"""
     hook_text = _to_simplified(str(hook_text or "").strip())
     hook_text = _strip_cover_number_prefix(hook_text)
     if not hook_text:
         hook_text = "精彩切片"
     style = STYLE['cover']
     hook_style = STYLE['hook']
-    is_vertical = (width, height) == (VERTICAL_W, VERTICAL_H)
+    is_vertical = _is_vertical_strip_canvas(width, height)
     
     if is_vertical:
         # 竖屏成片：半透明质感封面，渐变背景带 alpha，透出底层画面
@@ -858,7 +893,7 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
     
     # 标题文字：竖屏时严格限制在 padding 内，多行居中，绝不超出界面
     if is_vertical:
-        max_text_width = width - 2 * VERTICAL_COVER_PADDING  # 498 - 88 = 410
+        max_text_width = width - 2 * VERTICAL_COVER_PADDING
         cover_font_size = 48
         font = get_cover_font(cover_font_size)
         lines = []
@@ -931,14 +966,20 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
 # ============ 字幕图片生成 ============
 
 def create_subtitle_image(text, width, height, output_path):
-    """创建字幕图片（关键词加粗加大突出）。498 竖条时居中；全幅横版时偏下居中（为 --vertical-fit-full）。"""
+    """创建字幕图片（纠错+关键词加大加亮）。竖条画布时居中；全幅横版时偏下居中（为 --vertical-fit-full）。"""
     style = STYLE['subtitle']
-    
+    # 成片前再跑一遍纠错/标点，与 parse 阶段互补（逐字帧也走本函数）
+    text = improve_subtitle_punctuation(_improve_subtitle_text(text))
+    if not (text or "").strip():
+        img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        img.save(output_path, 'PNG')
+        return output_path
+
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
     base_size = style['font_size']
-    if (width, height) == (VERTICAL_W, VERTICAL_H):
+    if _is_vertical_strip_canvas(width, height):
         base_size = min(base_size, 38)
     elif height == 1080 and width >= 1280:
         # 1920×1080 全画面叠字：字号略大，条带靠下，避免挡脸
@@ -954,7 +995,7 @@ def create_subtitle_image(text, width, height, output_path):
     kw_font = get_font(FONT_HEAVY, kw_size)
     
     base_x = (width - text_w) // 2
-    if (width, height) == (VERTICAL_W, VERTICAL_H):
+    if _is_vertical_strip_canvas(width, height):
         pad = 24
         base_x = max(pad, min(width - pad - text_w, base_x))
         base_y = (height - text_h) // 2
@@ -974,10 +1015,17 @@ def create_subtitle_image(text, width, height, output_path):
         min(height, base_y + text_h + padding)
     ]
     
-    # 绘制圆角背景
+    # 绘制圆角背景（暖色底 + 与封面绿系区分的琥珀描边）
     bg_layer = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     bg_draw = ImageDraw.Draw(bg_layer)
-    bg_draw.rounded_rectangle(bg_rect, radius=10, fill=style['bg_color'])
+    r = 14
+    fill = style['bg_color']
+    outline = style.get('border_color')
+    ow = int(style.get('border_width', 0) or 0)
+    if outline and ow > 0:
+        bg_draw.rounded_rectangle(bg_rect, radius=r, fill=fill, outline=outline[:3], width=ow)
+    else:
+        bg_draw.rounded_rectangle(bg_rect, radius=r, fill=fill)
     img = Image.alpha_composite(img, bg_layer)
     draw = ImageDraw.Draw(img)
     
@@ -1117,9 +1165,8 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                  force_burn_subs=False, skip_subs=False, vertical=False,
                  crop_vf=None, overlay_x=None, typewriter_subs=False,
                  vertical_fit_full=False):
-    """增强单个切片。vertical=True 时最后输出 498×1080。
-    vertical_fit_full：不裁中间竖条；整幅画面等比缩放入 498×1080 + 上下黑边，前后内容都可见。
-    否则沿用 crop 竖条（全画面标定深色带）。
+    """增强单个切片。vertical=True 时输出竖条，宽由 --crop-vf 决定（原生包络常见 560～750×1080；旧 498 为两段裁或 scale）。
+    vertical_fit_full：整幅 16:9 缩放入 498×1080 + 上下黑边。
     """
     
     print(f"  输入: {os.path.basename(clip_path)}", flush=True)
@@ -1143,17 +1190,19 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     cover_duration = STYLE['cover']['duration']
     subtitle_overlay_start = cover_duration + SUBS_START_AFTER_COVER_SEC
     
-    # 竖屏：默认封面/字幕按 498×1080 叠在竖条上；全画面模式按原分辨率全屏叠加再整体缩放
+    # 竖屏：封面/字幕按解析出的竖条宽×1080 叠在横版上；全画面模式按原分辨率全屏叠加再整体缩放
     if vertical and vertical_fit_full:
         out_w, out_h = width, height
         vf_use = ""
         overlay_pos = "0:0"
     elif vertical:
-        out_w, out_h = VERTICAL_W, VERTICAL_H
         vf_use = (crop_vf or CROP_VF).strip()
+        out_w, out_h = vertical_out_dimensions_from_vf(vf_use)
         ox = overlay_x
         if ox is None and crop_vf:
             ox = _overlay_x_from_crop_vf(crop_vf)
+        if ox is None:
+            ox = _overlay_x_from_crop_vf(vf_use)
         if ox is None:
             ox = OVERLAY_X
         overlay_pos = f"{int(ox)}:0"
@@ -1214,13 +1263,11 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                 audio_r = subprocess.run(audio_cmd, capture_output=True, text=True, timeout=10)
                 if audio_r.returncode == 0 and audio_r.stdout.strip():
                     audio_pts = float(audio_r.stdout.strip().split("\n")[0].strip())
-                    # 视频帧 PTS 与音频帧 PTS 的差值揭示了 seeking 偏移
+                    # 视频帧 PTS 与音频帧 PTS 的差值揭示 input seeking 对齐误差
                     offset = abs(first_pts - audio_pts)
-                    # 关键帧对齐通常导致视频比音频早 0-3s
-                    # 字幕需要额外推迟这个偏移量
-                    actual_delay = max(1.5, SUBTITLE_DELAY_SEC + offset * 0.5)
-                    if actual_delay > 4.0:
-                        actual_delay = SUBTITLE_DELAY_SEC
+                    # 按比例推迟字幕，更贴人声；夹紧区间避免过激或失控
+                    raw_delay = SUBTITLE_DELAY_SEC + offset * 0.72
+                    actual_delay = max(1.65, min(4.0, raw_delay))
         except Exception:
             pass
 
@@ -1245,8 +1292,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         else:
             for i, sub in enumerate(subtitles):
                 img_path = os.path.join(temp_dir, f'sub_{i:04d}.png')
-                safe_text = improve_subtitle_punctuation(sub['text'])
-                create_subtitle_image(safe_text, out_w, out_h, img_path)
+                create_subtitle_image(sub['text'], out_w, out_h, img_path)
                 sub_images.append({'path': img_path, 'start': sub['start'], 'end': sub['end']})
     if sub_images:
         print(f"  ✓ 字幕图片 ({len(sub_images)}张)", flush=True)
@@ -1258,7 +1304,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     # 5. 构建FFmpeg命令
     current_video = clip_path
     
-    # 5.1 添加封面（封面图 -loop 1 保证前 3 秒完整显示；竖屏时叠在 x=543）
+    # 5.1 添加封面（封面图 -loop 1 保证前若干秒完整显示；竖条时叠在 overlay_pos）
     print(f"  [2/5] 封面烧录中…", flush=True)
     cover_output = os.path.join(temp_dir, 'with_cover.mp4')
     cmd = [
@@ -1284,7 +1330,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     if sub_images:
         print(f"  [3/5] 字幕烧录中（{len(sub_images)} 条，concat+overlay 单次 pass）…", flush=True)
 
-        # 创建透明空白帧（RGBA 498x1080，所有像素透明）
+        # 创建透明空白帧（与竖条/全画面 out_w×out_h 一致）
         blank_path = os.path.join(temp_dir, 'sub_blank.png')
         if not os.path.exists(blank_path):
             blank = Image.new('RGBA', (out_w, out_h), (0, 0, 0, 0))
@@ -1369,8 +1415,11 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         if result.stderr:
             print(f"     {str(result.stderr)[:300]}", file=sys.stderr)
     
-    # 5.4 输出：竖屏 498×1080（竖条裁剪 或 全画面 letterbox）
-    print(f"  [5/5] 竖屏输出（498×1080）…", flush=True)
+    # 5.4 输出：竖条（宽由 vf）或全画面 letterbox
+    if vertical and not vertical_fit_full:
+        print(f"  [5/5] 竖屏输出（{out_w}×{out_h}）…", flush=True)
+    else:
+        print(f"  [5/5] 竖屏输出…", flush=True)
     if vertical and vertical_fit_full:
         r = subprocess.run([
             'ffmpeg', '-y', '-i', current_video,
@@ -1411,14 +1460,18 @@ def main():
     parser.add_argument("--highlights", "-l", help="highlights.json 路径")
     parser.add_argument("--transcript", "-t", help="transcript.srt 路径")
     parser.add_argument("--output", "-o", help="输出目录（成片时填 成片 文件夹路径）")
-    parser.add_argument("--vertical", action="store_true", help="成片直出竖屏 498x1080，与封面+字幕一起输出到 -o 目录")
+    parser.add_argument(
+        "--vertical",
+        action="store_true",
+        help="成片直出竖条（高1080，宽由 analyze / --crop-vf 决定，默认保持界面真实比例）",
+    )
     parser.add_argument("--title-only", action="store_true", help="输出文件名为纯标题（无序号、无_enhanced），与 --vertical 搭配用于成片")
     parser.add_argument("--skip-subs", action="store_true", help="跳过字幕烧录（原片已有字幕时用）")
     parser.add_argument("--force-burn-subs", action="store_true", help="强制烧录字幕（忽略检测）")
     parser.add_argument(
         "--crop-vf",
         default="",
-        help="竖屏时覆盖裁剪链，如 crop=560:1080:465:0,crop=498:1080:31:0（先对原片 20%% 时长处截帧对齐小程序黑框）",
+        help="竖屏时覆盖裁剪链；默认仅单段 crop 保持真实比例；旧抖音可两段裁或加 scale=498（先 analyze_feishu_ui_crop 再粘贴）",
     )
     parser.add_argument(
         "--overlay-x",
@@ -1465,7 +1518,7 @@ def main():
     vfit = getattr(args, "vertical_fit_full", False)
     print(
         f"功能: 封面+字幕+加速10%+去语气词"
-        + ("+竖屏498x1080" if vertical else "")
+        + ("+竖屏条(高1080宽随vf)" if vertical else "")
         + ("+全画面letterbox(不裁竖条)" if vertical and vfit else "")
         + ("+逐字字幕" if typewriter else "")
     )
@@ -1540,7 +1593,7 @@ def generate_index(highlights, output_dir):
     
     with open(index_path, 'w', encoding='utf-8') as f:
         f.write("# Soul派对 - 成片目录\n\n")
-        f.write("**优化**: 封面+字幕+加速10%+去语气词（成片含竖屏时已裁为498×1080）\n\n")
+        f.write("**优化**: 封面+字幕+加速10%+去语气词（竖屏条高度1080，宽随塑形标定，常见非498）\n\n")
         f.write("## 切片列表\n\n")
         f.write("| 序号 | 标题 | Hook | CTA |\n")
         f.write("|------|------|------|-----|\n")
