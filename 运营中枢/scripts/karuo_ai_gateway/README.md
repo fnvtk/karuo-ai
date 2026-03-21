@@ -137,6 +137,67 @@ curl -s "http://127.0.0.1:18080/v1/usage/summary" \
 
 `POST /v1/chat` 与 `POST /v1/chat/completions` 的 JSON 里，若上游返回了 `usage`，会附带 `usage` 字段（OpenAI 标准：`prompt_tokens` / `completion_tokens` / `total_tokens`）。
 
+## 给其他 AI 当网关用（怎么操作）
+
+目标：**任意其他 AI、脚本、低代码、自家服务**都通过 HTTP 调你这台机器（或服务器）上的网关，走同一套卡若逻辑 + 同一批上游模型。
+
+**说明**：**不能把 Cursor 里「正在进行的对话」自动变成一个 URL**。其他系统每次调用都要带「当前问题」；多轮时把历史拼进 `prompt`，或用下面的 `chat/completions` 传 `messages`（网关会取最后一条有效 user 文本）。
+
+### 第一步：启动网关
+
+```bash
+cd /Users/karuo/Documents/个人/卡若AI/运营中枢/scripts/karuo_ai_gateway
+bash start_local_gateway.sh 18080
+# 或：.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 18080
+```
+
+记下 **`http://本机IP或域名:端口`**，这就是其他 AI 要填的 **Base URL 的根**（不要带 `/v1/chat`）。
+
+### 第二步：配置上游模型（真正花钱的那一层）
+
+在 `.env` 或环境里设好 `OPENAI_API_KEY`（及可选 `OPENAI_API_BASE` / `OPENAI_MODEL`，或 `OPENAI_API_BASES` 队列）。详见上文「可选环境变量」。  
+网关负责：鉴权、技能匹配、卡若人设 system prompt、故障切换；**回答内容来自这些上游接口**。
+
+### 第三步（推荐）：科室 Key + `gateway.yaml`
+
+1. `config/gateway.example.yaml` → `config/gateway.yaml`
+2. `export KARUO_GATEWAY_SALT="随机长串"`
+3. `python tools/generate_dept_key.py --tenant-id myai --tenant-name "我的其它AI"`，把 hash 写入 yaml，**明文 dept_key 只给调用方**
+
+其他 AI 调用时带：`X-Karuo-Api-Key: <dept_key>` 或 `Authorization: Bearer <dept_key>`。
+
+若暂不启用 `gateway.yaml`，本机部分场景可无 Key 调用（仅适合内网自用时注意风险）。
+
+### 第四步：其他 AI 发请求（两种形态，二选一）
+
+**形态 A — 最简单：`POST /v1/chat`**
+
+```bash
+curl -s -X POST "http://127.0.0.1:18080/v1/chat" \
+  -H "Content-Type: application/json" \
+  -H "X-Karuo-Api-Key: <dept_key>" \
+  -d '{"prompt":"请用卡若风格回答：……"}'
+```
+
+响应 JSON 里看 **`reply`**；有上游 `usage` 时还有 **`usage`**。
+
+**形态 B — OpenAI 兼容（很多「自定义 Base URL」的客户端都能用）**
+
+- Base URL：`http://127.0.0.1:18080`（不要多写 `/v1` 路径后缀，由客户端自动拼）
+- API Key：填 **dept_key**
+- 客户端会请求：`POST /v1/chat/completions`，body 里带 `messages`
+
+多轮时把多轮写进 `messages`；网关会从里面对话中提取**最后一条有效 user 内容**再送给上游（复杂上下文建议你在业务侧拼成一条 `prompt` 用形态 A，更可控）。
+
+### 第五步：要给外网其他 AI 用
+
+本机需可被访问：内网穿透（如 ngrok）或服务器 + Nginx 反代，HTTPS 域名见上文「外网暴露」。**务必启用科室 Key**，勿裸奔。
+
+### 和「Cursor 里那段对话」的关系
+
+- 其他 AI **不会自动读到** Cursor 侧边栏上下文。
+- 做法：**复制本轮要点**进 `prompt`，或从你方已同步的归档（如 Mongo 对话库 / 控制台）取出摘要再作为 `prompt` 发给网关。
+
 ## Cursor 配置（OpenAI 兼容）
 
 如果你希望在 Cursor 的「API Keys」里把卡若AI网关当成一个 OpenAI 兼容后端：
