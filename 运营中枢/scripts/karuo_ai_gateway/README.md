@@ -112,24 +112,27 @@ curl -s "http://127.0.0.1:8000/v1/skills" \
 curl -s "http://127.0.0.1:8000/v1/health"
 ```
 
-#### 4.4 /v1/usage（科室 TOKEN 累计）
+## 科室 / 终端快速自检（API 地址、鉴权、TOKEN 说明）
 
-本进程内按 **tenant（科室 Key）** 累计 `prompt_tokens` / `completion_tokens` / `total_tokens` 与请求次数；**重启网关会清零**。
+本机启动网关后，浏览器或 `curl` 打开（**不含密钥，可发给科室同事对照配置**）：
 
 ```bash
-curl -s "http://127.0.0.1:8000/v1/usage" \
-  -H "X-Karuo-Api-Key: <dept_key>"
-# 或与 Cursor 一致：
-curl -s "http://127.0.0.1:8000/v1/usage" \
-  -H "Authorization: Bearer <dept_key>"
+curl -s "http://127.0.0.1:8000/v1/gateway/info" | python3 -m json.tool
 ```
 
-单次对话消耗：
+返回内容包括：
 
-- `POST /v1/chat` 的 JSON 里带 `usage`、`usage_estimated`（`true` 表示上游未返回 usage，为网关按字符粗略估算）。
-- `POST /v1/chat/completions`（OpenAI 兼容）的 JSON 里带标准字段 `usage`；若为估算则额外有 `karuo_usage_estimated: true`。
+- 各接口完整 URL（health、chat、chat/completions、models、skills）
+- 是否启用租户鉴权、请求头名称（`X-Karuo-Api-Key` 或 `Authorization: Bearer`）
+- Cursor 与本网关的关系说明（见下）
 
-**说明**：Cursor 编辑器本身的订阅用量请在 Cursor 账户里查看；此处统计的是 **网关 → 你配置的 OPENAI 兼容上游** 的 token（或估算值）。
+### 每次调用如何看到消耗了多少 TOKEN？
+
+- **`POST /v1/chat`**：响应 JSON 增加字段 **`usage`**（与 OpenAI 一致时为 `prompt_tokens` / `completion_tokens` / `total_tokens`），来自**上游模型接口**的返回值；若上游未返回或走降级模板回复，则 `usage` 为 `null`。
+- **`POST /v1/chat/completions`**：非流式时，顶层 **`usage`** 同样透传上游；流式 SSE 仍为本网关的简化实现，**不保证**带 `usage`（建议用非流式或看 access JSONL 日志）。
+- **审计**：在 `gateway.yaml` 里开启 `logging` 后，每条访问日志可带 `usage` 字段（若本次有）。
+
+**说明**：Cursor 软件本身**没有**公开的「把 IDE 里 Composer 当 HTTP API 调」的接口；要实现「任意脚本调 AI」，应使用本网关（或直连 OpenAI 兼容 API）。Cursor 可与本网关**共用**同一上游 Key，或把 Cursor 的 **Override OpenAI Base URL** 指向本网关。
 
 ## Cursor 配置（OpenAI 兼容）
 
