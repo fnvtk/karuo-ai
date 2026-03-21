@@ -6,6 +6,7 @@ from pathlib import Path
 import asyncio
 import os
 import re
+import threading
 import time
 import json
 import hashlib
@@ -13,6 +14,8 @@ import hmac
 import smtplib
 from email.message import EmailMessage
 from typing import Any, Dict, List, Optional, Tuple
+
+_usage_lock = threading.Lock()
 
 import yaml
 from fastapi import FastAPI, HTTPException, Request
@@ -206,10 +209,67 @@ class ChatResponse(BaseModel):
     skill_id: str = ""
     matched_skill: str
     skill_path: str
+    # 本轮大模型消耗（上游返回则为准；否则为按字符粗略估算）
+    usage: Optional[Dict[str, int]] = None
+    usage_estimated: bool = False
 
 
 def _llm_settings(cfg: Dict[str, Any]) -> Dict[str, Any]:
     return (cfg or {}).get("llm") or {}
+
+
+def _extract_usage_from_openai_json(data: Dict[str, Any]) -> Optional[Dict[str, int]]:
+    u = data.get("usage")
+    if not isinstance(u, dict):
+        return None
+    try:
+        pt = u.get("prompt_tokens")
+        ct = u.get("completion_tokens")
+        tt = u.get("total_tokens")
+        pt_i = int(pt) if pt is not None else None
+        ct_i = int(ct) if ct is not None else None
+    except (TypeError, ValueError):
+        return None
+    if pt_i is None and ct_i is None:
+        return None
+    pt_i = int(pt_i or 0)
+    ct_i = int(ct_i or 0)
+    tt_i = int(tt) if tt is not None else (pt_i + ct_i)
+    return {"prompt_tokens": pt_i, "completion_tokens": ct_i, "total_tokens": tt_i}
+
+
+def _rough_token_estimate(text: str) -> int:
+    """中英混合粗略折算（上游未返回 usage 时使用，仅作观测）。"""
+    if not text:
+        return 0
+    return max(1, len(text) // 3)
+
+
+def _estimate_usage_tokens(prompt: str, reply: str) -> Dict[str, int]:
+    pt = _rough_token_estimate(prompt)
+    ct = _rough_token_estimate(reply)
+    return {"prompt_tokens": pt, "completion_tokens": ct, "total_tokens": pt + ct}
+
+
+def _get_or_create_usage_stats() -> Dict[str, Any]:
+    if not hasattr(app.state, "_usage_stats") or app.state._usage_stats is None:
+        app.state._usage_stats = {"started_at": int(time.time()), "by_tenant": {}}
+    return app.state._usage_stats
+
+
+def _record_gateway_usage(tenant_id: str, usage: Dict[str, int]) -> None:
+    tid = (tenant_id or "").strip() or "_open"
+    with _usage_lock:
+        st = _get_or_create_usage_stats()
+        row = st["by_tenant"].setdefault(
+            tid,
+            {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "requests": 0},
+        )
+        row["prompt_tokens"] += int(usage.get("prompt_tokens", 0) or 0)
+        row["completion_tokens"] += int(usage.get("completion_tokens", 0) or 0)
+        row["total_tokens"] += int(usage.get("total_tokens", 0) or 0)
+        row["requests"] += 1
+        st["last_ts"] = int(time.time())
 
 
 def _split_csv_env(value: str) -> List[str]:
@@ -509,11 +569,17 @@ def _send_provider_alert(cfg: Dict[str, Any], errors: List[str], prompt: str, ma
         s.send_message(msg)
 
 
-def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, skill_path: str) -> str:
-    """调用 LLM 生成回复（OpenAI 兼容）。未配置则返回模板回复。"""
+def build_reply_with_llm(
+    prompt: str, cfg: Dict[str, Any], matched_skill: str, skill_path: str
+) -> Tuple[str, Dict[str, int], bool]:
+    """
+    调用 LLM 生成回复（OpenAI 兼容）。未配置则返回模板回复。
+    返回：(reply, usage_tokens, usage_estimated)
+    """
     direct = _direct_reply_for_simple_prompt(prompt)
     if direct:
-        return direct
+        u = _estimate_usage_tokens(prompt, direct)
+        return direct, u, True
 
     system = (
         "【强制身份】你是「卡若AI」，卡若的私域运营与项目落地数字管家。"
@@ -552,7 +618,10 @@ def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, s
                     if _is_unusable_llm_reply(reply) or _looks_mismatched_reply(prompt, reply):
                         errors.append(f"provider#{idx} unusable_reply={reply[:120]}")
                         continue
-                    return reply
+                    parsed = _extract_usage_from_openai_json(data)
+                    if parsed:
+                        return reply, parsed, False
+                    return reply, _estimate_usage_tokens(prompt, reply), True
                 errors.append(f"provider#{idx} status={r.status_code} body={r.text[:120]}")
             except Exception as e:
                 errors.append(f"provider#{idx} exception={type(e).__name__}: {str(e)[:160]}")
@@ -563,8 +632,10 @@ def build_reply_with_llm(prompt: str, cfg: Dict[str, Any], matched_skill: str, s
         except Exception:
             # 告警失败不影响主流程，继续降级
             pass
-        return _template_reply(prompt, matched_skill, skill_path, error=" | ".join(errors[:3]))
-    return _template_reply(prompt, matched_skill, skill_path)
+        err_reply = _template_reply(prompt, matched_skill, skill_path, error=" | ".join(errors[:3]))
+        return err_reply, _estimate_usage_tokens(prompt, err_reply), True
+    tpl = _template_reply(prompt, matched_skill, skill_path)
+    return tpl, _estimate_usage_tokens(prompt, tpl), True
 
 
 class OpenAIChatCompletionsRequest(BaseModel):
@@ -772,7 +843,9 @@ def _template_reply(prompt: str, matched_skill: str, skill_path: str, error: str
     )
 
 
-def _as_openai_stream(reply: str, model: str, created: int):
+def _as_openai_stream(
+    reply: str, model: str, created: int, usage: Optional[Dict[str, int]] = None
+):
     """
     OpenAI Chat Completions 流式（SSE）最小兼容实现。
     """
@@ -783,13 +856,19 @@ def _as_openai_stream(reply: str, model: str, created: int):
         "model": model,
         "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
     }
-    chunk1 = {
+    chunk1: Dict[str, Any] = {
         "id": f"chatcmpl-{created}",
         "object": "chat.completion.chunk",
         "created": created,
         "model": model,
         "choices": [{"index": 0, "delta": {"content": reply}, "finish_reason": "stop"}],
     }
+    if usage:
+        chunk1["usage"] = {
+            "prompt_tokens": usage.get("prompt_tokens", 0),
+            "completion_tokens": usage.get("completion_tokens", 0),
+            "total_tokens": usage.get("total_tokens", 0),
+        }
     yield f"data: {json.dumps(chunk0, ensure_ascii=False)}\n\n"
     yield f"data: {json.dumps(chunk1, ensure_ascii=False)}\n\n"
     yield "data: [DONE]\n\n"
@@ -804,6 +883,7 @@ def index():
     <body>
     <h1>卡若AI 网关</h1>
     <p>外网可访问、按卡若AI 思考逻辑生成。其他 AI 可 POST /v1/chat 调用。</p>
+    <p>科室用量：<code>GET /v1/usage</code>（需科室 Key）；对话响应内带 <code>usage</code>。</p>
     <p>API 文档：<a href="/docs">/docs</a></p>
     </body></html>
     """
@@ -848,7 +928,10 @@ async def chat(req: ChatRequest, request: Request):
             if (skill_id not in allowed) and (skill_path not in allowed):
                 raise HTTPException(status_code=403, detail="skill not allowed for tenant")
 
-    reply = build_reply_with_llm(req.prompt, cfg, matched_skill, skill_path)
+    reply, usage_tokens, usage_estimated = build_reply_with_llm(
+        req.prompt, cfg, matched_skill, skill_path
+    )
+    _record_gateway_usage(tenant_id, usage_tokens)
 
     # 4) 访问日志（默认不落 prompt 内容）
     logging_cfg = (cfg or {}).get("logging") or {}
@@ -861,6 +944,8 @@ async def chat(req: ChatRequest, request: Request):
         "skill_path": skill_path,
         "client": request.client.host if request.client else "",
         "ua": request.headers.get("user-agent", ""),
+        "usage": usage_tokens,
+        "usage_estimated": usage_estimated,
     }
     if bool(logging_cfg.get("log_request_body", False)):
         record["prompt"] = req.prompt
@@ -873,6 +958,8 @@ async def chat(req: ChatRequest, request: Request):
         skill_id=skill_id,
         matched_skill=matched_skill,
         skill_path=skill_path,
+        usage=usage_tokens,
+        usage_estimated=usage_estimated,
     )
 
 
@@ -941,7 +1028,10 @@ async def openai_chat_completions(req: OpenAIChatCompletionsRequest, request: Re
         cfg = dict(cfg or {})
         cfg["llm"] = llm_cfg
 
-    reply = build_reply_with_llm(prompt, cfg, matched_skill, skill_path)
+    reply, usage_tokens, usage_estimated = build_reply_with_llm(
+        prompt, cfg, matched_skill, skill_path
+    )
+    _record_gateway_usage(tenant_id, usage_tokens)
 
     logging_cfg = (cfg or {}).get("logging") or {}
     record: Dict[str, Any] = {
@@ -955,12 +1045,19 @@ async def openai_chat_completions(req: OpenAIChatCompletionsRequest, request: Re
         "ua": request.headers.get("user-agent", ""),
         "openai_compatible": True,
         "requested_model": req.model,
+        "usage": usage_tokens,
+        "usage_estimated": usage_estimated,
     }
     if bool(logging_cfg.get("log_request_body", False)):
         record["prompt"] = prompt
     _log_access(cfg, record)
 
     now = int(time.time())
+    usage_block = {
+        "prompt_tokens": usage_tokens.get("prompt_tokens", 0),
+        "completion_tokens": usage_tokens.get("completion_tokens", 0),
+        "total_tokens": usage_tokens.get("total_tokens", 0),
+    }
     payload = {
         "id": f"chatcmpl-{now}",
         "object": "chat.completion",
@@ -973,11 +1070,16 @@ async def openai_chat_completions(req: OpenAIChatCompletionsRequest, request: Re
                 "finish_reason": "stop",
             }
         ],
+        "usage": usage_block,
     }
+    if usage_estimated:
+        payload["karuo_usage_estimated"] = True
     if bool(req.stream):
         model_name = str(req.model or "karuo-ai")
         return StreamingResponse(
-            _as_openai_stream(reply=reply, model=model_name, created=now),
+            _as_openai_stream(
+                reply=reply, model=model_name, created=now, usage=usage_block
+            ),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
         )
@@ -1036,6 +1138,52 @@ async def openai_responses(req: OpenAIResponsesRequest, request: Request):
 @app.get("/v1/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/v1/usage")
+def usage_stats(request: Request):
+    """
+    返回当前 API Key（科室/部门）在本进程内的累计 TOKEN 统计（重启清零）。
+    鉴权方式同 /v1/chat/completions。
+    """
+    cfg = load_config()
+    if not cfg:
+        st = _get_or_create_usage_stats()
+        row = st["by_tenant"].get("_open") or {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "requests": 0,
+        }
+        return {
+            "tenants_enabled": False,
+            "tenant_id": "_open",
+            "started_at": st.get("started_at"),
+            "last_ts": st.get("last_ts"),
+            "totals": row,
+            "note": "未启用 gateway.yaml 多租户时，所有请求计入 _open",
+        }
+    api_key = _get_api_key_from_request(request, cfg)
+    tenant = _tenant_by_key(cfg, api_key)
+    if not tenant:
+        raise HTTPException(status_code=401, detail="invalid api key")
+    tenant_id = str(tenant.get("id", "")).strip()
+    st = _get_or_create_usage_stats()
+    row = st["by_tenant"].get(tenant_id) or {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "requests": 0,
+    }
+    return {
+        "tenants_enabled": True,
+        "tenant_id": tenant_id,
+        "tenant_name": str(tenant.get("name", "")).strip(),
+        "started_at": st.get("started_at"),
+        "last_ts": st.get("last_ts"),
+        "totals": row,
+        "per_response": "非流式 JSON 的 usage 字段；estimated 见 karuo_usage_estimated",
+    }
 
 
 @app.get("/v1/skills")

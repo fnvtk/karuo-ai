@@ -119,19 +119,45 @@ def build_typewriter_subtitle_images(
     max_steps_per_line=28,
 ):
     """
-    将每条字幕拆成多帧：同一时间段内前缀逐字（逐段）变长，读起来更顺、更像跟读语音。
-    长句按步数上限均分字符，避免单条 concat 段过多。
+    逐词/逐字渐显：
+    - 若字幕带 word_times（whisper word-level SRT），按词的真实开始时间逐词追加，与人声严格同步；
+    - 否则按字符数等分句子时长（兜底）。
     subtitle_overlay_start：最早显示字幕的时间轴（秒），须 ≥ 封面结束 + 留白。
     """
     sub_images = []
     img_idx = 0
+
     for sub in subtitles:
-        safe_text = improve_subtitle_punctuation(_improve_subtitle_text(sub["text"]))
-        if not safe_text or not safe_text.strip():
-            continue
         s, e = float(sub["start"]), float(sub["end"])
         s = max(s, subtitle_overlay_start)
         if s >= e - 0.02:
+            continue
+
+        word_times = sub.get("word_times")
+
+        # ── 路径 A：word-level 时间轴（精准逐词） ────────────────────────────
+        if word_times and len(word_times) > 1:
+            accumulated = ""
+            for wi, wt in enumerate(word_times):
+                w_start = max(float(wt["start"]), subtitle_overlay_start)
+                if wi + 1 < len(word_times):
+                    w_end = float(word_times[wi + 1]["start"])
+                else:
+                    w_end = e
+                w_end = max(w_start + min_step_sec, w_end)
+                accumulated += wt["word"]
+                clean = improve_subtitle_punctuation(_improve_subtitle_text(accumulated))
+                if not (clean or "").strip():
+                    continue
+                img_path = os.path.join(temp_dir, f"sub_{img_idx:04d}.png")
+                create_subtitle_image(clean, out_w, out_h, img_path)
+                sub_images.append({"path": img_path, "start": w_start, "end": w_end})
+                img_idx += 1
+            continue
+
+        # ── 路径 B：按字符数等分（兜底） ─────────────────────────────────────
+        safe_text = improve_subtitle_punctuation(_improve_subtitle_text(sub["text"]))
+        if not safe_text or not safe_text.strip():
             continue
         dur = e - s
         chars = list(safe_text)
@@ -142,7 +168,6 @@ def build_typewriter_subtitle_images(
             sub_images.append({"path": img_path, "start": s, "end": e})
             img_idx += 1
             continue
-        # 步数：不超过 max_steps，且每步至少 min_step_sec（极短句仍保证可见）
         num_steps = min(max_steps_per_line, n)
         num_steps = max(2, num_steps)
         step_dur = dur / num_steps
@@ -161,6 +186,7 @@ def build_typewriter_subtitle_images(
             create_subtitle_image(partial, out_w, out_h, img_path)
             sub_images.append({"path": img_path, "start": t0, "end": t1})
             img_idx += 1
+
     return sub_images
 
 # 繁转简（OpenCC 优先，否则用映射）
@@ -554,6 +580,28 @@ def _improve_subtitle_text(text: str) -> str:
     return t
 
 
+def _detect_word_level_srt(srt_path: str) -> bool:
+    """检测 SRT 是否为 whisper word-level 输出（每条时长 <= 1.0s 且文字极短）。"""
+    try:
+        with open(srt_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        blocks = [b.strip() for b in content.strip().split('\n\n') if b.strip()]
+        if len(blocks) < 20:
+            return False
+        short = 0
+        for b in blocks[:60]:
+            lines = b.splitlines()
+            if len(lines) < 3:
+                continue
+            text = ' '.join(lines[2:]).strip()
+            m = re.match(r'\d{2}:\d{2}:\d{2},\d{3} --> (\d{2}:\d{2}:\d{2},\d{3})', lines[1])
+            if m and len(text) <= 6 and not ' ' in text:
+                short += 1
+        return short >= 25  # 大多数条目都是单词/单字
+    except Exception:
+        return False
+
+
 def parse_srt_for_clip(srt_path, start_sec, end_sec, delay_sec=None):
     """解析SRT，提取指定时间段的字幕。
 
@@ -561,8 +609,9 @@ def parse_srt_for_clip(srt_path, start_sec, end_sec, delay_sec=None):
     1. 字幕延迟补偿（delay_sec）：补偿 FFmpeg input seeking 关键帧偏移（2s 默认）
     2. 噪声行过滤：去掉单字母 L / Agent 等 ASR 幻觉行
     3. 文字质量提升：纠错 + 违禁词替换 + 通畅度修正
-    4. 合并过短字幕：相邻 <1.5s 时自动合并，减少闪烁
-    5. 最小显示时长：每条至少 1.5s，避免一闪而过
+    4. whisper word-level SRT 自动识别：把单字/词条目先聚合成完整句，再用词时间轴做逐词显示
+    5. 合并过短字幕：相邻 <1.5s 且总长 <28字自动合并，减少闪烁
+    6. 最小显示时长：每条至少 1.5s，避免一闪而过
     """
     if delay_sec is None:
         delay_sec = SUBTITLE_DELAY_SEC
@@ -577,6 +626,66 @@ def parse_srt_for_clip(srt_path, start_sec, end_sec, delay_sec=None):
         t = t.replace(',', '.')
         parts = t.split(':')
         return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+
+    # --- word-level SRT：聚合后附带词时间轴 ---
+    is_word_level = _detect_word_level_srt(srt_path)
+    if is_word_level:
+        # 收集时间窗口内的所有单词条目
+        word_entries = []
+        for match in matches:
+            ws = time_to_sec(match[1])
+            we = time_to_sec(match[2])
+            text = match[3].strip()
+            if _is_noise_line(text):
+                continue
+            if we > start_sec and ws < end_sec + 2:
+                word_entries.append({
+                    'abs_start': ws,
+                    'abs_end': we,
+                    'word': text,
+                })
+
+        # 将连续词按句子边界聚合（间隔 > 0.7s 切句）
+        SENT_GAP = 0.7
+        MAX_SENT_CHARS = 22
+        sentences = []
+        cur_words = []
+        for w in word_entries:
+            if cur_words:
+                gap = w['abs_start'] - cur_words[-1]['abs_end']
+                cur_len = sum(len(x['word']) for x in cur_words) + len(w['word'])
+                if gap > SENT_GAP or cur_len > MAX_SENT_CHARS:
+                    sentences.append(cur_words)
+                    cur_words = []
+            cur_words.append(w)
+        if cur_words:
+            sentences.append(cur_words)
+
+        # 每句生成一条带词时间轴的字幕
+        result_subs = []
+        for sent_words in sentences:
+            full_text = ''.join(x['word'] for x in sent_words)
+            improved = _improve_subtitle_text(full_text)
+            if not improved or len(improved) < 2:
+                continue
+            rel_start = max(0, sent_words[0]['abs_start'] - start_sec + delay_sec)
+            rel_end   = sent_words[-1]['abs_end'] - start_sec + delay_sec
+            if rel_start >= rel_end:
+                rel_end = rel_start + max(1.5, len(improved) * 0.12)
+            result_subs.append({
+                'start': rel_start,
+                'end': rel_end,
+                'text': improved,
+                'word_times': [
+                    {
+                        'word': w['word'],
+                        'start': max(0, w['abs_start'] - start_sec + delay_sec),
+                        'end':   w['abs_end']   - start_sec + delay_sec,
+                    }
+                    for w in sent_words
+                ],
+            })
+        return result_subs
 
     raw_subs = []
     for match in matches:
@@ -1392,28 +1501,53 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
             print(f"  ⚠ 未烧录字幕：解析后无有效字幕（请用 MLX Whisper 重新生成 transcript.srt）", flush=True)
         print(f"  [3/5] 字幕跳过", flush=True)
     
-    # 5.3 加速10% + 音频同步（成片必做）
-    print(f"  [4/5] 加速 10% + 去语助词（已在上步字幕解析中清理）…", flush=True)
+    # 5.3 加速10% + 音频增强 + 同步（成片必做）
+    print(f"  [4/5] 加速 10% + 音频清晰化…", flush=True)
     speed_output = os.path.join(temp_dir, 'speed.mp4')
-    atempo = 1.0 / SPEED_FACTOR  # 音频需要反向调整
-    
+
+    # 音频处理链：高通去低频噪声 → 动态降噪 → 人声压缩增益 → 音量归一化
+    audio_enhance = (
+        "highpass=f=120,"             # 去掉 120Hz 以下的低频噪声/嗡嗡声
+        "lowpass=f=10000,"            # 去掉 10kHz 以上的高频噪声
+        "afftdn=nf=-30,"              # FFT 降噪（-30dBFS 噪底）
+        "compand=0.02|0.02:0.05|0.05:-60/-60|-30/-15|-20/-10|0/-3:6:0:0:0.02,"  # 动态压缩：抬升安静部分
+        "loudnorm=I=-16:LRA=7:TP=-1.5"  # EBU R128 响度归一化
+    )
+    # 加速 + 音频增强 合并成一次 ffmpeg
     cmd = [
         'ffmpeg', '-y', '-i', current_video,
-        '-filter_complex', f"[0:v]setpts={1/SPEED_FACTOR}*PTS[v];[0:a]atempo={SPEED_FACTOR}[a]",
+        '-filter_complex',
+        f"[0:v]setpts={1/SPEED_FACTOR}*PTS[v][v];"
+        f"[0:a]atempo={SPEED_FACTOR},{audio_enhance}[a]",
         '-map', '[v]', '-map', '[a]',
         '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
-        '-c:a', 'aac', '-b:a', '128k',
+        '-c:a', 'aac', '-b:a', '192k',
         speed_output
     ]
     
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode == 0 and os.path.exists(speed_output):
         current_video = speed_output
-        print(f"  ✓ 加速 10% 完成", flush=True)
+        print(f"  ✓ 加速 10% + 音频增强完成", flush=True)
     else:
-        print(f"  ⚠ 加速步骤失败，沿用当前视频继续", file=sys.stderr)
-        if result.stderr:
-            print(f"     {str(result.stderr)[:300]}", file=sys.stderr)
+        print(f"  ⚠ 加速步骤失败，尝试仅加速（跳过音频增强）", file=sys.stderr)
+        # 降级：只做加速，不做音频增强
+        cmd_fallback = [
+            'ffmpeg', '-y', '-i', current_video,
+            '-filter_complex', f"[0:v]setpts={1/SPEED_FACTOR}*PTS[v];[0:a]atempo={SPEED_FACTOR}[a]",
+            '-map', '[v]', '-map', '[a]',
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+            '-c:a', 'aac', '-b:a', '128k',
+            speed_output
+        ]
+        result2 = subprocess.run(cmd_fallback, capture_output=True, text=True)
+        if result2.returncode == 0 and os.path.exists(speed_output):
+            current_video = speed_output
+            print(f"  ✓ 加速完成（降级版，无音频增强）", flush=True)
+        else:
+            print(f"  ⚠ 加速步骤失败，沿用当前视频继续", file=sys.stderr)
+            if result2.stderr:
+                print(f"     {str(result2.stderr)[:300]}", file=sys.stderr)
     
     # 5.4 输出：竖条（宽由 vf）或全画面 letterbox
     if vertical and not vertical_fit_full:

@@ -112,6 +112,25 @@ curl -s "http://127.0.0.1:8000/v1/skills" \
 curl -s "http://127.0.0.1:8000/v1/health"
 ```
 
+#### 4.4 /v1/usage（科室 TOKEN 累计）
+
+本进程内按 **tenant（科室 Key）** 累计 `prompt_tokens` / `completion_tokens` / `total_tokens` 与请求次数；**重启网关会清零**。
+
+```bash
+curl -s "http://127.0.0.1:8000/v1/usage" \
+  -H "X-Karuo-Api-Key: <dept_key>"
+# 或与 Cursor 一致：
+curl -s "http://127.0.0.1:8000/v1/usage" \
+  -H "Authorization: Bearer <dept_key>"
+```
+
+单次对话消耗：
+
+- `POST /v1/chat` 的 JSON 里带 `usage`、`usage_estimated`（`true` 表示上游未返回 usage，为网关按字符粗略估算）。
+- `POST /v1/chat/completions`（OpenAI 兼容）的 JSON 里带标准字段 `usage`；若为估算则额外有 `karuo_usage_estimated: true`。
+
+**说明**：Cursor 编辑器本身的订阅用量请在 Cursor 账户里查看；此处统计的是 **网关 → 你配置的 OPENAI 兼容上游** 的 token（或估算值）。
+
 ## Cursor 配置（OpenAI 兼容）
 
 如果你希望在 Cursor 的「API Keys」里把卡若AI网关当成一个 OpenAI 兼容后端：
