@@ -1517,7 +1517,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     cmd = [
         'ffmpeg', '-y', '-i', current_video,
         '-filter_complex',
-        f"[0:v]setpts={1/SPEED_FACTOR}*PTS[v][v];"
+        f"[0:v]setpts={1/SPEED_FACTOR}*PTS[v];"
         f"[0:a]atempo={SPEED_FACTOR},{audio_enhance}[a]",
         '-map', '[v]', '-map', '[a]',
         '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',

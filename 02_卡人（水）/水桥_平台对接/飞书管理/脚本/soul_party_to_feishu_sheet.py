@@ -65,8 +65,8 @@ ROWS = {
     '128': [ '分享最赚钱一个月-知识节奏', 187, 0, 233, 13, 102, 2, 29, 19, 37 ],
     # 129场 2026-03-20：关闭页 200min/252成员/31最高/21新增/4礼物/561灵魂力/灵果+5257，小助手 200min建房/250进房/14人均/187互动/21关注，话题职场；主题从妙记TXT分析：AI手机、金融坏账、投流返点、正反馈
     '129': [ 'AI手机金融坏账投流', 200, 0, 250, 14, 187, 4, 561, 21, 31 ],
-    # 130场 2026-03-21：妙记 2h27m40s；尾声口述视频号场观约2000、三百多人在线；主题视频号首开与Soul对比、私域点赞、规则与切片链路
-    '130': [ '视频号首开Soul对比私域', 147, 2000, 300, 0, 0, 0, 0, 0, 0 ],
+    # 130场 2026-03-21：视频号直播结束页 02:25:49≈146min；观众总数2278、最高在线355、新增关注4、总热度3、送礼1；Soul推流无截图数据填0→脚本跳过第5行保留空
+    '130': [ '视频号首开Soul对比私域', 146, 0, 2278, 0, 3, 1, 3, 4, 355 ],
 }
 # 场次→按日期列填写时的日期（表头为当月日期 1~31）
 SESSION_DATE_COLUMN = {'105': '20', '106': '21', '107': '23', '113': '2', '114': '3', '115': '4', '116': '5', '117': '6', '118': '7', '119': '8', '124': '14', '126': '17', '127': '18', '128': '19', '129': '20', '130': '21'}
@@ -126,6 +126,7 @@ MINIPROGRAM_EXTRA_3 = {
     '18': {'访问次数': 0, '访客': 0, '交易金额': 0},  # 3月18日 127场
     '19': {'访问次数': 0, '访客': 0, '交易金额': 0},  # 3月19日 128场
     '20': {'访问次数': 0, '访客': 0, '交易金额': 0},  # 3月20日 129场
+    '21': {'访问次数': 0, '访客': 0, '交易金额': 0},  # 3月21日 130场（从小程序后台更新）
 }
 
 
@@ -407,7 +408,7 @@ def main():
     session = (sys.argv[1] if len(sys.argv) > 1 else '104').strip()
     row = ROWS.get(session)
     if not row:
-        print('❌ 未知场次，可用: 96, 97, 98, 99, 100, 103, 104, 105, 106, 107, 113, 114, 115, 116, 117, 118, 119, 124, 126, 127')
+        print('❌ 未知场次，可用: 96, 97, 98, 99, 100, 103, 104, 105, 106, 107, 113, 114, 115, 116, 117, 118, 119, 124, 126, 127, 128, 129, 130')
         sys.exit(1)
     token = load_token() or refresh_and_load_token()
     if not token:
@@ -464,9 +465,9 @@ def main():
         if os.environ.get('SOUL_PARTY_PUSH_GROUP', '').strip() != '1':
             print('⏭️ 已跳过飞书群推送（需 export SOUL_PARTY_PUSH_GROUP=1 后重跑本脚本才会推送运营数据到群）')
             return
-        if sess not in ('105', '106', '107', '113', '114', '115', '116', '117', '118', '119', '124', '126', '127', '128', '129'):
+        if sess not in ('105', '106', '107', '113', '114', '115', '116', '117', '118', '119', '124', '126', '127', '128', '129', '130'):
             return
-        date_label = {'105': '2月20日', '106': '2月21日', '107': '2月23日', '113': '3月2日', '114': '3月3日', '115': '3月4日', '116': '3月5日', '117': '3月6日', '118': '3月7日', '119': '3月8日', '124': '3月14日', '126': '3月17日', '127': '3月18日', '128': '3月19日', '129': '3月20日'}.get(sess, sess + '场')
+        date_label = {'105': '2月20日', '106': '2月21日', '107': '2月23日', '113': '3月2日', '114': '3月3日', '115': '3月4日', '116': '3月5日', '117': '3月6日', '118': '3月7日', '119': '3月8日', '124': '3月14日', '126': '3月17日', '127': '3月18日', '128': '3月19日', '129': '3月20日', '130': '3月21日'}.get(sess, sess + '场')
         report_link = OPERATION_REPORT_LINK if sheet_id == SHEET_ID else f'https://cunkebao.feishu.cn/wiki/wikcnIgAGSNHo0t36idHJ668Gfd?sheet={sheet_id}'
         lines = [
             '【Soul 派对运营报表】',
@@ -477,7 +478,7 @@ def main():
         for i, label in enumerate(LABELS_GROUP):
             val = raw_vals[i] if i < len(raw_vals) else ''
             lines.append(f'{label}：{val}')
-        src_date = {'105': '20260220', '106': '20260221', '107': '20260223', '113': '20260302', '114': '20260303', '115': '20260304', '116': '20260305', '117': '20260306', '118': '20260307', '119': '20260308', '124': '20260314', '126': '20260317', '127': '20260318', '128': '20260319', '129': '20260320'}.get(sess, '20260220')
+        src_date = {'105': '20260220', '106': '20260221', '107': '20260223', '113': '20260302', '114': '20260303', '115': '20260304', '116': '20260305', '117': '20260306', '118': '20260307', '119': '20260308', '124': '20260314', '126': '20260317', '127': '20260318', '128': '20260319', '129': '20260320', '130': '20260321'}.get(sess, '20260220')
         lines.append(f'数据来源：soul 派对 {sess}场 {src_date}.txt')
         msg = '\n'.join(lines)
         ok, _ = send_feishu_group_message(FEISHU_GROUP_WEBHOOK, msg)
@@ -509,7 +510,7 @@ def main():
                 val_idx = r - 3
                 if val_idx == skip_push_index:
                     continue  # 跳过推流人数行，保留原值
-                one_cell = f"{sheet_id}!{col_letter}{r}"
+                one_cell = f"{sheet_id}!{col_letter}{r}:{col_letter}{r}"
                 code, body = update_sheet_range(token, spreadsheet_token, one_cell, [[values[val_idx]]])
                 if code != 200 or body.get('code') not in (0, None):
                     if code == 401 or body.get('code') in (99991677, 99991663):
@@ -543,48 +544,48 @@ def main():
                 if token:
                     code, body = update_sheet_range(token, spreadsheet_token, range_col, values_vertical)
             if code == 200 and body.get('code') == 0:
-            ok, msg = _verify_write(spreadsheet_token, sheet_id, col_letter, values, token)
-            if ok:
-                print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter}3:{col_letter}{2+len(values)}，共{len(values)}格），校验通过')
-                _write_session_label(token, spreadsheet_token, sheet_id, col_letter, session)
-                _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter, month=month)
-                _write_party_video_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
-                _write_team_meeting_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
-                _maybe_send_group(session, raw)
-                return
-            print(f'⚠️ 写入成功但校验未通过：{msg}')
-        err = body.get('code')
-        if err == 90202 or (err and 'range' in str(body.get('msg', '')).lower()):
-            all_ok = True
-            for r in range(3, 3 + len(values)):
-                val_idx = r - 3
-                # 推流人数（索引2，行号5）为None时跳过写入，保留原值
-                if val_idx == skip_push_index and values[val_idx] is None:
-                    continue
-                one_cell = f"{sheet_id}!{col_letter}{r}"
-                code, body = update_sheet_range(token, spreadsheet_token, one_cell, [[values[val_idx]]])
-                if code != 200 or body.get('code') not in (0, None):
-                    if code == 401 or body.get('code') in (99991677, 99991663):
-                        token = refresh_and_load_token()
-                        if token:
-                            code, body = update_sheet_range(token, spreadsheet_token, one_cell, [[values[val_idx]]])
-                    if code != 200 or body.get('code') not in (0, None):
-                        all_ok = False
-                        print('❌ 写入单元格失败:', one_cell, code, body)
-                        break
-            if all_ok:
                 ok, msg = _verify_write(spreadsheet_token, sheet_id, col_letter, values, token)
                 if ok:
-                    print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter} 逐格），校验通过')
+                    print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter}3:{col_letter}{2+len(values)}，共{len(values)}格），校验通过')
                     _write_session_label(token, spreadsheet_token, sheet_id, col_letter, session)
                     _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter, month=month)
                     _write_party_video_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
                     _write_team_meeting_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
                     _maybe_send_group(session, raw)
                     return
-                print(f'⚠️ 逐格写入成功但校验未通过：{msg}')
-        else:
-            print('❌ 按列更新失败:', code, body)
+                print(f'⚠️ 写入成功但校验未通过：{msg}')
+            err = body.get('code')
+            if err == 90202 or (err and 'range' in str(body.get('msg', '')).lower()):
+                all_ok = True
+                for r in range(3, 3 + len(values)):
+                    val_idx = r - 3
+                    # 推流人数（索引2，行号5）为None时跳过写入，保留原值
+                    if val_idx == skip_push_index and values[val_idx] is None:
+                        continue
+                    one_cell = f"{sheet_id}!{col_letter}{r}:{col_letter}{r}"
+                    code, body = update_sheet_range(token, spreadsheet_token, one_cell, [[values[val_idx]]])
+                    if code != 200 or body.get('code') not in (0, None):
+                        if code == 401 or body.get('code') in (99991677, 99991663):
+                            token = refresh_and_load_token()
+                            if token:
+                                code, body = update_sheet_range(token, spreadsheet_token, one_cell, [[values[val_idx]]])
+                        if code != 200 or body.get('code') not in (0, None):
+                            all_ok = False
+                            print('❌ 写入单元格失败:', one_cell, code, body)
+                            break
+                if all_ok:
+                    ok, msg = _verify_write(spreadsheet_token, sheet_id, col_letter, values, token)
+                    if ok:
+                        print(f'✅ 已写入飞书表格：{session}场 效果数据（竖列 {col_letter} 逐格），校验通过')
+                        _write_session_label(token, spreadsheet_token, sheet_id, col_letter, session)
+                        _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter, month=month)
+                        _write_party_video_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
+                        _write_team_meeting_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
+                        _maybe_send_group(session, raw)
+                        return
+                    print(f'⚠️ 逐格写入成功但校验未通过：{msg}')
+            else:
+                print('❌ 按列更新失败:', code, body)
     # 有日期列配置但未找到列时，不降级为追加，直接失败
     if date_col and target_col_0based is None:
         print('❌ 未找到日期列，无法写入正确位置。请运行 python3 auto_log.py 刷新 Token 后重试。')

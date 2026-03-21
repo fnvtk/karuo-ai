@@ -88,6 +88,22 @@ python3 scripts/send_chapter_poster_to_feishu.py 10.18 "第119场｜标题" --md
 
 ---
 
+## 正文里插本地图（仅图片）
+
+书稿里单独一行写 `![](images/xxx.png)`（路径相对该 `.md` 所在目录）时，纯文本 `content_upload.py` 不会把图传到 OSS。需要**只上传图片、不写视频/附件**时，在永平项目执行：
+
+```bash
+cd "/Users/karuo/Documents/开发/3、自营项目/一场soul的创业实验-永平"
+python3 scripts/sync_chapter_images_from_md.py --id 10.22 \
+  --md "<与该章对应的 .md 完整路径>"
+```
+
+- 仅识别常见图片后缀（png/jpg/jpeg/gif/webp），上传到 `book-images` 并生成带 `<img>` 的 HTML 写回 `chapters.content`。
+- **不解析、不上传视频**；若误写成 `![](xx.mp4)`，该行会当普通正文显示，不会去调上传接口。
+- 依赖：`pip install pymysql requests`；`SOUL_API_BASE` 默认 `https://soulapi.quwanzhi.com`。
+
+---
+
 ## 其他
 
 - 查看篇章结构：`python3 content_upload.py --list-structure`
