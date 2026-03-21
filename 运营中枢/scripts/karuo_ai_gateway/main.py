@@ -1,7 +1,6 @@
 """
 卡若AI 网关：外网可访问的 API，按卡若AI 思考逻辑生成回复。
-部署后对外提供 POST /v1/chat、OpenAI 兼容 POST /v1/chat/completions（供 Cursor 等客户端）。
-上游 LLM 若返回 usage，会在响应中透传，便于科室统计 TOKEN。
+部署后对外提供 POST /v1/chat，其他 AI 或终端可通过此接口调用卡若AI。
 """
 from pathlib import Path
 import asyncio
@@ -16,6 +15,7 @@ from email.message import EmailMessage
 from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
+import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
@@ -126,6 +126,52 @@ def _rpm_allow(tenant_id: str, rpm: int) -> bool:
     return cnt <= rpm
 
 
+def _normalize_usage(raw: Any) -> Optional[Dict[str, int]]:
+    """从上游 chat/completions 的 usage 字段提取标准计数。"""
+    if not isinstance(raw, dict):
+        return None
+    out: Dict[str, int] = {}
+    for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        v = raw.get(k)
+        if v is None:
+            continue
+        try:
+            out[k] = int(v)
+        except (TypeError, ValueError):
+            continue
+    if not out:
+        return None
+    if "total_tokens" not in out and ("prompt_tokens" in out or "completion_tokens" in out):
+        out["total_tokens"] = out.get("prompt_tokens", 0) + out.get("completion_tokens", 0)
+    return out
+
+
+def _record_llm_usage(tenant_id: str, usage: Optional[Dict[str, int]], from_upstream: bool) -> None:
+    """进程内累计（单 worker）；重启清零。用于本机查看消耗趋势。"""
+    if not from_upstream:
+        return
+    tid = (tenant_id or "").strip() or "_anonymous"
+    if not hasattr(app.state, "_usage_stats") or app.state._usage_stats is None:
+        app.state._usage_stats = {}
+    store: Dict[str, Dict[str, int]] = app.state._usage_stats
+    cur = store.setdefault(
+        tid,
+        {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "llm_calls": 0,
+        },
+    )
+    cur["llm_calls"] = int(cur.get("llm_calls", 0)) + 1
+    if usage:
+        cur["prompt_tokens"] = int(cur.get("prompt_tokens", 0)) + int(usage.get("prompt_tokens") or 0)
+        cur["completion_tokens"] = int(cur.get("completion_tokens", 0)) + int(usage.get("completion_tokens") or 0)
+        cur["total_tokens"] = int(cur.get("total_tokens", 0)) + int(
+            usage.get("total_tokens") or (usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0))
+        )
+
+
 def _log_access(cfg: Dict[str, Any], record: Dict[str, Any]) -> None:
     logging_cfg = (cfg or {}).get("logging") or {}
     if not logging_cfg.get("enabled", False):
@@ -207,8 +253,8 @@ class ChatResponse(BaseModel):
     skill_id: str = ""
     matched_skill: str
     skill_path: str
-    # 上游 OpenAI 兼容接口返回的 usage（透传）；无调用或未返回时为 null
-    usage: Optional[Dict[str, Any]] = None
+    # 上游 OpenAI 兼容接口返回的用量；无上游或未返回时为 null
+    usage: Optional[Dict[str, int]] = None
 
 
 def _llm_settings(cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -514,14 +560,11 @@ def _send_provider_alert(cfg: Dict[str, Any], errors: List[str], prompt: str, ma
 
 def build_reply_with_llm(
     prompt: str, cfg: Dict[str, Any], matched_skill: str, skill_path: str
-) -> Tuple[str, Optional[Dict[str, Any]]]:
-    """
-    调用 LLM 生成回复（OpenAI 兼容）。未配置则返回模板回复。
-    返回 (reply, usage)：usage 为上游 JSON 中的 usage 字段（含 prompt_tokens 等），无则 None。
-    """
+) -> Tuple[str, Optional[Dict[str, int]], bool]:
+    """调用 LLM 生成回复（OpenAI 兼容）。返回 (正文, 上游 usage 或 None, 是否上游成功)。"""
     direct = _direct_reply_for_simple_prompt(prompt)
     if direct:
-        return direct, None
+        return direct, None, False
 
     system = (
         "【强制身份】你是「卡若AI」，卡若的私域运营与项目落地数字管家。"
@@ -541,8 +584,6 @@ def build_reply_with_llm(
         errors: List[str] = []
         for idx, p in enumerate(providers, start=1):
             try:
-                import httpx
-
                 r = httpx.post(
                     f"{p['base_url']}/chat/completions",
                     headers={"Authorization": f"Bearer {p['api_key']}", "Content-Type": "application/json"},
@@ -556,14 +597,12 @@ def build_reply_with_llm(
                 if r.status_code == 200:
                     data = r.json()
                     reply = data["choices"][0]["message"]["content"]
-                    usage = data.get("usage")
-                    if usage is not None and not isinstance(usage, dict):
-                        usage = None
+                    usage = _normalize_usage(data.get("usage"))
                     reply = _repair_reply_for_karuo(prompt, reply)
                     if _is_unusable_llm_reply(reply) or _looks_mismatched_reply(prompt, reply):
                         errors.append(f"provider#{idx} unusable_reply={reply[:120]}")
                         continue
-                    return reply, usage
+                    return reply, usage, True
                 errors.append(f"provider#{idx} status={r.status_code} body={r.text[:120]}")
             except Exception as e:
                 errors.append(f"provider#{idx} exception={type(e).__name__}: {str(e)[:160]}")
@@ -574,8 +613,8 @@ def build_reply_with_llm(
         except Exception:
             # 告警失败不影响主流程，继续降级
             pass
-        return _template_reply(prompt, matched_skill, skill_path, error=" | ".join(errors[:3])), None
-    return _template_reply(prompt, matched_skill, skill_path), None
+        return _template_reply(prompt, matched_skill, skill_path, error=" | ".join(errors[:3])), None, False
+    return _template_reply(prompt, matched_skill, skill_path), None, False
 
 
 class OpenAIChatCompletionsRequest(BaseModel):
@@ -859,7 +898,8 @@ async def chat(req: ChatRequest, request: Request):
             if (skill_id not in allowed) and (skill_path not in allowed):
                 raise HTTPException(status_code=403, detail="skill not allowed for tenant")
 
-    reply, usage = build_reply_with_llm(req.prompt, cfg, matched_skill, skill_path)
+    reply, usage, from_upstream = build_reply_with_llm(req.prompt, cfg, matched_skill, skill_path)
+    _record_llm_usage(tenant_id, usage, from_upstream)
 
     # 4) 访问日志（默认不落 prompt 内容）
     logging_cfg = (cfg or {}).get("logging") or {}
@@ -955,7 +995,8 @@ async def openai_chat_completions(req: OpenAIChatCompletionsRequest, request: Re
         cfg = dict(cfg or {})
         cfg["llm"] = llm_cfg
 
-    reply, usage = build_reply_with_llm(prompt, cfg, matched_skill, skill_path)
+    reply, usage, from_upstream = build_reply_with_llm(prompt, cfg, matched_skill, skill_path)
+    _record_llm_usage(tenant_id, usage, from_upstream)
 
     logging_cfg = (cfg or {}).get("logging") or {}
     record: Dict[str, Any] = {
@@ -1056,47 +1097,6 @@ def health():
     return {"ok": True}
 
 
-@app.get("/v1/gateway/info")
-def gateway_info(request: Request):
-    """
-    科室/终端自检：返回本网关地址、鉴权方式、主要路径说明（不含任何密钥）。
-    TOKEN：成功走上游 LLM 时，/v1/chat 与 /v1/chat/completions 会透传上游 usage。
-    """
-    cfg = load_config()
-    base = str(request.base_url).rstrip("/")
-    auth_required = bool(cfg)
-    header_name = _auth_header_name(cfg) if cfg else "X-Karuo-Api-Key"
-    return {
-        "service": "karuo-ai-gateway",
-        "version": "1.1",
-        "endpoints": {
-            "health": f"{base}/v1/health",
-            "info": f"{base}/v1/gateway/info",
-            "chat": f"{base}/v1/chat",
-            "chat_completions": f"{base}/v1/chat/completions",
-            "models": f"{base}/v1/models",
-            "skills": f"{base}/v1/skills",
-            "openapi_docs": f"{base}/docs",
-        },
-        "auth": {
-            "required": auth_required,
-            "header": header_name,
-            "bearer_supported": True,
-            "note": "启用 config/gateway.yaml 租户后必须带部门 Key；未配置时可本机无 Key 调试（勿暴露公网）。",
-        },
-        "cursor": {
-            "note": "Cursor 编辑器没有公开的「把 Composer 当 HTTP API」接口；可把 Cursor 的 Override OpenAI Base URL 指向本网关，或让本网关与 Cursor 共用同一上游模型 Key。",
-            "override_openai_base_url_example": base,
-            "openai_api_key_in_cursor": "填部门 dept_key（与 gateway.yaml 租户对应）；未启用租户时可任意占位或按你本地策略。",
-        },
-        "usage_tokens": {
-            "per_response": "上游若返回 OpenAI 兼容的 usage 字段，会在 JSON 中透传（prompt_tokens / completion_tokens / total_tokens）。",
-            "billing": "实际扣费与额度在上游（OpenAI、中转商等）侧；本网关只记录与透传。",
-            "access_log": "可在 gateway.yaml 的 logging 中开启 JSONL，记录含 usage 的审计行（若本次有）。",
-        },
-    }
-
-
 @app.get("/v1/skills")
 def allowed_skills(request: Request):
     """
@@ -1122,12 +1122,46 @@ def allowed_skills(request: Request):
     }
 
 
+@app.get("/v1/usage/summary")
+def usage_summary(request: Request):
+    """
+    本网关进程内累计的上游 LLM token（来自上游 JSON 的 usage 字段）。
+    - 未启用 gateway.yaml 时：返回全部租户键（仅适合本机联调）
+    - 启用多租户时：需携带与 /v1/chat 相同的 Key，仅返回当前租户累计
+    说明：单 worker 内存统计，重启清零；与 Cursor 自带用量统计是两套体系。
+    """
+    store: Dict[str, Any] = getattr(app.state, "_usage_stats", None) or {}
+    cfg = load_config()
+    if not cfg:
+        return {
+            "tenants_enabled": False,
+            "by_tenant": store,
+            "note": "未加载 gateway.yaml，未做 Key 隔离；数据为进程内累计，重启清零",
+        }
+    api_key = _get_api_key_from_request(request, cfg)
+    tenant = _tenant_by_key(cfg, api_key)
+    if not tenant:
+        raise HTTPException(status_code=401, detail="invalid api key")
+    tid = str(tenant.get("id", "")).strip() or "_anonymous"
+    cumulative = store.get(tid) or {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "llm_calls": 0,
+    }
+    return {
+        "tenants_enabled": True,
+        "tenant_id": tid,
+        "tenant_name": str(tenant.get("name", "")).strip(),
+        "cumulative": cumulative,
+        "note": "来自上游 chat/completions 的 usage；若上游不返回则仅有 llm_calls 无 token 增量",
+    }
+
+
 # =============================================================================
 # 工作手机 SDK 全量集成（卡若AI 统一微信控制中心）
 # 110 个操作 + 自动注册 + 自然语言指令 + 批量操作
 # =============================================================================
-
-import httpx
 
 WORKPHONE_SDK_URL = os.environ.get("WORKPHONE_SDK_URL", "http://127.0.0.1:8899")
 

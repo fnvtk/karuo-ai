@@ -2,6 +2,12 @@
 
 外网可访问的 API，按卡若AI 思考逻辑生成回复。其他 AI 或终端通过 POST /v1/chat 调用。
 
+## 与 Cursor 的关系（重要）
+
+- **Cursor 编辑器没有公开的「本机 HTTP 接口」**让第三方直接调用它内置的 Agent/对话；无法把「Cursor 当成一个可被 curl 调用的后端」。
+- **推荐接法**：在本机（或服务器）运行本网关，在 Cursor → Settings → **Override OpenAI Base URL** 填网关地址（如 `http://127.0.0.1:18080`），**OpenAI API Key** 填你在 `gateway.yaml` 里为部门生成的 **dept_key**。这样 Cursor 会请求本网关的 `POST /v1/chat/completions`，网关再按队列调用你配置的 **上游** OpenAI 兼容接口（`OPENAI_API_*`）。
+- **TOKEN 消耗**：网关会在上游返回 `usage` 时，把它写进 JSON 响应，并可用 `GET /v1/usage/summary` 查看**本网关进程内**按租户累计的 token（单 worker、重启清零）。**Cursor 订阅自带的用量**仍以 Cursor 客户端/官网为准，与网关统计是两套数据。
+
 ## 运行
 
 ```bash
@@ -112,27 +118,24 @@ curl -s "http://127.0.0.1:8000/v1/skills" \
 curl -s "http://127.0.0.1:8000/v1/health"
 ```
 
-## 科室 / 终端快速自检（API 地址、鉴权、TOKEN 说明）
+#### 4.4 /v1/usage/summary（TOKEN 累计）
 
-本机启动网关后，浏览器或 `curl` 打开（**不含密钥，可发给科室同事对照配置**）：
+本机默认脚本常用端口为 **18080**（见 `start_local_gateway.sh`），请按实际端口替换。
+
+未启用 `gateway.yaml` 时（本机裸跑）：
 
 ```bash
-curl -s "http://127.0.0.1:8000/v1/gateway/info" | python3 -m json.tool
+curl -s "http://127.0.0.1:18080/v1/usage/summary"
 ```
 
-返回内容包括：
+启用多租户时（与调用聊天接口相同的 Key）：
 
-- 各接口完整 URL（health、chat、chat/completions、models、skills）
-- 是否启用租户鉴权、请求头名称（`X-Karuo-Api-Key` 或 `Authorization: Bearer`）
-- Cursor 与本网关的关系说明（见下）
+```bash
+curl -s "http://127.0.0.1:18080/v1/usage/summary" \
+  -H "X-Karuo-Api-Key: <dept_key>"
+```
 
-### 每次调用如何看到消耗了多少 TOKEN？
-
-- **`POST /v1/chat`**：响应 JSON 增加字段 **`usage`**（与 OpenAI 一致时为 `prompt_tokens` / `completion_tokens` / `total_tokens`），来自**上游模型接口**的返回值；若上游未返回或走降级模板回复，则 `usage` 为 `null`。
-- **`POST /v1/chat/completions`**：非流式时，顶层 **`usage`** 同样透传上游；流式 SSE 仍为本网关的简化实现，**不保证**带 `usage`（建议用非流式或看 access JSONL 日志）。
-- **审计**：在 `gateway.yaml` 里开启 `logging` 后，每条访问日志可带 `usage` 字段（若本次有）。
-
-**说明**：Cursor 软件本身**没有**公开的「把 IDE 里 Composer 当 HTTP API 调」的接口；要实现「任意脚本调 AI」，应使用本网关（或直连 OpenAI 兼容 API）。Cursor 可与本网关**共用**同一上游 Key，或把 Cursor 的 **Override OpenAI Base URL** 指向本网关。
+`POST /v1/chat` 与 `POST /v1/chat/completions` 的 JSON 里，若上游返回了 `usage`，会附带 `usage` 字段（OpenAI 标准：`prompt_tokens` / `completion_tokens` / `total_tokens`）。
 
 ## Cursor 配置（OpenAI 兼容）
 
