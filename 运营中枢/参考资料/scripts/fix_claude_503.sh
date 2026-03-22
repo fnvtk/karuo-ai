@@ -9,13 +9,9 @@ SETTINGS="$CLAUDE_DIR/settings.json"
 # 备选模型，api123 通常可用
 FALLBACK_MODEL="claude-sonnet-4-5-20250929"
 BASE_URL="https://api123.icu"
-API_KEY="${ANTHROPIC_API_KEY:-}"
+API_KEY="sk-h7VW10iTSSXo6xJXe44nI1vUhsEcG3H8Z9XyFmWABvhaD4ZW"
 
 mkdir -p "$CLAUDE_DIR"
-if [[ -z "$API_KEY" ]]; then
-  echo "ERROR: 请 export ANTHROPIC_API_KEY=你的api123令牌 后再运行" >&2
-  exit 1
-fi
 python3 -c "
 import json, os
 p = '$SETTINGS'

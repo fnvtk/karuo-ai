@@ -9,6 +9,8 @@ description: >
 
 # 水岸 · 项目管理中枢（Cursor 入口）
 
+> **卡路项目内二分**：若任务明确属于「派对运营（玉宁）」或「永平网站开发」，优先用 **`.cursor/skills/kalu-entrepreneur-party/SKILL.md`** 分流到子 Skill；本入口仍管 **多项目 / 水岸总调度**。
+
 > **负责人**：水岸（卡人·水组）  
 > **完整 SKILL**：`/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水岸_项目管理/SKILL.md`
 

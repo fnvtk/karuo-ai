@@ -32,6 +32,7 @@
 | MCP/连接MCP | `02_卡人（水）/水桥_平台对接/MCP管理/SKILL.md` |
 | Soul运营报表 | `02_卡人（水）/水桥_平台对接/飞书管理/运营报表_SKILL.md` |
 | 项目管理/卡若创业派对 | `02_卡人（水）/水岸_项目管理/SKILL.md` |
+| 卡路派对总控/玉宁/永平开发 | `.cursor/skills/kalu-entrepreneur-party/SKILL.md`（卡若AI 仓库） |
 | 聊天记录/对话存储/聊天归档 | `01_卡资（金）/金仓_存储备份/聊天记录管理/SKILL.md` |
 
 ## 四、MAX Mode（默认）

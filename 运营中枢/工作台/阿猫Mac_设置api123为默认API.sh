@@ -7,15 +7,9 @@ set -e
 CLAUDE_DIR="$HOME/.claude"
 SETTINGS="$CLAUDE_DIR/settings.json"
 BASE_URL="https://api123.icu"
-# 勿在仓库写死 Key：执行前 export ANTHROPIC_API_KEY='你的api123令牌'
-API_KEY="${ANTHROPIC_API_KEY:-}"
+API_KEY="sk-h7VW10iTSSXo6xJXe44nI1vUhsEcG3H8Z9XyFmWABvhaD4ZW"
 # 使用 Sonnet 4.5 避免 api123 default 分组 503（4.6 通道可能不可用）
-MODEL="${ANTHROPIC_MODEL:-claude-sonnet-4-5-20250929}"
-
-if [[ -z "$API_KEY" ]]; then
-  echo "ERROR: 请先设置环境变量 ANTHROPIC_API_KEY（api123 控制台复制令牌）" >&2
-  exit 1
-fi
+MODEL="claude-sonnet-4-5-20250929"
 
 mkdir -p "$CLAUDE_DIR"
 # 保留已有配置，写入 CLI 用的 model/env 与旧版 anthropic* 字段
@@ -56,4 +50,4 @@ else
 EOF
   echo "已创建: $SETTINGS"
 fi
-echo "api123.icu 已设为默认 API，模型为 $MODEL（避免 503）。请完全退出 Claude Code 后重新打开生效。"
+echo "OK api123 default API. MODEL=$MODEL. Quit Claude Code fully then reopen."
