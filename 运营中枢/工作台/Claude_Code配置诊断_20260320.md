@@ -9,7 +9,7 @@
 | 配置项 | 值 |
 |--------|-----|
 | **配置文件路径** | `~/.claude/settings.json` |
-| **API Key** | 见 **api123 控制台** 自行复制，**勿写入仓库/聊天** |
+| **API Key** | `（已脱敏，勿写入仓库；见阿猫本机 ~/.claude/settings.json 或 api123 控制台）` |
 | **Base URL** | `https://api123.icu` |
 | **默认模型** | `claude-sonnet-4-5-20250929` (Sonnet 4.5) |
 | **API 服务商** | api123.icu（中转服务） |
@@ -64,12 +64,12 @@
 {
   "model": "claude-sonnet-4-5-20250929",
   "env": {
-    "ANTHROPIC_API_KEY": "<勿写入仓库，请到 api123 控制台单独保管>",
+    "ANTHROPIC_API_KEY": "<在 api123 控制台生成，勿提交 Git>",
     "ANTHROPIC_BASE_URL": "https://api123.icu",
     "ANTHROPIC_MODEL": "claude-sonnet-4-5-20250929"
   },
   "anthropicBaseUrl": "https://api123.icu",
-  "anthropicApiKey": "<勿写入仓库>",
+  "anthropicApiKey": "<同上，仅本机 ~/.claude/settings.json>",
   "defaultModel": "claude-sonnet-4-5-20250929"
 }
 ```

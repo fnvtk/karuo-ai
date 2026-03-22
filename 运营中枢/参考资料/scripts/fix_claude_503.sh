@@ -10,12 +10,12 @@ SETTINGS="$CLAUDE_DIR/settings.json"
 FALLBACK_MODEL="claude-sonnet-4-5-20250929"
 BASE_URL="https://api123.icu"
 API_KEY="${ANTHROPIC_API_KEY:-}"
-if [[ -z "$API_KEY" ]]; then
-  echo "ERROR: 请设置环境变量 ANTHROPIC_API_KEY（api123 控制台令牌）" >&2
-  exit 1
-fi
 
 mkdir -p "$CLAUDE_DIR"
+if [[ -z "$API_KEY" ]]; then
+  echo "ERROR: 请 export ANTHROPIC_API_KEY=你的api123令牌 后再运行" >&2
+  exit 1
+fi
 python3 -c "
 import json, os
 p = '$SETTINGS'
