@@ -9,7 +9,11 @@ SETTINGS="$CLAUDE_DIR/settings.json"
 # 备选模型，api123 通常可用
 FALLBACK_MODEL="claude-sonnet-4-5-20250929"
 BASE_URL="https://api123.icu"
-API_KEY="sk-h7VW10iTSSXo6xJXe44nI1vUhsEcG3H8Z9XyFmWABvhaD4ZW"
+API_KEY="${ANTHROPIC_API_KEY:-}"
+if [[ -z "$API_KEY" ]]; then
+  echo "ERROR: 请设置环境变量 ANTHROPIC_API_KEY（api123 控制台令牌）" >&2
+  exit 1
+fi
 
 mkdir -p "$CLAUDE_DIR"
 python3 -c "

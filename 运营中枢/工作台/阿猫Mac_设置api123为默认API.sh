@@ -7,7 +7,11 @@ set -e
 CLAUDE_DIR="$HOME/.claude"
 SETTINGS="$CLAUDE_DIR/settings.json"
 BASE_URL="https://api123.icu"
-API_KEY="sk-h7VW10iTSSXo6xJXe44nI1vUhsEcG3H8Z9XyFmWABvhaD4ZW"
+API_KEY="${ANTHROPIC_API_KEY:-}"
+if [[ -z "$API_KEY" ]]; then
+  echo "ERROR: 请先在终端执行: export ANTHROPIC_API_KEY='（api123 控制台复制的令牌）'" >&2
+  exit 1
+fi
 # 使用 Sonnet 4.5 避免 api123 default 分组 503（4.6 通道可能不可用）
 MODEL="claude-sonnet-4-5-20250929"
 

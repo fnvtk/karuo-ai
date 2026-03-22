@@ -9,7 +9,7 @@
 | 配置项 | 值 |
 |--------|-----|
 | **配置文件路径** | `~/.claude/settings.json` |
-| **API Key** | `sk-h7VW10iTSSXo6xJXe44nI1vUhsEcG3H8Z9XyFmWABvhaD4ZW` |
+| **API Key** | 见 **api123 控制台** 自行复制，**勿写入仓库/聊天** |
 | **Base URL** | `https://api123.icu` |
 | **默认模型** | `claude-sonnet-4-5-20250929` (Sonnet 4.5) |
 | **API 服务商** | api123.icu（中转服务） |
