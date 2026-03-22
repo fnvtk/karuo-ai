@@ -1,11 +1,11 @@
 ---
 name: 全栈开发
-description: 卡若AI 全栈开发（火炬）— 知己及类似项目经验 + 官网/全站开发与「开发文档 1～10」标准流程；吸收 Superpowers 实施计划粒度、TDD 推荐、两阶段评审与分支收尾。含分销、RAG、向量化；官网/全站类任务时按 1～10 调研→计划→执行→评审→复盘。**以后开发新网站一律用本 Skill 做调研与执行。** 使用手册一律按卡若AI 使用手册结构（书籍式+图文+images）生成，见开发模板 9、手册。
-triggers: 全栈开发/知己项目/分销/存客宝/RAG/向量化/Next.js/知识库/卡若AI官网/官网开发/全站开发/开发文档/1～10/开发模板/官网全站/v0前端/v0生成/毛玻璃/前端规格/神射手/毛狐狸/前端标准/实施计划/两阶段评审/橙色锁/配色/API调用/使用手册
+description: 卡若AI 全栈开发（火炬）— 知己及类似项目经验 + 官网/全站开发与「开发文档 1～10」标准流程；吸收 Superpowers 实施计划粒度、TDD 推荐、两阶段评审与分支收尾。含分销、RAG、向量化；**§1.10 埋点与点击锚点（用户行为统计）全站强制**，Soul 项目为参考实现。官网/全站类任务按 1～10 调研→计划→执行→评审→复盘。**以后开发新网站一律用本 Skill 做调研与执行。** 使用手册按卡若AI 使用手册结构生成，见开发模板 9、手册。
+triggers: 全栈开发/知己项目/分销/存客宝/RAG/向量化/Next.js/知识库/卡若AI官网/官网开发/全站开发/开发文档/1～10/开发模板/官网全站/v0前端/v0生成/毛玻璃/前端规格/神射手/毛狐狸/前端标准/实施计划/两阶段评审/橙色锁/配色/API调用/使用手册/埋点/点击统计/用户行为/行为统计/数据统计/点击锚点/锚点/trackClick
 owner: 火炬
 group: 火
-version: "2.5"
-updated: "2026-03-15"
+version: "2.6"
+updated: "2026-03-22"
 ---
 
 # 全栈开发（火炬）
@@ -125,32 +125,49 @@ updated: "2026-03-15"
 
 **协同**：Word/文档类清洗用火炬「文档清洗」；部署到 v0、同步 GitHub/Vercel 用金盾「Vercel与v0部署流水线」。
 
-### 1.10 埋点统计（全站强制，2026-03-15 沉淀）
+### 1.10 埋点统计与点击锚点（全站强制，2026-03-15 起沉淀，2026-03-22 扩充）
 
-**任何新功能、新页面、新按钮上线时，必须同步接入埋点统计。** 这是全站开发的标准动作，与功能代码同等重要。
+**任何新功能、新页面、新按钮、新 Tab/标签上线时，必须同步接入埋点统计。** 与功能代码同等重要；**没有埋点 = 没有可核对的数据看板字段**。
+
+> **口语对齐**：语音里「卡罗拉 / 卡路里」等若语境是**产品数据、点击量、统计**，一律按本节的 **点击锚点 + 行为统计** 理解（与「语音转写纠错」里专名误听无关）。
 
 #### 为什么强制
 
-没有埋点 = 没有数据 = 无法判断功能是否有效。上线后再补埋点往往遗漏大量初期行为数据。**先埋点、再发布** 是卡若AI 全站的铁律。
+没有埋点 = 没有数据 = 无法判断功能是否有效。上线后再补埋点往往遗漏大量初期行为数据。**先锚点、再发布** 是卡若系全站铁律。
+
+#### 点击锚点（概念）
+
+- **锚点** = 一次可观测的用户行为在系统里的**稳定标识**，由 **`module` + `action` + `target`**（必要时 + `extra`）唯一描述，对应入库后可用于聚合、画图、按业务维度筛选。
+- **原则**：**每个业务上需要单独看图或单独决策的交互**（主按钮、次要链、Tab、筛选标签、分享入口等）各对应**至少一个** `target`；禁止多个不同含义的按钮共用一个模糊 `target`。
+- **跨站复用**：任意网站 / 小程序 / App 均应具备同一套抽象：**前端上报 → 后端持久化 → 管理端或 BI 聚合**；仅路径与表名随项目调整（如 `/api/miniprogram/track` vs `/api/web/track`）。
 
 #### 标准架构（三层）
 
 ```
-前端（小程序/Web）           后端 API                    管理后台
-trackClick(module,       →  POST /api/{平台}/track   →  GET /api/admin/track/stats
-  action, target, extra)     存入 user_tracks 表          按 module/action/时间段聚合
+前端（小程序/Web）           后端 API                    管理后台 / 看板
+trackClick(module,       →  POST /api/{平台}/track   →  GET /api/admin/track/stats（或等价聚合）
+  action, target, extra)     存入 user_tracks 表          按 module/action/target/时间段聚合出图
 ```
 
-#### 数据模型（user_tracks 表）
+#### 参考实现（Soul 创业实验）
+
+- **仓库**：`一场soul的创业实验-永平`（路径随本机：`…/开发/3、自营项目/一场soul的创业实验-永平/`）。
+- **小程序封装**：`miniprogram/utils/trackClick.js`（`trackClick(module, action, target, extra)`）。
+- **调用示例页面**：`miniprogram/pages/read/read.js`、`match/match.js`、`member-detail/member-detail.js`（Tab、分享、购买、匹配等）。
+- **后端**：`POST /api/miniprogram/track` → `user_tracks`；管理端统计接口与面板与 **module / action / target** 对齐。
+
+#### 数据模型（user_tracks 表，示意）
 
 | 字段 | 类型 | 说明 |
 |:---|:---|:---|
 | id | string/UUID | 主键 |
-| user_id | string | 用户 ID |
-| action | string | 动作类型：`btn_click` / `page_view` / `tab_click` / `share` / `nav_click` |
-| target | string | 具体目标：按钮名、页面名、分享类型 |
-| extra_data | JSONB | 扩展信息，**必须包含 `module`（所属模块）和 `page`（页面标识）** |
+| user_id | string | 用户 ID（若需匿名统计，项目内单独约定 device/session 写入规则，见下） |
+| action | string | 动作类型：`btn_click` / `page_view` / `tab_click` / `share` / `nav_click` / `card_click` / `link_click` 等 |
+| target | string | **锚点核心**：具体按钮文案、Tab 名、章节 ID、标签名等，须可区分 |
+| extra_data | JSONB | **必须含 `module`、`page`**；可扩展业务键（如 `sectionId`、`referrer`）供二维统计 |
 | created_at | timestamp | 自动时间戳 |
+
+**匿名与登录前行为**：Soul 当前实现为「无 `userId` 则不上报」；若产品要求统计未登录点击，须在需求中明确，并在后端允许可选 `userId` + 匿名键，**禁止**静默丢事件却不留文档说明。
 
 #### 前端埋点工具标准（以小程序为例）
 
@@ -170,29 +187,35 @@ function trackClick(module, action, target, extra) {
 }
 ```
 
-Web 端同理，封装为 `trackClick(module, action, target)` 函数，通过 fetch 静默上报。
+Web 端同理，封装为 `trackClick(module, action, target, extra)`，通过 fetch 静默上报；**同一套命名与 extra 约定**，便于多站点对比或复用报表逻辑。
+
+#### 开发文档与「10、项目管理」落盘（强制建议）
+
+新站或迭代时，在 **`开发文档/10、项目管理/`** 维护 **`埋点锚点登记表.md`**（或在 `plans/YYYY-MM-DD-*.md` 中单列「锚点清单」），至少包含：**页面 / module / action / target 示例 / 业务含义 / 对应看板是否已接**。避免**前端锚点已加、后台图表未配置**或**字段改名导致历史数据断层**。
 
 #### 埋点接入检查清单
 
 每开发一个页面/功能，按此清单逐项确认：
 
-- [ ] 页面所有**可点击按钮/标签**都已调用 `trackClick`
-- [ ] `module` 参数使用统一命名（home / chapters / read / my / vip / wallet / match / referral / search / settings）
-- [ ] `action` 参数使用标准动词（`btn_click` / `page_view` / `tab_click` / `nav_click` / `share`）
-- [ ] `target` 参数能区分具体按钮（如 `购买VIP`、`充值`、`阅读第3章`）
-- [ ] 后端 track API 已注册路由并能正确存储 `extra_data`
-- [ ] 管理后台「分类标签点击统计」面板能展示该模块的数据
+- [ ] 页面所有**可点击按钮、Tab、标签、关键链**都已绑定锚点（调用 `trackClick` 或等价 API）
+- [ ] **`module`** 与产品模块一致（如 home / chapters / read / my / vip / wallet / match / referral / search / settings；新模块先登记再开发）
+- [ ] **`action`** 使用统一动词（`btn_click` / `page_view` / `tab_click` / `nav_click` / `share` 等）
+- [ ] **`target`** 能区分具体控件与上下文（如 `分享_${sectionId}`、`匹配_${typeId}`）
+- [ ] 后端 track 路由与 `extra_data` 存储与查询一致
+- [ ] 管理端或运营看板**按 module / 时间段**能展示，且**每个业务关心的标签**在图上都有对应聚合维度
+- [ ] `10、项目管理` 中登记表或计划已更新
 
 #### 管理后台展示标准
 
-管理后台数据概览页须包含「分类标签点击统计」面板：
-- 支持时间段筛选（今日 / 本周 / 本月 / 全部）
-- 按 module 分组展示，每个模块显示 top N 点击项
-- 自动 30 秒刷新
+数据概览或运营页须包含与锚点一致的统计能力，例如「分类 / 模块点击」面板：
+
+- 时间段筛选（今日 / 本周 / 本月 / 全部）
+- 按 module 分组，每模块 top N `target`
+- 可配置刷新间隔（如 30 秒）
 
 #### 经验来源
 
-Soul 创业实验项目（2026-03-15）首次实施全站埋点，覆盖小程序 9 个页面 + 管理后台统计面板 + 后端聚合 API。详见 `运营中枢/参考资料/项目经验库_知己与类似项目.md`。
+Soul 创业实验项目首次落地全链路：小程序多页 + 管理后台统计 + 后端聚合。索引与补充说明见 `运营中枢/参考资料/项目经验库_知己与类似项目.md`（§七）。
 
 ---
 
@@ -259,7 +282,7 @@ scripts/
 | **前端开发/前端标准_神射手与毛狐狸** | 布局/颜色/毛玻璃/组件/特效统一标准，所有项目前端开发参考 |
 | **神射手 开发文档 4、前端** | 神射手项目内前端规范、核心组件代码、截图索引 |
 | **Superpowers与全栈开发对比与优化建议** | `运营中枢/参考资料/Superpowers与全栈开发对比与优化建议.md` — 计划粒度、TDD、两阶段评审、分支收尾等优化方向 |
-| **埋点统计标准（Soul项目沉淀）** | 全站埋点三层架构：前端 trackClick → 后端 track API → 管理后台聚合面板；2026-03-15 Soul 创业实验项目首次实施，见本 Skill 1.10 节 |
+| **埋点统计与点击锚点（Soul 沉淀）** | 三层架构 + module/action/target 锚点约定 + `10、项目管理` 登记表；Soul 参考 `一场soul的创业实验-永平`；见本 Skill **§1.10**（2026-03-22 扩充） |
 
 ---
 

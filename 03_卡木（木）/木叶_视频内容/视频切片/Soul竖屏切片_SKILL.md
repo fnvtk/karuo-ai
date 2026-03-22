@@ -1,11 +1,11 @@
 ---
 name: Soul竖屏切片
-description: Soul 派对视频→竖屏成片；字幕暖色条+金边（与封面墨绿区分）、纠错词表+关键词加大加亮、音轨PTS同步补偿；推荐 --typewriter-subs 逐字渐显。流程含裁剪检查→soul_enhance。MLX→visual_enhance v8 可选。
+description: Soul 派对视频→竖屏成片；字幕暖色条+金边（与封面墨绿区分）、纠错词表+关键词高亮（同字号单行）、concat 前导空白对齐主轨时间轴、音轨PTS同步补偿；推荐 --typewriter-subs 逐字渐显。流程含裁剪检查→soul_enhance。MLX→visual_enhance v8 可选。
 triggers: Soul竖屏切片、视频切片、热点切片、竖屏成片、派对切片、裁剪检查、重新截图、全画面标定、竖屏裁剪、全画面成片、letterbox、画面显示全、白边、飞书录屏、LTX、AI生成视频、Retake重剪、字幕优化、字幕同步、逐字字幕
 owner: 木叶
 group: 木
-version: "1.8"
-updated: "2026-03-20"
+version: "1.9"
+updated: "2026-03-22"
 ---
 
 # Soul 竖屏切片 · 专用 Skill
@@ -136,7 +136,7 @@ python3 soul_enhance.py \
 |----|------|
 | **与封面对比** | 封面为**半透明墨绿渐变**；字幕为**暖深棕圆角条 + 琥珀色描边**，避免与主题绿混成一团 |
 | **纠错** | `transcript.srt` 解析时走 `_improve_subtitle_text`（繁转简、CORRECTIONS 错词、违禁替换、去语助词）；**渲染每一帧前**再走 `improve_subtitle_punctuation`，与口播稿对齐 |
-| **重点词** | `KEYWORDS` 列表命中则**更大字号 + 亮金色**，长词优先匹配 |
+| **重点词** | `KEYWORDS` 列表命中则**亮金色高亮**（同字号同基线，仅颜色区分，避免大字号造成"两排字"），长词优先匹配 |
 | **逐字渐显** | 推荐成片加 **`--typewriter-subs`**：同一条字幕时间内前缀逐步加长，更贴人声节奏 |
 | **音画对齐** | 默认 `SUBTITLE_DELAY_SEC` + **音轨/视频首帧 PTS 差**按比例补偿（脚本内动态计算），减轻「字比声快」 |
 
@@ -151,6 +151,9 @@ python3 soul_enhance.py \
 | **封面期间出现字幕** | 字幕时间计算使字幕落在封面段（前 2.5s）内 | `write_clip_srt` 强制过滤 `end <= cover_duration` 的条目，并 `start = max(start, cover_duration)` |
 | **字幕含 ASR 噪声行（单字母 L / Agent）** | MLX Whisper 对静音/噪声段产生幻觉字符 | `_is_noise_line()` 提前过滤单字母、重复字符、噪声 token |
 | **繁体字幕未转简体** | Soul 派对录音有港台口音，ASR 输出繁体 | `_to_simplified()` 兜底 + CORRECTIONS 扩充 50+ 繁体常用字映射 |
+| **字幕「两排字」** | 关键词用更大字号（`keyword_size_add=6`）+ `base_y-1` 偏移，与正文交错形成两行错觉 | `keyword_size_add=0`、关键词 `base_y` 与正文一致、仅颜色区分（v1.9） |
+| **字幕整体前移 + 封面叠字幕** | concat demuxer 输出从 t=0 累加，未在开头插入 `[0, subtitle_overlay_start)` 透明段，导致字幕轨比主视频短约 5.5s | 在 `sub_concat.txt` 开头插入 `blank` + `duration=subtitle_overlay_start`（v1.9） |
+| **highlights 时间戳不准** | 某些高光段实际对应静音区，Whisper 产生幻觉 | 在转录稿中搜索话题关键词确认真实时间戳，修正后重新切片 |
 
 ---
 

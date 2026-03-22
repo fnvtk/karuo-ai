@@ -2,11 +2,12 @@
 """
 Soul切片增强脚本 v2.0
 功能：
-1. 添加封面贴片（前3秒Hook）
-2. 烧录字幕（关键词高亮）
-3. 视频加速10%
-4. 删除静音停顿
-5. 清理语气词字幕
+1. 封面贴片：高光 hook_3sec 优先（吸睛），竖屏带强模糊视频底 + 渐变
+2. 烧录字幕（关键词高亮、可选逐字）
+3. 切除检出的长静音并重映射字幕时间轴
+4. 片尾 CTA（cta_ending）字幕条
+5. 视频加速约 10%
+6. 转录纠错 / 语气词过滤（见 CORRECTIONS、FILLER 等）
 """
 
 import argparse
@@ -53,8 +54,9 @@ FALLBACK_FONT = "/System/Library/Fonts/STHeiti Medium.ttc"
 
 # 视频增强参数
 SPEED_FACTOR = 1.10  # 加速10%
-SILENCE_THRESHOLD = -40  # 静音阈值(dB)
-SILENCE_MIN_DURATION = 0.5  # 最短静音时长(秒)
+SILENCE_THRESHOLD = -38  # 静音阈值(dB)，略放宽以多检出停顿
+SILENCE_MIN_DURATION = 0.32  # 短于此前值，中间「断点」切得更干净
+SILENCE_TRIM_MARGIN = 0.06  # 保留段与静音接缝留白（秒），略小则多剪
 
 # Soul 竖屏裁剪（与 soul_vertical_crop 一致，成片直出用）
 # 默认与 analyze_feishu_ui_crop.py（20% 帧、扩边到桌面白 + 横向 scale）典型输出一致；他场次请先跑分析再 --crop-vf。
@@ -366,7 +368,7 @@ VERTICAL_COVER_ALPHA = 165  # 0~255，越大越不透明
 # 样式配置
 STYLE = {
     'cover': {
-        'bg_blur': 35,
+        'bg_blur': 52,  # 底层视频帧高斯模糊，越大越「电影感」、越不抢字
         'overlay_alpha': 200,
         'duration': 2.5,
     },
@@ -383,7 +385,7 @@ STYLE = {
         'outline_width': 4,
         'keyword_color': (255, 232, 120),   # 亮金，与条底色对比强
         'keyword_outline': (90, 55, 0),
-        'keyword_size_add': 6,              # 关键词更大一号，突出重点
+        'keyword_size_add': 0,              # 与正文同字号单行，避免「两排字」观感（仅颜色区分关键词）
         # 与封面「墨绿半透明」区分：暖深棕底 + 琥珀描边，一眼可辨是字幕条
         'bg_color': (34, 20, 16, 238),
         'border_color': (255, 186, 90, 255),
@@ -399,8 +401,12 @@ SUBTITLE_PTS_OFFSET_THRESHOLD = 0.18  # 超过此秒数才加 delay
 SUBTITLE_DELAY_MAX = 1.2
 SUBS_START_AFTER_COVER_SEC = 3.0
 # 至少切除的静音总时长（秒）才触发重编码，避免无意义抖动
-MIN_SILENCE_TRIM_TOTAL_SEC = 0.25
+MIN_SILENCE_TRIM_TOTAL_SEC = 0.12
 COVER_TITLE_MAX_CJK = 6
+# 封面优先用 hook_3sec（吸睛高光句），可略长于纯标题字数上限
+COVER_HOOK_MAX_CJK = 16
+CTA_END_MIN_SEC = 2.0
+CTA_END_MAX_SEC = 3.8
 
 # ============ 工具函数 ============
 
@@ -455,6 +461,24 @@ def _limit_cover_title_cjk(text: str, max_cjk: int = COVER_TITLE_MAX_CJK) -> str
                 break
         out.append(ch)
     return "".join(out).strip()
+
+
+def pick_cover_hook_text(highlight_info: dict) -> str:
+    """高光成片封面：优先 3 秒钩子句（抓眼球），其次核心问句，最后才用短标题。"""
+    if not highlight_info:
+        return ""
+    h = (highlight_info.get("hook_3sec") or "").strip()
+    if h:
+        return h
+    q = highlight_info.get("question")
+    if q is not None and str(q).strip():
+        return str(q).strip()
+    return (highlight_info.get("title") or "").strip()
+
+
+def _limit_cover_hook_display(text: str, max_cjk: int = COVER_HOOK_MAX_CJK) -> str:
+    """Hook 可略长，仍以汉字数封顶，避免竖屏换行爆炸。"""
+    return _limit_cover_title_cjk(text, max_cjk=max_cjk)
 
 
 # macOS/APFS 文件名允许的中文标点（保留刺激性标题所需的标点）
@@ -983,12 +1007,44 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
     is_vertical = _is_vertical_strip_canvas(width, height)
     
     if is_vertical:
-        # 竖屏成片：半透明质感封面，渐变背景带 alpha，透出底层画面
-        img = Image.new('RGBA', (width, height), (*VERTICAL_COVER_TOP, VERTICAL_COVER_ALPHA))
-        draw = ImageDraw.Draw(img)
-        _draw_vertical_gradient(draw, width, height, VERTICAL_COVER_TOP, VERTICAL_COVER_BOTTOM, alpha=VERTICAL_COVER_ALPHA)
-        # 轻微半透明暗角，不盖死
-        overlay = Image.new('RGBA', (width, height), (0, 0, 0, 60))
+        # 竖屏成片：底层为「视频帧强模糊」+ 渐变叠层，字更突出、背景更「电影虚化」
+        base = Image.new("RGBA", (width, height), (*VERTICAL_COVER_TOP, 255))
+        if video_path and os.path.exists(video_path):
+            temp_frame = output_path.replace(".png", "_vframe.jpg")
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-y",
+                    "-ss",
+                    "0.35",
+                    "-i",
+                    video_path,
+                    "-vframes",
+                    "1",
+                    "-q:v",
+                    "3",
+                    temp_frame,
+                ],
+                capture_output=True,
+            )
+            if os.path.exists(temp_frame):
+                try:
+                    bf = Image.open(temp_frame).convert("RGBA").resize((width, height))
+                    bf = bf.filter(ImageFilter.GaussianBlur(radius=style["bg_blur"]))
+                    dim = Image.new("RGBA", (width, height), (0, 0, 0, 115))
+                    base = Image.alpha_composite(bf, dim)
+                finally:
+                    try:
+                        os.remove(temp_frame)
+                    except OSError:
+                        pass
+        grad = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        gdraw = ImageDraw.Draw(grad)
+        _draw_vertical_gradient(
+            gdraw, width, height, VERTICAL_COVER_TOP, VERTICAL_COVER_BOTTOM, alpha=VERTICAL_COVER_ALPHA
+        )
+        img = Image.alpha_composite(base, grad)
+        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 60))
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
     else:
@@ -1001,7 +1057,8 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
             ], capture_output=True)
             if os.path.exists(temp_frame):
                 bg = Image.open(temp_frame).resize((width, height))
-                bg = bg.filter(ImageFilter.GaussianBlur(radius=style['bg_blur']))
+                bg = bg.filter(ImageFilter.GaussianBlur(radius=style["bg_blur"]))
+                bg = bg.filter(ImageFilter.GaussianBlur(radius=6))
                 os.remove(temp_frame)
             else:
                 bg = Image.new('RGB', (width, height), (25, 35, 30))
@@ -1130,8 +1187,9 @@ def create_subtitle_image(text, width, height, output_path):
         base_size -= 2
         font = get_font(FONT_BOLD, base_size)
         text_w, text_h = get_text_size(draw, text, font)
-    kw_size = base_size + style.get('keyword_size_add', 4)
-    kw_font = get_font(FONT_HEAVY, kw_size)
+    # 关键词与正文同一字号、同一基线，避免大字 + base_y-1 造成「上下两排」错觉
+    kw_size = base_size + style.get('keyword_size_add', 0)
+    kw_font = get_font(FONT_HEAVY, kw_size) if kw_size != base_size else font
     
     base_x = (width - text_w) // 2
     if _is_vertical_strip_canvas(width, height):
@@ -1198,12 +1256,12 @@ def create_subtitle_image(text, width, height, output_path):
                 break
         
         if in_keyword:
-            # 关键词：粗体+大字+亮金黄+深色描边
+            # 关键词：同色阶描边 + 亮金黄字，字号与正文一致（单行）
             keyword_text = text[char_idx:keyword_end]
             kw_outline = style.get('keyword_outline', (60, 40, 0))
-            kw_ow = style.get('outline_width', 3) + 1
+            kw_ow = style.get('outline_width', 3)
             draw_text_with_outline(
-                draw, (current_x, base_y - 1), keyword_text, kw_font,
+                draw, (current_x, base_y), keyword_text, kw_font,
                 style['keyword_color'],
                 kw_outline,
                 kw_ow
@@ -1226,6 +1284,37 @@ def create_subtitle_image(text, width, height, output_path):
     
     img.save(output_path, 'PNG')
     return output_path
+
+
+def append_cta_ending_subtitle(
+    sub_images,
+    highlight_info,
+    temp_dir,
+    out_w,
+    out_h,
+    duration,
+    subtitle_overlay_start,
+):
+    """片尾 CTA：高光 JSON 的 cta_ending，固定显示在成片末尾若干秒。"""
+    cta = (highlight_info.get("cta_ending") or "").strip()
+    if not cta:
+        return sub_images
+    cta = apply_platform_safety(_to_simplified(cta))
+    if not cta:
+        return sub_images
+    dur = float(duration)
+    if dur < CTA_END_MIN_SEC + subtitle_overlay_start * 0.5:
+        return sub_images
+    span = min(CTA_END_MAX_SEC, max(CTA_END_MIN_SEC, dur * 0.09))
+    cta_start = max(float(subtitle_overlay_start), dur - span)
+    if cta_start >= dur - 0.15:
+        cta_start = max(0.0, dur - CTA_END_MIN_SEC)
+    img_path = os.path.join(temp_dir, "sub_cta_ending.png")
+    create_subtitle_image(cta, out_w, out_h, img_path)
+    sub_images.append({"path": img_path, "start": cta_start, "end": dur})
+    sub_images.sort(key=lambda x: (float(x["start"]), float(x["end"])))
+    return sub_images
+
 
 # ============ 视频处理 ============
 
@@ -1446,16 +1535,15 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
 
     print(f"  分辨率: {width}x{height}, 时长: {duration:.1f}秒")
     
-    # 封面与成片文件名统一：都用主题 title（去杠），名字与标题一致、无杠更清晰
-    raw_title = highlight_info.get('title') or highlight_info.get('hook_3sec') or ''
-    if not raw_title and clip_path:
-        m = re.search(r'\d+[_\s]+(.+?)(?:_enhanced)?\.mp4$', os.path.basename(clip_path))
+    # 封面文案：高光规则 — hook_3sec（吸睛）> question > title；文件名仍可用 --title-only 同步 Hook
+    raw_hook = pick_cover_hook_text(highlight_info)
+    if not raw_hook and clip_path:
+        m = re.search(r"\d+[_\s]+(.+?)(?:_enhanced)?\.mp4$", os.path.basename(clip_path))
         if m:
-            raw_title = m.group(1).strip()
-    hook_text = _normalize_title_for_display(raw_title) or raw_title or '精彩切片'
-    # 封面文字同样做安全处理
+            raw_hook = m.group(1).strip()
+    hook_text = _normalize_title_for_display(raw_hook) or raw_hook or "精彩切片"
     hook_text = apply_platform_safety(hook_text)
-    hook_text = _limit_cover_title_cjk(hook_text, COVER_TITLE_MAX_CJK) or hook_text
+    hook_text = _limit_cover_hook_display(hook_text) or hook_text
     cover_duration = STYLE['cover']['duration']
     subtitle_overlay_start = cover_duration + SUBS_START_AFTER_COVER_SEC
     
@@ -1552,7 +1640,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
 
     # 2. 去静音：trim+concat 重编码，并 remap 字幕时间轴（此前仅检测未切除，成片仍带长停顿）
     silences = detect_silence(clip_path, SILENCE_THRESHOLD, SILENCE_MIN_DURATION)
-    kept = kept_segments_from_silences(silences, original_duration)
+    kept = kept_segments_from_silences(silences, original_duration, margin=SILENCE_TRIM_MARGIN)
     removed_total = original_duration - sum(e - s for s, e in kept)
     if trim_silence and removed_total >= MIN_SILENCE_TRIM_TOTAL_SEC:
         trim_out = os.path.join(temp_dir, "trim_silence.mp4")
@@ -1590,8 +1678,19 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                 img_path = os.path.join(temp_dir, f"sub_{i:04d}.png")
                 create_subtitle_image(sub["text"], out_w, out_h, img_path)
                 sub_images.append({"path": img_path, "start": sub["start"], "end": sub["end"]})
+    if do_burn_subs and not skip_subs:
+        append_cta_ending_subtitle(
+            sub_images,
+            highlight_info,
+            temp_dir,
+            out_w,
+            out_h,
+            duration,
+            subtitle_overlay_start,
+        )
     if sub_images:
-        print(f"  ✓ 字幕图片 ({len(sub_images)}张)", flush=True)
+        cta_note = "（含片尾引导）" if (highlight_info.get("cta_ending") or "").strip() else ""
+        print(f"  ✓ 字幕图片 ({len(sub_images)}张){cta_note}", flush=True)
 
     # 4. 构建 FFmpeg 链（从去静音后的 working_clip 起）
     current_video = working_clip
@@ -1629,12 +1728,19 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
             blank.save(blank_path, 'PNG')
 
         # 构建 concat 文件：把所有字幕帧描述为"时间段→图片"的序列
+        # concat demuxer 输出时间轴从 0 起连续累加，必须与主视频对齐：
+        # 须先在开头插入 [0, subtitle_overlay_start) 的透明段，否则字幕轨总长比主视频短
+        # subtitle_overlay_start 秒，overlay 时整轨会前移，表现为与封面重叠、与语音不同步。
         # concat demuxer 格式：
         #   file 'path'
         #   duration X.XXX
         # 最后一行不写 duration（用于循环/截断防报错）
         concat_lines = []
-        prev_end = subtitle_overlay_start  # 字幕从「封面结束 + SUBS_START_AFTER_COVER_SEC」起
+        lead = float(subtitle_overlay_start)
+        if lead > 0.001:
+            concat_lines.append(f"file '{blank_path}'")
+            concat_lines.append(f"duration {lead:.3f}")
+        prev_end = subtitle_overlay_start  # 视频时间轴上「下一段」应从封面后留白处接续
 
         for img in sub_images:
             sub_start = max(img['start'], subtitle_overlay_start)
@@ -1859,26 +1965,37 @@ def main():
     if isinstance(highlights, dict) and "clips" in highlights:
         highlights = highlights["clips"]
     highlights = highlights if isinstance(highlights, list) else []
-    
+    if not highlights:
+        print("❌ highlights 为空，无法按高光表成片")
+        return
+
     clips = sorted(clips_dir.glob('*.mp4'))
     total = len(clips)
-    print(f"\n找到 {total} 个切片，开始成片（封面+字幕+加速10%+竖屏裁剪）\n", flush=True)
-    
+    print(f"\n找到 {total} 个 mp4，highlights {len(highlights)} 条；仅处理序号 1～{len(highlights)} 的切片\n", flush=True)
+
     success_count = 0
     for i, clip_path in enumerate(clips):
         clip_num = _parse_clip_index(clip_path.name) or (i + 1)
-        highlight_info = highlights[clip_num - 1] if 0 < clip_num <= len(highlights) else {}
-        title_display = (highlight_info.get('title') or clip_path.stem)[:36]
+        if clip_num < 1 or clip_num > len(highlights):
+            print(
+                f"  ⊘ 跳过 {clip_path.name}（序号 {clip_num} 无对应 highlights）",
+                flush=True,
+            )
+            continue
+        highlight_info = highlights[clip_num - 1]
+        title_display = (highlight_info.get("hook_3sec") or highlight_info.get("title") or clip_path.stem)[
+            :36
+        ]
         print("=" * 60, flush=True)
         print(f"【成片进度】 {i+1}/{total}  {title_display}", flush=True)
         print("=" * 60, flush=True)
         
-        if getattr(args, 'title_only', False):
-            title = (highlight_info.get('title') or highlight_info.get('hook_3sec') or clip_path.stem)
-            title = _limit_cover_title_cjk(
-                _normalize_title_for_display(str(title)) or str(title), COVER_TITLE_MAX_CJK
-            ) or str(title)
-            name = sanitize_filename(title) + '.mp4'
+        if getattr(args, "title_only", False):
+            display = pick_cover_hook_text(highlight_info) or highlight_info.get("title") or clip_path.stem
+            title = _limit_cover_hook_display(
+                _normalize_title_for_display(str(display)) or str(display),
+            ) or str(display)
+            name = sanitize_filename(title) + ".mp4"
             output_path = output_dir / name
         else:
             output_path = output_dir / clip_path.name.replace('.mp4', '_enhanced.mp4')
@@ -1905,7 +2022,7 @@ def main():
             shutil.rmtree(temp_dir, ignore_errors=True)
     
     print("\n" + "="*60)
-    print(f"✅ 增强完成: {success_count}/{len(clips)}")
+    print(f"✅ 增强完成: {success_count}/{len(highlights)}（按 highlights 条数计）")
     print(f"📁 输出目录: {output_dir}")
     print("="*60)
     
@@ -1917,7 +2034,9 @@ def generate_index(highlights, output_dir):
     
     with open(index_path, 'w', encoding='utf-8') as f:
         f.write("# Soul派对 - 成片目录\n\n")
-        f.write("**优化**: 封面+字幕+加速10%+去语气词（竖屏条高度1080，宽随塑形标定，常见非498）\n\n")
+        f.write(
+            "**优化**: 高光 Hook 封面（强模糊底）+逐字字幕+去长静音+片尾 CTA+加速10%（竖屏宽随 crop-vf）\n\n"
+        )
         f.write("## 切片列表\n\n")
         f.write("| 序号 | 标题 | Hook | CTA |\n")
         f.write("|------|------|------|-----|\n")
