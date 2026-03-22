@@ -107,6 +107,11 @@ def sanitize_filename(name: str, max_length: int = 50, chinese_only: bool = Fals
     return result.strip(" _-") or "片段"
 
 
+# 精确切片：-ss 在 -i 之前会落在关键帧上，输出起点常比 highlights.start 早 0～3s，
+# transcript 按绝对时间裁切 → 字幕会整体偏早/偏晚。先粗 seek 再在 -i 之后细 -ss（重编码）可对齐口播。
+_PRESEEK_MARGIN_SEC = 120.0
+
+
 def clip_video(input_path: str, start_time: str, end_time: str, output_path: str, 
                fast_mode: bool = False):
     """
@@ -117,7 +122,7 @@ def clip_video(input_path: str, start_time: str, end_time: str, output_path: str
         start_time: 开始时间
         end_time: 结束时间
         output_path: 输出路径
-        fast_mode: 快速模式（使用copy编码，可能不精确）
+        fast_mode: 快速模式（使用 copy 编码，可能不精确）
     """
     # 使用 -t duration 避免 -to 在 ffmpeg 中的歧义（-to 可能被解释为输出时长）
     start_sec = parse_timestamp(start_time)
@@ -125,23 +130,28 @@ def clip_video(input_path: str, start_time: str, end_time: str, output_path: str
     duration_sec = end_sec - start_sec
 
     if fast_mode:
-        # 快速模式：使用 copy 编码，-t 明确指定输出时长
+        # 快速模式：stream copy + input 侧 -ss，起点可能早于 start_time（关键帧），
+        # 与整场 transcript 对齐烧录时易出现「声对字不对」。成片要求对齐时请用默认精确模式。
         cmd = [
             "ffmpeg",
             "-ss", start_time,
             "-i", input_path,
             "-t", str(duration_sec),
             "-c", "copy",
-            "-avoid_negative_ts", "1",
+            "-avoid_negative_ts", "make_zero",
             "-y",
             output_path
         ]
     else:
-        # 精确模式：重新编码，-t 明确指定输出时长，体积可控
+        # 精确模式：粗 seek + 解码后细裁，起点与 highlights 一致，字幕与声音可对齐
+        preseek = max(0.0, start_sec - _PRESEEK_MARGIN_SEC)
+        inner_ss = start_sec - preseek
         cmd = [
             "ffmpeg",
-            "-ss", start_time,
+            "-y",
+            "-ss", str(preseek),
             "-i", input_path,
+            "-ss", str(inner_ss),
             "-t", str(duration_sec),
             "-c:v", "libx264",
             "-preset", "fast",
@@ -150,7 +160,7 @@ def clip_video(input_path: str, start_time: str, end_time: str, output_path: str
             "-maxrate", "4M",
             "-c:a", "aac",
             "-b:a", "128k",
-            "-y",
+            "-avoid_negative_ts", "make_zero",
             output_path
         ]
     

@@ -2,11 +2,11 @@
 """
 Soul切片增强脚本 v2.0
 功能：
-1. 封面贴片：高光 hook_3sec 优先（吸睛），竖屏带强模糊视频底 + 渐变
+1. 封面贴片：高光 hook_3sec 优先（吸睛），竖屏底图为**清晰帧 + 约 10% 轻模糊混入**（非全糊）+ 渐变
 2. 烧录字幕（关键词高亮、可选逐字）
 3. 切除检出的长静音并重映射字幕时间轴
 4. 片尾 CTA（cta_ending）字幕条
-5. 视频加速约 10%
+5. 视频加速约 10%（字幕在加速前已烧进中间成片，再与音轨同倍率 setpts/atempo，相对口播不因此漂移）
 6. 转录纠错 / 语气词过滤（见 CORRECTIONS、FILLER 等）
 """
 
@@ -124,7 +124,7 @@ def build_typewriter_subtitle_images(
     逐词/逐字渐显：
     - 若字幕带 word_times（whisper word-level SRT），按词的真实开始时间逐词追加，与人声严格同步；
     - 否则按字符数等分句子时长（兜底）。
-    subtitle_overlay_start：最早显示字幕的时间轴（秒），须 ≥ 封面结束 + 留白。
+    subtitle_overlay_start：最早显示字幕的时间轴（秒），须 ≥ 封面结束（默认与封面紧接，无额外留白）。
     """
     sub_images = []
     img_idx = 0
@@ -368,7 +368,9 @@ VERTICAL_COVER_ALPHA = 165  # 0~255，越大越不透明
 # 样式配置
 STYLE = {
     'cover': {
-        'bg_blur': 52,  # 底层视频帧高斯模糊，越大越「电影感」、越不抢字
+        # 封面底图：原画与「高斯模糊层」按 bg_blur_mix 混合（0.1≈10% 模糊感），保留界面可辨；勿再用全幅强模糊
+        'bg_blur_mix': 0.10,
+        'bg_blur_radius': 14,  # 仅用于生成模糊层的高斯半径，再与清晰帧 blend
         'overlay_alpha': 200,
         'duration': 2.5,
     },
@@ -399,7 +401,7 @@ STYLE = {
 SUBTITLE_DELAY_SEC = 0.0
 SUBTITLE_PTS_OFFSET_THRESHOLD = 0.18  # 超过此秒数才加 delay
 SUBTITLE_DELAY_MAX = 1.2
-SUBS_START_AFTER_COVER_SEC = 3.0
+SUBS_START_AFTER_COVER_SEC = 0.0
 # 至少切除的静音总时长（秒）才触发重编码，避免无意义抖动
 MIN_SILENCE_TRIM_TOTAL_SEC = 0.12
 COVER_TITLE_MAX_CJK = 6
@@ -539,6 +541,19 @@ def apply_platform_safety(text: str) -> str:
     return result
 
 
+def _collapse_cjk_interchar_spaces(text: str) -> str:
+    """去掉 CJK 字符之间的空白（Whisper 词级时间轴常插空格，逐字/逐词显字时会像字间被撑开）。"""
+    if not text:
+        return text
+    s = text
+    prev = None
+    while prev != s:
+        prev = s
+        s = re.sub(r"([\u4e00-\u9fff])\s+([\u4e00-\u9fff])", r"\1\2", s)
+    s = re.sub(r" +", " ", s)
+    return s.strip()
+
+
 def improve_subtitle_punctuation(text: str) -> str:
     """为字幕句子补充标点，让意思更清晰。
     
@@ -553,7 +568,7 @@ def improve_subtitle_punctuation(text: str) -> str:
         return t
     # 末尾已有标点则不重复加
     if t and t[-1] in '，。？！,.:!?；':
-        return apply_platform_safety(t)
+        return apply_platform_safety(_collapse_cjk_interchar_spaces(t))
     # 疑问词检测
     question_words = ('吗', '吧', '呢', '么', '嘛', '什么', '怎么', '为什么',
                       '哪', '哪里', '谁', '几', '多少', '是否', '可以吗', '对吗')
@@ -568,7 +583,7 @@ def improve_subtitle_punctuation(text: str) -> str:
         t = t + '！'
     elif len(t) >= 5:
         t = t + '。'
-    return apply_platform_safety(t)
+    return apply_platform_safety(_collapse_cjk_interchar_spaces(t))
 
 def _detect_clip_pts_offset(clip_path: str) -> float:
     """探测切片实际起始 PTS（秒），用于补偿 -ss input seeking 的关键帧偏移。
@@ -843,8 +858,8 @@ def _sec_to_srt_time(sec):
 
 
 def write_clip_srt(srt_path, subtitles, cover_duration, subs_after_cover_sec=SUBS_START_AFTER_COVER_SEC):
-    """写出用于烧录的 SRT（仅保留封面结束+留白后的字幕，时间已相对片段）"""
-    safe_start = cover_duration + subs_after_cover_sec + 0.3
+    """写出用于烧录的 SRT（仅保留封面结束后的字幕，时间已相对片段）"""
+    safe_start = cover_duration + subs_after_cover_sec + 0.05
     lines = []
     idx = 1
     for sub in subtitles:
@@ -1007,7 +1022,7 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
     is_vertical = _is_vertical_strip_canvas(width, height)
     
     if is_vertical:
-        # 竖屏成片：底层为「视频帧强模糊」+ 渐变叠层，字更突出、背景更「电影虚化」
+        # 竖屏成片：底层为「清晰帧 + 少量模糊混入（默认约 10%）」+ 渐变，避免全糊看不清界面
         base = Image.new("RGBA", (width, height), (*VERTICAL_COVER_TOP, 255))
         if video_path and os.path.exists(video_path):
             temp_frame = output_path.replace(".png", "_vframe.jpg")
@@ -1029,8 +1044,14 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
             )
             if os.path.exists(temp_frame):
                 try:
-                    bf = Image.open(temp_frame).convert("RGBA").resize((width, height))
-                    bf = bf.filter(ImageFilter.GaussianBlur(radius=style["bg_blur"]))
+                    sharp = Image.open(temp_frame).convert("RGBA").resize((width, height))
+                    mix = float(style.get("bg_blur_mix", 0.10))
+                    r = float(style.get("bg_blur_radius", 14))
+                    if mix > 0.001:
+                        blurred = sharp.filter(ImageFilter.GaussianBlur(radius=r))
+                        bf = Image.blend(sharp, blurred, mix)
+                    else:
+                        bf = sharp
                     dim = Image.new("RGBA", (width, height), (0, 0, 0, 115))
                     base = Image.alpha_composite(bf, dim)
                 finally:
@@ -1048,7 +1069,7 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
     else:
-        # 横版：沿用视频帧模糊背景
+        # 横版：清晰帧 + 少量模糊混入（与竖条封面一致）
         if video_path and os.path.exists(video_path):
             temp_frame = output_path.replace('.png', '_frame.jpg')
             subprocess.run([
@@ -1056,9 +1077,14 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
                 '-vframes', '1', '-q:v', '2', temp_frame
             ], capture_output=True)
             if os.path.exists(temp_frame):
-                bg = Image.open(temp_frame).resize((width, height))
-                bg = bg.filter(ImageFilter.GaussianBlur(radius=style["bg_blur"]))
-                bg = bg.filter(ImageFilter.GaussianBlur(radius=6))
+                sharp = Image.open(temp_frame).resize((width, height)).convert('RGBA')
+                mix = float(style.get("bg_blur_mix", 0.10))
+                r = float(style.get("bg_blur_radius", 14))
+                if mix > 0.001:
+                    blurred = sharp.filter(ImageFilter.GaussianBlur(radius=r))
+                    bg = Image.blend(sharp, blurred, mix)
+                else:
+                    bg = sharp
                 os.remove(temp_frame)
             else:
                 bg = Image.new('RGB', (width, height), (25, 35, 30))
@@ -1520,7 +1546,8 @@ def _parse_clip_index(filename: str) -> int:
 def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_path,
                  force_burn_subs=False, skip_subs=False, vertical=False,
                  crop_vf=None, overlay_x=None, typewriter_subs=False,
-                 vertical_fit_full=False, trim_silence=True):
+                 vertical_fit_full=False, trim_silence=True,
+                 subtitle_extra_delay=0.0):
     """增强单个切片。vertical=True 时输出竖条，宽由 --crop-vf 决定（原生包络常见 560～750×1080；旧 498 为两段裁或 scale）。
     vertical_fit_full：整幅 16:9 缩放入 498×1080 + 上下黑边。
     """
@@ -1589,7 +1616,8 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         end_sec = start_sec + original_duration
 
         # 已导出切片：默认 delay=0。仅当音/视频首帧 PTS 明显不一致时小幅推迟字幕，贴人声。
-        actual_delay = float(SUBTITLE_DELAY_SEC)
+        # subtitle_extra_delay：整场微调（秒），正数整体推迟字幕，用于个别素材仍略有偏差时手工对齐。
+        actual_delay = float(SUBTITLE_DELAY_SEC) + float(subtitle_extra_delay or 0.0)
         try:
             pts_cmd = [
                 "ffprobe", "-v", "quiet", "-select_streams", "v:0",
@@ -1617,10 +1645,14 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                 audio_pts = float(audio_r.stdout.strip().split("\n")[0].strip())
                 offset = abs(first_pts - audio_pts)
                 if offset > SUBTITLE_PTS_OFFSET_THRESHOLD:
-                    actual_delay = min(SUBTITLE_DELAY_MAX, offset * 0.85)
-                    print(f"  ✓ 音画 PTS 差 {offset:.2f}s → 字幕延迟补偿 {actual_delay:.2f}s", flush=True)
+                    pts_delay = min(SUBTITLE_DELAY_MAX, offset * 0.85)
+                    actual_delay = float(SUBTITLE_DELAY_SEC) + float(subtitle_extra_delay or 0.0) + pts_delay
+                    print(f"  ✓ 音画 PTS 差 {offset:.2f}s → 字幕延迟补偿 +{pts_delay:.2f}s（含基准与 extra）", flush=True)
         except Exception:
             pass
+
+        if abs(float(subtitle_extra_delay or 0.0)) > 1e-6:
+            print(f"  ✓ 字幕额外延迟 --subtitle-extra-delay={float(subtitle_extra_delay):.3f}s", flush=True)
 
         subtitles = parse_srt_for_clip(transcript_path, start_sec, end_sec, delay_sec=actual_delay)
         for sub in subtitles:
@@ -1917,6 +1949,12 @@ def main():
         action="store_true",
         help="不去除静音长停顿（默认会切除 silencedetect 检出的静音并同步平移字幕时间轴）",
     )
+    parser.add_argument(
+        "--subtitle-extra-delay",
+        type=float,
+        default=0.0,
+        help="字幕整体时间轴再加若干秒（正数=字幕更晚出现），用于个别素材在精确切片后仍须微调时",
+    )
     args = parser.parse_args()
     
     clips_dir = Path(args.clips) if args.clips else CLIPS_DIR
@@ -2016,6 +2054,7 @@ def main():
                 typewriter_subs=typewriter,
                 vertical_fit_full=vfit,
                 trim_silence=not getattr(args, "no_trim_silence", False),
+                subtitle_extra_delay=float(getattr(args, "subtitle_extra_delay", 0.0) or 0.0),
             ):
                 success_count += 1
         finally:
