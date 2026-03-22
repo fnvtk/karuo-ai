@@ -217,7 +217,8 @@ def _to_simplified(text: str) -> str:
     return text
 
 # 常见转录错误修正（与 one_video 一致，按长度降序排列避免短词误替换）
-CORRECTIONS = {
+# 运行时会再合并 `运营中枢/参考资料/卡若闽南口音_ASR纠错库.json`（同名 key 以 JSON 为准）
+_CORRECTIONS_BASE = {
     # AI 工具名称 ─────────────────────────────────────────────────
     '小龙俠': 'AI工具', '小龍俠': 'AI工具', '小龍蝦': 'AI工具',
     '龍蝦': 'AI工具', '小龙虾': 'AI工具', '龙虾': 'AI工具',
@@ -230,6 +231,9 @@ CORRECTIONS = {
     '寿上': 'Soul上', '瘦上': 'Soul上', '亭上': 'Soul上',
     '这受': '这Soul', '受的': 'Soul的', '受里': 'Soul里',
     '受平台': 'Soul平台',
+    '受推流': '售推流',  # ASR 常把「soul」听成「受」
+    '做个数据': '整场数据',
+    '整个售的': '整个场的', '整个售': '整个场',
     # 私域/商业用语 ─────────────────────────────────────────────
     '私余': '私域', '施育': '私域', '私育': '私域',
     '统安': '同安', '信一下': '线上', '头里': '投入',
@@ -258,6 +262,28 @@ CORRECTIONS = {
     # 噪音符号/单字符 ────────────────────────────────────────────
     # （在 parse_srt 里过滤，这里不做）
 }
+
+_KARUO_VOICE_JSON = Path(__file__).resolve().parents[4] / "运营中枢" / "参考资料" / "卡若闽南口音_ASR纠错库.json"
+
+
+def _merge_karuo_voice_corrections(base: dict) -> dict:
+    """合并卡若闽南口音 ASR 纠错库；JSON 覆盖内置表中同名 key。"""
+    merged = dict(base)
+    try:
+        if _KARUO_VOICE_JSON.exists():
+            with open(_KARUO_VOICE_JSON, encoding="utf-8") as f:
+                blob = json.load(f)
+            extra = blob.get("corrections") if isinstance(blob, dict) else None
+            if isinstance(extra, dict):
+                for k, v in extra.items():
+                    if k is not None and v is not None:
+                        merged[str(k)] = str(v)
+    except Exception:
+        pass
+    return merged
+
+
+CORRECTIONS = _merge_karuo_voice_corrections(_CORRECTIONS_BASE)
 
 # 各平台违禁词 → 谐音/替代词（用于字幕、封面、文件名）
 # 原则：意思不变，表达更安全，避免平台限流/封号
@@ -366,10 +392,14 @@ STYLE = {
     }
 }
 
-# 字幕与语音同步的全局延迟补偿（秒）；封面后留白再叠字幕；封面标题汉字上限（须在本文件先于 _limit_cover_title_cjk 定义）
-# 略抬高默认值，配合下方音轨/视频 PTS 差比例，减少「字先于人」
-SUBTITLE_DELAY_SEC = 2.15
+# 字幕与语音同步：已导出的切片文件时间轴从 0 起，与 transcript 绝对时间对齐，默认不再整体平移。
+# 仅当 ffprobe 发现音轨与视频首帧 PTS 差 > 阈值时，才加小量补偿（应对「未重封装、seek 错位」的源）。
+SUBTITLE_DELAY_SEC = 0.0
+SUBTITLE_PTS_OFFSET_THRESHOLD = 0.18  # 超过此秒数才加 delay
+SUBTITLE_DELAY_MAX = 1.2
 SUBS_START_AFTER_COVER_SEC = 3.0
+# 至少切除的静音总时长（秒）才触发重编码，避免无意义抖动
+MIN_SILENCE_TRIM_TOTAL_SEC = 0.25
 COVER_TITLE_MAX_CJK = 6
 
 # ============ 工具函数 ============
@@ -606,7 +636,7 @@ def parse_srt_for_clip(srt_path, start_sec, end_sec, delay_sec=None):
     """解析SRT，提取指定时间段的字幕。
 
     优化：
-    1. 字幕延迟补偿（delay_sec）：补偿 FFmpeg input seeking 关键帧偏移（2s 默认）
+    1. 字幕延迟补偿（delay_sec）：已导出切片默认 0；仅音画 PTS 错位时用较小正值
     2. 噪声行过滤：去掉单字母 L / Agent 等 ASR 幻觉行
     3. 文字质量提升：纠错 + 违禁词替换 + 通畅度修正
     4. whisper word-level SRT 自动识别：把单字/词条目先聚合成完整句，再用词时间轴做逐词显示
@@ -1255,6 +1285,134 @@ def create_silence_filter(silences, duration, margin=0.1):
     
     return '+'.join(selects)
 
+
+def kept_segments_from_silences(silences, duration, margin=0.1):
+    """与 create_silence_filter 一致：返回保留播放的时间段列表 [(s,e), ...]。"""
+    duration = float(duration)
+    if not silences:
+        return [(0.0, duration)]
+    silences = sorted(silences)
+    segments = []
+    last_end = 0.0
+    for start, end in silences:
+        if start > last_end + margin:
+            segments.append((last_end, start - margin))
+        last_end = max(last_end, end + margin)
+    if last_end < duration:
+        segments.append((last_end, duration))
+    if not segments:
+        return [(0.0, duration)]
+    return segments
+
+
+def map_time_remove_silences(t, kept_segments):
+    """原片时间 t（秒）→ 去掉静音后的新时间。"""
+    t = float(t)
+    acc = 0.0
+    for s, e in kept_segments:
+        if t <= s:
+            return acc
+        if t < e:
+            return acc + (t - s)
+        acc += (e - s)
+    return acc
+
+
+def remap_subtitles_after_trim(subtitles, kept_segments):
+    """就地更新字幕 start/end 与 word_times。"""
+    if not subtitles or not kept_segments:
+        return subtitles
+    for sub in subtitles:
+        ns = map_time_remove_silences(sub["start"], kept_segments)
+        ne = map_time_remove_silences(sub["end"], kept_segments)
+        if ne <= ns + 0.05:
+            ne = ns + 0.35
+        sub["start"], sub["end"] = ns, ne
+        wt = sub.get("word_times")
+        if wt:
+            for w in wt:
+                ws = map_time_remove_silences(w["start"], kept_segments)
+                we = map_time_remove_silences(w.get("end", w["start"]), kept_segments)
+                w["start"] = ws
+                w["end"] = max(we, ws + 0.02)
+    return subtitles
+
+
+def _valid_kept_segments(kept_segments, duration, min_dur=0.03):
+    out = []
+    duration = float(duration)
+    for s, e in kept_segments:
+        s = max(0.0, float(s))
+        e = min(float(e), duration)
+        if e - s >= min_dur:
+            out.append((s, e))
+    return out
+
+
+def ffmpeg_trim_kept_segments(input_path, output_path, kept_segments, duration):
+    """用 trim+atrim+concat 切除静音，音画同步。失败返回 False。"""
+    segs = _valid_kept_segments(kept_segments, duration)
+    if not segs:
+        return False
+    dur = float(duration)
+    kept_total = sum(e - s for s, e in segs)
+    if kept_total <= 0:
+        return False
+    # 几乎未剪：直接复制
+    if kept_total >= dur - 0.08:
+        try:
+            shutil.copy(input_path, output_path)
+            return True
+        except OSError:
+            return False
+
+    n = len(segs)
+    parts = []
+    if n == 1:
+        s, e = segs[0]
+        d = e - s
+        fc = (
+            f"[0:v]trim=start={s}:duration={d},setpts=PTS-STARTPTS[outv];"
+            f"[0:a]atrim=start={s}:duration={d},asetpts=PTS-STARTPTS[outa]"
+        )
+    else:
+        for i, (s, e) in enumerate(segs):
+            d = e - s
+            parts.append(f"[0:v]trim=start={s}:duration={d},setpts=PTS-STARTPTS[v{i}]")
+            parts.append(f"[0:a]atrim=start={s}:duration={d},asetpts=PTS-STARTPTS[a{i}]")
+        vconcat = "".join(f"[v{i}]" for i in range(n))
+        aconcat = "".join(f"[a{i}]" for i in range(n))
+        parts.append(f"{vconcat}concat=n={n}:v=1:a=0[outv]")
+        parts.append(f"{aconcat}concat=n={n}:v=0:a=1[outa]")
+        fc = ";".join(parts)
+
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        input_path,
+        "-filter_complex",
+        fc,
+        "-map",
+        "[outv]",
+        "-map",
+        "[outa]",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "22",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        output_path,
+    ]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    return r.returncode == 0 and os.path.exists(output_path)
+
+
 def _parse_clip_index(filename: str) -> int:
     """从文件名解析切片序号。
     
@@ -1273,7 +1431,7 @@ def _parse_clip_index(filename: str) -> int:
 def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_path,
                  force_burn_subs=False, skip_subs=False, vertical=False,
                  crop_vf=None, overlay_x=None, typewriter_subs=False,
-                 vertical_fit_full=False):
+                 vertical_fit_full=False, trim_silence=True):
     """增强单个切片。vertical=True 时输出竖条，宽由 --crop-vf 决定（原生包络常见 560～750×1080；旧 498 为两段裁或 scale）。
     vertical_fit_full：整幅 16:9 缩放入 498×1080 + 上下黑边。
     """
@@ -1282,8 +1440,10 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     
     video_info = get_video_info(clip_path)
     width, height = video_info['width'], video_info['height']
-    duration = video_info['duration']
-    
+    duration = float(video_info['duration'])
+    original_duration = duration
+    working_clip = clip_path
+
     print(f"  分辨率: {width}x{height}, 时长: {duration:.1f}秒")
     
     # 封面与成片文件名统一：都用主题 title（去杠），名字与标题一致、无杠更清晰
@@ -1320,14 +1480,9 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         vf_use = CROP_VF
         overlay_pos = "0:0"
     
-    # 1. 生成封面
-    print(f"  [1/5] 封面生成中…", flush=True)
-    cover_img = os.path.join(temp_dir, 'cover.png')
-    create_cover_image(hook_text, out_w, out_h, cover_img, clip_path)
-    print(f"  ✓ 封面生成", flush=True)
-    
-    # 2. 字幕逻辑：有字幕则烧录（图像 overlay：每张图 -loop 1 才能按时间 enable 显示）
+    # 1. 字幕解析（相对原切片时间轴；去静音后会整体平移时间）
     sub_images = []
+    subtitles = []
     do_burn_subs = not skip_subs and (force_burn_subs or not detect_burned_subs(clip_path))
     if skip_subs:
         print(f"  ⊘ 跳过字幕烧录（--skip-subs）")
@@ -1343,10 +1498,10 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                 start_sec = int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
         except (IndexError, ValueError):
             start_sec = 0
-        end_sec = start_sec + duration
+        end_sec = start_sec + original_duration
 
-        # 动态字幕延迟：检测切片实际首帧 PTS，与请求 start_time 做差
-        actual_delay = SUBTITLE_DELAY_SEC
+        # 已导出切片：默认 delay=0。仅当音/视频首帧 PTS 明显不一致时小幅推迟字幕，贴人声。
+        actual_delay = float(SUBTITLE_DELAY_SEC)
         try:
             pts_cmd = [
                 "ffprobe", "-v", "quiet", "-select_streams", "v:0",
@@ -1356,27 +1511,26 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                 str(clip_path),
             ]
             pts_r = subprocess.run(pts_cmd, capture_output=True, text=True, timeout=10)
-            if pts_r.returncode == 0 and pts_r.stdout.strip():
+            audio_cmd = [
+                "ffprobe", "-v", "quiet", "-select_streams", "a:0",
+                "-show_entries", "frame=pts_time",
+                "-read_intervals", "%+0.5",
+                "-print_format", "csv=p=0",
+                str(clip_path),
+            ]
+            audio_r = subprocess.run(audio_cmd, capture_output=True, text=True, timeout=10)
+            if (
+                pts_r.returncode == 0
+                and pts_r.stdout.strip()
+                and audio_r.returncode == 0
+                and audio_r.stdout.strip()
+            ):
                 first_pts = float(pts_r.stdout.strip().split("\n")[0].strip())
-                # batch_clip 把 -ss 放在 -i 前面，FFmpeg 将 PTS 重置为 0
-                # 但实际音频起点可能比请求的 start_sec 早 0-4 秒（关键帧对齐）
-                # first_pts 接近 0，真正的偏移量在 batch_clip 的 seeking 行为里
-                # 更可靠的方法：检测音频首个有效帧的 PTS
-                audio_cmd = [
-                    "ffprobe", "-v", "quiet", "-select_streams", "a:0",
-                    "-show_entries", "frame=pts_time",
-                    "-read_intervals", "%+0.5",
-                    "-print_format", "csv=p=0",
-                    str(clip_path),
-                ]
-                audio_r = subprocess.run(audio_cmd, capture_output=True, text=True, timeout=10)
-                if audio_r.returncode == 0 and audio_r.stdout.strip():
-                    audio_pts = float(audio_r.stdout.strip().split("\n")[0].strip())
-                    # 视频帧 PTS 与音频帧 PTS 的差值揭示 input seeking 对齐误差
-                    offset = abs(first_pts - audio_pts)
-                    # 按比例推迟字幕，更贴人声；夹紧区间避免过激或失控
-                    raw_delay = SUBTITLE_DELAY_SEC + offset * 0.72
-                    actual_delay = max(1.65, min(4.0, raw_delay))
+                audio_pts = float(audio_r.stdout.strip().split("\n")[0].strip())
+                offset = abs(first_pts - audio_pts)
+                if offset > SUBTITLE_PTS_OFFSET_THRESHOLD:
+                    actual_delay = min(SUBTITLE_DELAY_MAX, offset * 0.85)
+                    print(f"  ✓ 音画 PTS 差 {offset:.2f}s → 字幕延迟补偿 {actual_delay:.2f}s", flush=True)
         except Exception:
             pass
 
@@ -1384,34 +1538,63 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         for sub in subtitles:
             if not _is_mostly_chinese(sub['text']):
                 sub['text'] = _translate_to_chinese(sub['text']) or sub['text']
-        # 仅过滤整句为规则/模板的条目，保留所有对白（含重复句，保证字幕连续）
         subtitles = _filter_relevant_subtitles(subtitles)
-        # 异常转录检测：若整篇几乎同一句话，不烧录错误字幕，避免成片出现“像图片”的无效字
         if _is_bad_transcript(subtitles):
-            print(f"  ⚠ 转录稿异常（大量重复同一句），已跳过字幕烧录；请用 MLX Whisper 对该视频重新生成 transcript.srt 后再跑成片", flush=True)
+            print(
+                f"  ⚠ 转录稿异常（大量重复同一句），已跳过字幕烧录；请用 MLX Whisper 对该视频重新生成 transcript.srt 后再跑成片",
+                flush=True,
+            )
             sys.stdout.flush()
             subtitles = []
         else:
             mode = "逐字渐显" if typewriter_subs else "随语音走动"
             print(f"  ✓ 字幕解析 ({len(subtitles)}条)，将烧录为{mode}字幕", flush=True)
+
+    # 2. 去静音：trim+concat 重编码，并 remap 字幕时间轴（此前仅检测未切除，成片仍带长停顿）
+    silences = detect_silence(clip_path, SILENCE_THRESHOLD, SILENCE_MIN_DURATION)
+    kept = kept_segments_from_silences(silences, original_duration)
+    removed_total = original_duration - sum(e - s for s, e in kept)
+    if trim_silence and removed_total >= MIN_SILENCE_TRIM_TOTAL_SEC:
+        trim_out = os.path.join(temp_dir, "trim_silence.mp4")
+        if ffmpeg_trim_kept_segments(clip_path, trim_out, kept, original_duration):
+            working_clip = trim_out
+            duration = float(get_video_info(working_clip)["duration"])
+            if subtitles:
+                remap_subtitles_after_trim(subtitles, kept)
+            print(
+                f"  ✓ 去静音：约减 {removed_total:.1f}s → 基长 {duration:.1f}s（检出 {len(silences)} 段）",
+                flush=True,
+            )
+        else:
+            print(f"  ⚠ 去静音编码失败，沿用原片", flush=True)
+            duration = original_duration
+    else:
+        print(
+            f"  ✓ 静音 {len(silences)} 段，可剪 {removed_total:.2f}s（<{MIN_SILENCE_TRIM_TOTAL_SEC}s 不剪）",
+            flush=True,
+        )
+
+    # 3. 封面图（与去静音后首帧一致）
+    print(f"  [1/5] 封面生成中…", flush=True)
+    cover_img = os.path.join(temp_dir, "cover.png")
+    create_cover_image(hook_text, out_w, out_h, cover_img, working_clip)
+    print(f"  ✓ 封面生成", flush=True)
+
+    if subtitles:
         if typewriter_subs:
             sub_images = build_typewriter_subtitle_images(
                 subtitles, temp_dir, out_w, out_h, subtitle_overlay_start
             )
         else:
             for i, sub in enumerate(subtitles):
-                img_path = os.path.join(temp_dir, f'sub_{i:04d}.png')
-                create_subtitle_image(sub['text'], out_w, out_h, img_path)
-                sub_images.append({'path': img_path, 'start': sub['start'], 'end': sub['end']})
+                img_path = os.path.join(temp_dir, f"sub_{i:04d}.png")
+                create_subtitle_image(sub["text"], out_w, out_h, img_path)
+                sub_images.append({"path": img_path, "start": sub["start"], "end": sub["end"]})
     if sub_images:
         print(f"  ✓ 字幕图片 ({len(sub_images)}张)", flush=True)
-    
-    # 4. 检测静音
-    silences = detect_silence(clip_path, SILENCE_THRESHOLD, SILENCE_MIN_DURATION)
-    print(f"  ✓ 静音检测 ({len(silences)}段)")
-    
-    # 5. 构建FFmpeg命令
-    current_video = clip_path
+
+    # 4. 构建 FFmpeg 链（从去静音后的 working_clip 起）
+    current_video = working_clip
     
     # 5.1 添加封面（封面图 -loop 1 保证前若干秒完整显示；竖条时叠在 overlay_pos）
     print(f"  [2/5] 封面烧录中…", flush=True)
@@ -1623,6 +1806,11 @@ def main():
         action="store_true",
         help="竖屏成片不裁中间竖条：整幅 16:9 等比缩放入 498×1080，上下黑边，画面显示全；封面/字幕先叠满横版再缩放",
     )
+    parser.add_argument(
+        "--no-trim-silence",
+        action="store_true",
+        help="不去除静音长停顿（默认会切除 silencedetect 检出的静音并同步平移字幕时间轴）",
+    )
     args = parser.parse_args()
     
     clips_dir = Path(args.clips) if args.clips else CLIPS_DIR
@@ -1652,6 +1840,7 @@ def main():
     vfit = getattr(args, "vertical_fit_full", False)
     print(
         f"功能: 封面+字幕+加速10%+去语气词"
+        + ("+去长静音" if not getattr(args, "no_trim_silence", False) else "")
         + ("+竖屏条(高1080宽随vf)" if vertical else "")
         + ("+全画面letterbox(不裁竖条)" if vertical and vfit else "")
         + ("+逐字字幕" if typewriter else "")
@@ -1709,6 +1898,7 @@ def main():
                 overlay_x=overlay_x_arg,
                 typewriter_subs=typewriter,
                 vertical_fit_full=vfit,
+                trim_silence=not getattr(args, "no_trim_silence", False),
             ):
                 success_count += 1
         finally:
