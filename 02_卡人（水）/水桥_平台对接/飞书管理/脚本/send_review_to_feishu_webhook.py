@@ -19,7 +19,8 @@
   python3 send_review_to_feishu_webhook.py --card -w "$FEISHU_PARTY_CLOSURE_WEBHOOK" -f review.md
 
 环境变量：
-  FEISHU_REVIEW_WEBHOOK — 默认 webhook（可被 --webhook 覆盖）
+  FEISHU_DEV_GROUP_WEBHOOK — Soul/派对/卡若 开发群统一 webhook（优先）
+  FEISHU_REVIEW_WEBHOOK — 兼容旧名，次之（可被 --webhook 覆盖）
 """
 from __future__ import annotations
 
@@ -34,8 +35,11 @@ from typing import Any
 import requests
 
 DEFAULT_WEBHOOK = os.environ.get(
-    "FEISHU_REVIEW_WEBHOOK",
-    "https://open.feishu.cn/open-apis/bot/v2/hook/8b7f996e-2892-4075-989f-aa5593ea4fbc",
+    "FEISHU_DEV_GROUP_WEBHOOK",
+    os.environ.get(
+        "FEISHU_REVIEW_WEBHOOK",
+        "https://open.feishu.cn/open-apis/bot/v2/hook/c558df98-e13a-419f-a3c0-7e428d15f494",
+    ),
 )
 
 # lark_md 中单元素不宜过长

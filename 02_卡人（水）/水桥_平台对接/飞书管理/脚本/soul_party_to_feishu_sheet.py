@@ -18,8 +18,14 @@ WIKI_NODE_OR_SPREADSHEET_TOKEN = os.environ.get('FEISHU_SPREADSHEET_TOKEN', 'wik
 SHEET_ID = os.environ.get('FEISHU_SHEET_ID', '7A3Cy9')  # 2月默认 sheet
 # 月份 → 工作表 sheetId（2月=7A3Cy9；3月=bJR5sA，与飞书「3月」标签一致）
 SHEET_ID_BY_MONTH = {2: '7A3Cy9', 3: 'bJR5sA'}
-# 飞书群机器人 webhook（推送运营报表链接与场次数据）
-FEISHU_GROUP_WEBHOOK = os.environ.get('FEISHU_GROUP_WEBHOOK', 'https://open.feishu.cn/open-apis/bot/v2/hook/34b762fc-5b9b-4abb-a05a-96c8fb9599f1')
+# 飞书群机器人 webhook（推送运营报表链接与场次数据；默认=开发群，与 FEISHU_DEV_GROUP_WEBHOOK 一致）
+FEISHU_GROUP_WEBHOOK = os.environ.get(
+    'FEISHU_GROUP_WEBHOOK',
+    os.environ.get(
+        'FEISHU_DEV_GROUP_WEBHOOK',
+        'https://open.feishu.cn/open-apis/bot/v2/hook/c558df98-e13a-419f-a3c0-7e428d15f494',
+    ),
+)
 OPERATION_REPORT_LINK = 'https://cunkebao.feishu.cn/wiki/wikcnIgAGSNHo0t36idHJ668Gfd?sheet=7A3Cy9'
 
 # 写入列数：仅前 10 项（比率三项不填，表内公式自动算）
