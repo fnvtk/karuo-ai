@@ -109,4 +109,18 @@
 
 ---
 
+## 九、2026-03-23 晚：Clash Verge Rev（从卡若本机同步）
+
+| 项目 | 说明 |
+|------|------|
+| **安装** | 阿猫已安装 **Clash Verge**（从 GitHub Release DMG 安装至 \`/Applications/Clash Verge.app\`）。 |
+| **配置同步** | 已将卡若本机 \`~/Library/Application Support/io.github.clash-verge-rev.clash-verge-rev/\` 打包（排除 \`logs\`），\`rsync\` 至阿猫同路径；\`profiles.yaml\` 中 **深蓝云 / GLOBAL** 已预置为 **🇸🇬 新加坡(Tiktok) 01**。 |
+| **与 ClashX Pro** | 部署前已 \`killall "ClashX Pro"\`，避免与 Verge 抢系统代理；日常建议只开其一。 |
+| **端口** | 混合端口 **7897**（与卡若本机 \`verge.yaml\` 一致）；Mihomo 控制面在本机为 **Unix socket** \`/tmp/verge/verge-mihomo.sock\`（非 TCP 9097）。 |
+| **新加坡验证** | 经 \`127.0.0.1:7897\` 访问 \`ip-api.com\`，返回国家为 **Singapore**。 |
+| **OpenClaw** | 使用 \`HTTPS_PROXY=http://127.0.0.1:7897\` 执行 \`npm install -g openclaw@latest\` 成功，版本 **2026.3.13**；已重启 \`openclaw gateway\`。 |
+| **说明** | 同步的配置中仍含卡若侧 **第二条远程订阅**（若仅需 v6v，可在 Verge 内删除多余配置项，**勿**将订阅链接写入仓库）。 |
+
+---
+
 *文档生成：卡若AI 工作台。*
