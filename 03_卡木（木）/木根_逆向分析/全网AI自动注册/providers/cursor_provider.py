@@ -58,6 +58,13 @@ class CursorProvider(BaseProvider):
         self.provider_config = config.get("providers", {}).get("cursor", {})
         self.browser_config = config.get("browser", {})
 
+    def _effective_headless(self) -> bool:
+        """CURSOR_HEADLESS=0|false|no 时强制有界面，利于 Turnstile。"""
+        v = os.environ.get("CURSOR_HEADLESS", "").strip().lower()
+        if v in ("0", "false", "no", "off"):
+            return False
+        return self.browser_config.get("headless", True)
+
     def _create_browser(self):
         # 参考 ddCat-main/cursor-auto-register browser_utils：auto_port() + headless()
         from DrissionPage import ChromiumPage, ChromiumOptions
@@ -70,7 +77,7 @@ class CursorProvider(BaseProvider):
         co.set_argument("--remote-allow-origins=*")
         co.set_argument("--window-size=1920,1080")
         co.auto_port()
-        use_headless = self.browser_config.get("headless", True)
+        use_headless = self._effective_headless()
         if use_headless:
             co.set_argument("--headless=new")
         co.headless(use_headless)
@@ -95,7 +102,7 @@ class CursorProvider(BaseProvider):
             return None
         signup_url = self.provider_config.get("signup_url", SIGNUP_URL)
         settings_url = self.provider_config.get("settings_url", SETTINGS_URL)
-        headless = self.browser_config.get("headless", True)
+        headless = self._effective_headless()
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=headless, args=["--no-sandbox"])
             try:
@@ -103,22 +110,21 @@ class CursorProvider(BaseProvider):
                 page.goto(signup_url, wait_until="domcontentloaded", timeout=45000)
                 time.sleep(5)
                 log.info(f"  [1/6] 打开注册页面 (Playwright)")
-                page.wait_for_selector('input', state="visible", timeout=25000)
-                time.sleep(1)
-                inputs = page.locator('input[type="text"], input[type="email"], input:not([type])')
-                n = inputs.count()
-                if n >= 3:
-                    inputs.nth(0).fill(first)
-                    time.sleep(0.15)
-                    inputs.nth(1).fill(last)
-                    time.sleep(0.15)
-                    inputs.nth(2).fill(email)
-                else:
-                    page.locator('input[name="first_name"], input[name="firstName"]').first.fill(first)
-                    time.sleep(0.15)
-                    page.locator('input[name="last_name"], input[name="lastName"]').first.fill(last)
-                    time.sleep(0.15)
-                    page.locator('input[name="email"], input[type="email"]').first.fill(email)
+                # 勿用裸 input，否则会命中 type=hidden（如 signals）
+                fn = page.locator(
+                    'input[name="first_name"], input[name="firstName"], input[autocomplete="given-name"]'
+                ).first
+                fn.wait_for(state="visible", timeout=45000)
+                time.sleep(0.5)
+                fn.fill(first)
+                time.sleep(0.15)
+                page.locator(
+                    'input[name="last_name"], input[name="lastName"], input[autocomplete="family-name"]'
+                ).first.fill(last)
+                time.sleep(0.15)
+                page.locator(
+                    'input[name="email"], input[type="email"], input[autocomplete="email"]'
+                ).first.fill(email)
                 time.sleep(0.5)
                 page.locator('button[type="submit"], input[type="submit"], [type="submit"]').first.click()
                 time.sleep(3)

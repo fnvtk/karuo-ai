@@ -137,6 +137,11 @@ class EmailService:
         if self.email_type == "tempmail":
             return self._gen_tempmail()
         elif self.email_type == "mailtm":
+            fixed = self._mailtm_fixed_credentials()
+            if fixed:
+                addr, pwd = fixed
+                log.info("[邮箱] 使用固定 mail.tm（MAILTM_ADDRESS 或 config.mailtm.fixed_*）")
+                return self._mailtm_login(addr, pwd)
             return self._gen_mailtm()
         elif self.email_type == "cloudflare_worker":
             return self._gen_cf_worker()
@@ -151,29 +156,33 @@ class EmailService:
         email = f"{prefix}{random_suffix}@tempmail.plus"
         return email, {"type": "tempmail", "pin": cfg.get("pin", "")}
 
-    def _gen_mailtm(self) -> tuple[str, dict]:
-        """mail.tm API 创建临时邮箱，可收验证码（与 Cerebras 同源）"""
+    def _mailtm_fixed_credentials(self) -> Optional[tuple[str, str]]:
+        """环境变量或 config.mailtm 固定账号，供 Cursor 等复用已创建的 mail.tm。"""
+        cfg = self.config.get("mailtm") or {}
+        addr = (os.environ.get("MAILTM_ADDRESS") or cfg.get("fixed_address") or "").strip()
+        pwd = (os.environ.get("MAILTM_PASSWORD") or cfg.get("fixed_password") or "").strip()
+        if addr and pwd:
+            return addr, pwd
+        return None
+
+    def _mailtm_login(self, address: str, password: str) -> tuple[str, dict]:
         import httpx
         api = "https://api.mail.tm"
-        r = httpx.get(f"{api}/domains", timeout=10)
-        domains = r.json().get("hydra:member", [])
-        if not domains:
-            raise RuntimeError("mail.tm 无可用域名")
-        domain = domains[0]["domain"]
-        prefix = "".join(random.choices(string.ascii_lowercase + string.digits, k=12))
-        email = f"{prefix}@{domain}"
-        password = "".join(random.choices(string.ascii_letters + string.digits, k=16))
-        r = httpx.post(f"{api}/accounts", json={"address": email, "password": password}, timeout=15)
-        if r.status_code not in (200, 201):
-            raise RuntimeError(f"mail.tm 创建账号失败: {r.status_code} {r.text[:100]}")
-        r = httpx.post(f"{api}/token", json={"address": email, "password": password}, timeout=10)
+        t = 25
+        r = httpx.post(
+            f"{api}/token",
+            json={"address": address, "password": password},
+            timeout=t,
+        )
         if r.status_code != 200:
-            raise RuntimeError("mail.tm 获取 token 失败")
+            raise RuntimeError(f"mail.tm 登录/token 失败: {r.status_code} {r.text[:120]}")
         token = r.json().get("token", "")
-        return email, {"type": "mailtm", "token": token}
+        if not token:
+            raise RuntimeError("mail.tm 返回空 token")
+        return address, {"type": "mailtm", "token": token}
 
     def _gen_mailtm(self) -> tuple[str, dict]:
-        """mail.tm API 创建临时邮箱，可收 Cursor 等验证码"""
+        """mail.tm API 新建临时邮箱（Cursor / Cerebras 等同源）"""
         import httpx
         api = "https://api.mail.tm"
         t = 25
@@ -188,38 +197,7 @@ class EmailService:
         r = httpx.post(f"{api}/accounts", json={"address": email, "password": password}, timeout=t)
         if r.status_code not in (200, 201):
             raise RuntimeError(f"mail.tm 创建失败: {r.status_code} {r.text[:80]}")
-        r = httpx.post(f"{api}/token", json={"address": email, "password": password}, timeout=t)
-        if r.status_code != 200:
-            raise RuntimeError(f"mail.tm token 失败: {r.status_code}")
-        token = r.json().get("token", "")
-        return email, {"type": "mailtm", "token": token}
-
-    def _poll_mailtm(self, context: dict, timeout: int) -> Optional[str]:
-        """轮询 mail.tm 收件箱提取 6 位验证码"""
-        import httpx
-        token = context.get("token", "")
-        if not token:
-            return None
-        headers = {"Authorization": f"Bearer {token}"}
-        api = "https://api.mail.tm"
-        start = time.time()
-        while time.time() - start < timeout:
-            try:
-                r = httpx.get(f"{api}/messages", headers=headers, timeout=10)
-                for msg in r.json().get("hydra:member", []):
-                    mid = msg.get("id", "")
-                    if not mid:
-                        continue
-                    d = httpx.get(f"{api}/messages/{mid}", headers=headers, timeout=10).json()
-                    subject = d.get("subject", "")
-                    text = d.get("text", "") or (d.get("html") or [""])[0] if isinstance(d.get("html"), list) else ""
-                    code = self._extract_code(subject, text)
-                    if code:
-                        return code
-            except Exception as e:
-                log.warning(f"[邮箱] mail.tm 轮询异常: {e}")
-            time.sleep(3)
-        return None
+        return self._mailtm_login(email, password)
 
     def _gen_cf_worker(self) -> tuple[str, dict]:
         import httpx
@@ -363,14 +341,23 @@ class EmailService:
         return None
 
     def _extract_code(self, subject: str, body: str) -> Optional[str]:
-        """从邮件主题和正文中提取 6 位 OTP"""
+        """从邮件主题和正文中提取 6 位 OTP（正文可为 HTML）"""
+        import re as _re
+
+        def _strip_html(s: str) -> str:
+            return _re.sub(r"<[^>]+>", " ", s or "")
+
+        plain = (body or "") + "\n" + _strip_html(body or "")
         precise = self.RE_CODE_PRECISE.search(subject)
         if precise:
             return precise.group(1)
-        precise = self.RE_CODE_PRECISE.search(body)
+        precise = self.RE_CODE_PRECISE.search(plain)
         if precise:
             return precise.group(1)
         match = self.RE_OTP.search(subject)
+        if match:
+            return match.group(1)
+        match = self.RE_OTP.search(plain)
         if match:
             return match.group(1)
         return None

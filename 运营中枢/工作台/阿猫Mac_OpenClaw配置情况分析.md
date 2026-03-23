@@ -123,4 +123,16 @@
 
 ---
 
+## 十、卡若 AI 网站（官网）对接阿猫 OpenClaw 网关
+
+| 项目 | 说明 |
+|------|------|
+| **环境变量** | \`开发/3、自营项目/卡若ai网站/site/.env.local\` 已配置 \`OPENCLAW_GATEWAY_URL\`（默认 \`http://macbook.quwanzhi.com:18789\`）、\`OPENCLAW_GATEWAY_TOKEN\`（与阿猫 \`~/.openclaw/openclaw.json\` 中 \`gateway.auth.token\` 一致）、\`OPENCLAW_GATEWAY_MODEL\` 等。 |
+| **Mongo** | \`storage-mongo\` 在初始化网关后会 **upsert** \`gw-openclaw-amiao\`（展示名：OpenClaw·阿猫笔记本（龙虾））。 |
+| **路由** | 官网 \`gateway-router\` 对 \`claude*\` 模型在有该网关 Key 时 **优先** 走阿猫 OpenClaw。 |
+| **Docker** | \`卡若ai网站/docker-compose.yml\` 已传入上述变量；生产环境须保证 **容器能访问** 阿猫网关地址（非把阿猫的 127.0.0.1 当本机）。 |
+| **控制台** | 管理员 POST \`/api/gateway/sync-keys\` 时也会从环境变量合并 \`gw-openclaw-amiao\`。 |
+
+---
+
 *文档生成：卡若AI 工作台。*
