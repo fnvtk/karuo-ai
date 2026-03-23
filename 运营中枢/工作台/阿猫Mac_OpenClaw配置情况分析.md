@@ -78,4 +78,21 @@
 
 ---
 
+## 七、2026-03-23 更新：阿猫本机网关与模型（仅 api123.icu）
+
+以下经 SSH 到 `macbook.quwanzhi.com:22203`（用户 `kr`）核实并已执行。
+
+| 项目 | 说明 |
+|------|------|
+| **本机网关** | 已存在 `openclaw-gateway`（npm-global `openclaw`），工作目录 `~/.openclaw/workspace`；配置变更后已重启网关进程。 |
+| **模型提供方** | `~/.openclaw/openclaw.json` 中 `models.providers` **仅保留** `api123-icu`；已移除原先的 `cerebras`、`cohere`。 |
+| **对接方式** | `baseUrl`: `https://api123.icu`，`api`: `anthropic-messages`（与 [api123 说明页](https://api123.icu/about) 所指的 Anthropic 兼容用法一致；网关会走 `/v1/messages`）。 |
+| **默认模型** | `agents.defaults.model.primary` 与 `agents.list[].model` 均为 `api123-icu/claude-sonnet-4-5-20250929`；`fallbacks` 已清空。 |
+| **密钥** | 仅存于阿猫本机 `openclaw.json`，**勿写入仓库文档**。修改前已备份为 `~/.openclaw/openclaw.json.bak.api123_YYYYMMDD_HHMMSS`。 |
+| **连通性** | 从该 Mac 对 `https://api123.icu/v1/messages` 做过最小请求，HTTP 200，模型可返回内容。 |
+
+> **与上文「阿猫无网关」的冲突**：第五节及以前依据 2026-03-04 健康报告撰写；本节以 2026-03-23 现场状态为准——阿猫本机**已**在跑 OpenClaw 网关，且模型仅走 api123.icu。
+
+---
+
 *文档生成：卡若AI 工作台。*

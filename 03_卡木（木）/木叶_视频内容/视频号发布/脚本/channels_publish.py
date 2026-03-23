@@ -271,6 +271,40 @@ async def publish_one(
             await asyncio.sleep(1)
             await page.screenshot(path=ss("3_desc"))
 
+            # --- Step 3.5: scheduled publish (if provided) ---
+            if scheduled_time:
+                try:
+                    from schedule_helper import set_scheduled_time
+                    sch_ok = await set_scheduled_time(page, scheduled_time, "视频号")
+                    if sch_ok:
+                        print("  [3.5] 视频号定时发布时间已设置", flush=True)
+                    else:
+                        print("  [3.5] 未能设置定时，终止本条发布（避免误发为立即）", flush=True)
+                        await browser.close()
+                        return PublishResult(
+                            platform="视频号",
+                            video_path=video_path,
+                            title=title,
+                            success=False,
+                            status="error",
+                            message="未识别到视频号定时控件，已拦截本条发布",
+                            error_code="SCHEDULE_NOT_SET",
+                            elapsed_sec=time.time() - t0,
+                        )
+                except Exception as e:
+                    print(f"  [3.5] 定时设置异常: {str(e)[:80]}，终止本条发布", flush=True)
+                    await browser.close()
+                    return PublishResult(
+                        platform="视频号",
+                        video_path=video_path,
+                        title=title,
+                        success=False,
+                        status="error",
+                        message=f"定时设置异常: {str(e)[:80]}",
+                        error_code="SCHEDULE_SET_ERROR",
+                        elapsed_sec=time.time() - t0,
+                    )
+
             # --- Step 4: publish ---
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             await asyncio.sleep(1)
