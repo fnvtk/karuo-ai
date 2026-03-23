@@ -746,9 +746,9 @@ def _scheduled_ts_for_channels(scheduled_time) -> int:
     else:
         ts = int(scheduled_time)
     now = int(time.time())
-    # 2 分钟内视为「立即」，避免 postTime 过近被服务端拒绝
-    if ts <= now + 120:
-        return 0
+    # 视频号新规则：统一走定时，不走立即发表；过近时间点自动顺延到 10 分钟后。
+    if ts <= now + 600:
+        return now + 600
     return ts
 
 

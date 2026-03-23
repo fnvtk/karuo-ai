@@ -152,6 +152,9 @@ class VideoMeta:
     def hashtags(self, platform: str) -> str:
         """# 标签字符串"""
         tags = self._smart_tags(platform)
+        if platform == "视频号":
+            # 视频号按新规则：去掉 Soul 相关 # 标签，仅保留业务/品牌相关标签。
+            tags = [t for t in tags if "soul" not in t.lower()]
         parts = [f"#{t}" for t in tags]
         if platform == "视频号":
             parts.extend(CHANNELS_FIXED_TAGS)

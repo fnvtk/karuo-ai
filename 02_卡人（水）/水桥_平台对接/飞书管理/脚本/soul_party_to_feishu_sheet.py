@@ -73,8 +73,8 @@ ROWS = {
     '129': [ 'AI手机金融坏账投流', 200, 0, 250, 14, 187, 4, 561, 21, 31 ],
     # 130场 2026-03-21：视频号直播结束页 02:25:49≈146min；观众总数2278、最高在线355、新增关注4、总热度3、送礼1；Soul推流无截图数据填0→脚本跳过第5行保留空
     '130': [ 'Soul爆量脸视频号问微信', 146, 0, 2278, 0, 3, 1, 3, 4, 355 ],
-    # 131场 2026-03-23：文章口径场观2580/进房328/128min；视频号结束页补关注4、最高在线75、点赞评论分享计互动；礼物灵魂力无截图填0
-    '131': [ '视频号中枢Soul做哨兵', 128, 2580, 328, 0, 2105, 0, 0, 4, 75 ],
+    # 131场 2026-03-23：视频号结束页 02:05:55≈126min；观众1144、最高75、关注4、点赞1595+评论498+分享12；无总热度/礼物展示填0；Soul推流0→跳过第5行
+    '131': [ '视频号中枢Soul哨兵', 126, 0, 1144, 0, 2105, 0, 0, 4, 75 ],
 }
 # 场次→按日期列填写时的日期（表头为当月日期 1~31）
 SESSION_DATE_COLUMN = {'105': '20', '106': '21', '107': '23', '113': '2', '114': '3', '115': '4', '116': '5', '117': '6', '118': '7', '119': '8', '124': '14', '126': '17', '127': '18', '128': '19', '129': '20', '130': '21', '131': '23'}
@@ -96,7 +96,6 @@ PARTY_VIDEO_LINKS = {
     '127': 'https://cunkebao.feishu.cn/minutes/obcnhybw322112tad6916v8r',
     '129': 'https://cunkebao.feishu.cn/minutes/obcnjb994323l12lhl448177',
     '130': 'https://cunkebao.feishu.cn/minutes/obcnj1y95z73n53e8m6m1s3j',
-    # 131场：urls_soul_party.txt 中紧接 130 的新妙记
     '131': 'https://cunkebao.feishu.cn/minutes/obcnjzx7dyxco67btud7y8gz',
 }
 
@@ -112,7 +111,17 @@ TEAM_MEETING_LINKS = {
     '126': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcng991jg3114b2nj99548d',
     '127': 'https://cunkebao.feishu.cn/minutes/obcnhxs8usi8c7n27a9f66ux',
     '129': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcnjbn178iy6919od4119ww',
-    '131': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcnjzx7dyxco67btud7y8gz',
+    # 131：与派对同源妙记时可同链；若售商品侧另有团队会议妙记请改此处
+    '131': 'https://cunkebao.feishu.cn/minutes/obcnjzx7dyxco67btud7y8gz',
+}
+
+# 补充直链（A 列无独立标签的空行）：场次 → [(行号1-based, 完整URL), ...]
+# 131：第30行=3月运营报表 Wiki；第32行=今日总结嵌入图 fileToken 对应的云空间文件链（与格内 embed 一致）
+SESSION_SUPPLEMENT_ROW_LINKS = {
+    '131': [
+        (30, 'https://cunkebao.feishu.cn/wiki/wikcnIgAGSNHo0t36idHJ668Gfd?sheet=bJR5sA'),
+        (32, 'https://cunkebao.feishu.cn/file/HNZEb0mxqoW38KxlFLAcKb2Rnef'),
+    ],
 }
 
 # 小程序当日运营数据：日期号 → {访问次数, 访客, 交易金额}，填表时自动写入对应日期列
@@ -223,6 +232,23 @@ def _write_team_meeting_link(token, spreadsheet_token, sheet_id, vals, col_lette
         print(f'✅ 已写入团队会议链接 → {col_letter}{row_num}')
     else:
         print(f'⚠️ 团队会议链接写入未成功: {code} {body}')
+
+
+def _write_session_supplement_row_links(token, spreadsheet_token, sheet_id, col_letter, session):
+    """按 SESSION_SUPPLEMENT_ROW_LINKS 写入报表 Wiki、今日总结图文件链等（固定行号）。"""
+    pairs = (SESSION_SUPPLEMENT_ROW_LINKS or {}).get(session) or []
+    for row_num, link in pairs:
+        link = (link or '').strip()
+        if not link or not row_num:
+            continue
+        rng = f"{sheet_id}!{col_letter}{row_num}:{col_letter}{row_num}"
+        code, body = update_sheet_range(token, spreadsheet_token, rng, [[link]], value_input_option='USER_ENTERED')
+        if code == 401 or body.get('code') in (99991677, 99991663):
+            return
+        if code == 200 and body.get('code') in (0, None):
+            print(f'✅ 已写入补充链接 → {col_letter}{row_num}')
+        else:
+            print(f'⚠️ 补充链接写入未成功 {col_letter}{row_num}: {code} {body}')
 
 
 def load_token():
@@ -541,6 +567,7 @@ def main():
                     _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter, month=month)
                     _write_party_video_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
                     _write_team_meeting_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
+                    _write_session_supplement_row_links(token, spreadsheet_token, sheet_id, col_letter, session)
                     _maybe_send_group(session, raw)
                     return
                 print(f'⚠️ 逐格写入成功但校验未通过：{msg}')
@@ -563,6 +590,7 @@ def main():
                     _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter, month=month)
                     _write_party_video_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
                     _write_team_meeting_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
+                    _write_session_supplement_row_links(token, spreadsheet_token, sheet_id, col_letter, session)
                     _maybe_send_group(session, raw)
                     return
                 print(f'⚠️ 写入成功但校验未通过：{msg}')
@@ -593,6 +621,7 @@ def main():
                         _write_miniprogram_extra(token, spreadsheet_token, sheet_id, vals, date_col, col_letter, month=month)
                         _write_party_video_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
                         _write_team_meeting_link(token, spreadsheet_token, sheet_id, vals, col_letter, session)
+                        _write_session_supplement_row_links(token, spreadsheet_token, sheet_id, col_letter, session)
                         _maybe_send_group(session, raw)
                         return
                     print(f'⚠️ 逐格写入成功但校验未通过：{msg}')

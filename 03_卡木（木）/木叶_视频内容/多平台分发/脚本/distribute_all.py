@@ -29,6 +29,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from datetime import datetime, timedelta
 
 SCRIPT_DIR = Path(__file__).parent
 BASE_DIR = SCRIPT_DIR.parent.parent
@@ -114,6 +115,32 @@ def print_platform_account_status(all_results: list[PublishResult], targets: lis
             if cmd:
                 print(f"    重登命令: {cmd}")
     print(f"{'=' * 60}\n")
+
+
+def _enforce_channels_schedule_slots(
+    schedule_times: list | None,
+    total_videos: int,
+    *,
+    min_delay_minutes: int = 10,
+) -> list:
+    """
+    视频号强制定时：
+    - 若无排期，补一套排期；
+    - 任一发布时间若过近（<= min_delay_minutes），自动顺延。
+    """
+    now = datetime.now()
+    min_dt = now + timedelta(minutes=min_delay_minutes)
+    if not schedule_times:
+        schedule_times = [min_dt + timedelta(minutes=55 * i) for i in range(total_videos)]
+        return schedule_times
+
+    fixed = []
+    for i, st in enumerate(schedule_times):
+        if st <= min_dt:
+            fixed.append(min_dt + timedelta(minutes=55 * i))
+        else:
+            fixed.append(st)
+    return fixed
 
 
 def _ensure_channels_cookie_or_login(*, auto_login: bool) -> None:
@@ -620,8 +647,12 @@ async def _publish_one_round(args: argparse.Namespace) -> tuple[int, int]:
             if (p, v.name) not in published_set:
                 total_new += 1
 
+    force_channels_timed = "视频号" in targets
+    effective_now = bool(args.now) and not force_channels_timed
+    if args.now and force_channels_timed:
+        print("  [i] 检测到视频号任务：已忽略 --now，改为按时间节点定时发布。")
     schedule_times = None
-    if not args.now and total_new > 1:
+    if (not effective_now and total_new > 1) or force_channels_timed:
         if args.legacy_schedule:
             schedule_times = generate_schedule(
                 len(videos),
@@ -631,6 +662,8 @@ async def _publish_one_round(args: argparse.Namespace) -> tuple[int, int]:
             )
         else:
             schedule_times = generate_smart_schedule(len(videos))
+    if force_channels_timed:
+        schedule_times = _enforce_channels_schedule_slots(schedule_times, len(videos))
 
     print(f"\n{'='*60}")
     print(f"  分发计划 ({mode})")
@@ -641,7 +674,7 @@ async def _publish_one_round(args: argparse.Namespace) -> tuple[int, int]:
     sched_label = "立即发布"
     if schedule_times:
         sched_label = "定时排期（智能错峰）" if not args.legacy_schedule else "定时排期（legacy 随机间隔）"
-    print(f"  发布方式: {sched_label if not args.now else '立即发布'}")
+    print(f"  发布方式: {sched_label if not effective_now else '立即发布'}")
     if not args.no_dedup:
         skipped = len(videos) * len(targets) - total_new
         if skipped > 0:
