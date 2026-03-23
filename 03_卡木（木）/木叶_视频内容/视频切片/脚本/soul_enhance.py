@@ -2,7 +2,7 @@
 """
 Soul切片增强脚本 v2.0
 功能：
-1. 封面贴片：高光 hook_3sec 优先（吸睛），竖屏底图为**清晰帧 + 约 10% 轻模糊混入**（非全糊）+ 冷色渐变；**顶栏单条 Soul 绿 + 底部电影感渐隐 + 细内框 + 柔阴影标题**（避免粗描边与多条绿边廉价感）
+1. 封面贴片：高光 hook_3sec 优先（吸睛），竖屏底图为**清晰帧 + 约 10% 轻模糊混入**（非全糊）+ 冷色渐变；**顶栏单条 Soul 绿 + 底部电影感渐隐 + 细内框 + 柔阴影标题**（避免粗描边与多条绿边廉价感）。**竖条成片**：封面取帧须与最终成片同一 `-vf`（如 `crop=598:1080:493:0`），禁止用整幅 1920 横版再压成竖条（会与正片取景不一致）。
 2. 烧录字幕（关键词高亮、可选逐字）
 3. 切除检出的长静音并重映射字幕时间轴
 4. 片尾 CTA（cta_ending）字幕条
@@ -1060,8 +1060,18 @@ def _strip_cover_number_prefix(text):
     return text.strip()
 
 
-def create_cover_image(hook_text, width, height, output_path, video_path=None):
-    """创建封面贴片。竖条：视频底 + 冷色渐变 + 底栏渐隐 + 顶栏 Soul 绿与细金线 + 内框 + 柔阴影标题 + 左上角标。"""
+def create_cover_image(
+    hook_text,
+    width,
+    height,
+    output_path,
+    video_path=None,
+    cover_extract_vf=None,
+):
+    """创建封面贴片。竖条：视频底 + 冷色渐变 + 底栏渐隐 + 顶栏 Soul 绿与细金线 + 内框 + 柔阴影标题 + 左上角标。
+
+    cover_extract_vf：竖条模式时与成片最终 `-vf` 一致（如 crop 竖条），从横版切片中截取与成片同取景的底图；不传则仍用整幅帧拉伸（易与成片不一致，仅兼容旧行为）。
+    """
     hook_text = _to_simplified(str(hook_text or "").strip())
     hook_text = _strip_cover_number_prefix(hook_text)
     if not hook_text:
@@ -1075,25 +1085,26 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
         base = Image.new("RGBA", (width, height), (*VERTICAL_COVER_TOP, 255))
         if video_path and os.path.exists(video_path):
             temp_frame = output_path.replace(".png", "_vframe.jpg")
-            subprocess.run(
-                [
-                    "ffmpeg",
-                    "-y",
-                    "-ss",
-                    "0.35",
-                    "-i",
-                    video_path,
-                    "-vframes",
-                    "1",
-                    "-q:v",
-                    "3",
-                    temp_frame,
-                ],
-                capture_output=True,
-            )
+            vf = (cover_extract_vf or "").strip()
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-ss",
+                "0.35",
+                "-i",
+                video_path,
+            ]
+            if vf:
+                cmd.extend(["-vf", vf])
+            cmd.extend(["-vframes", "1", "-q:v", "3", temp_frame])
+            subprocess.run(cmd, capture_output=True)
             if os.path.exists(temp_frame):
                 try:
-                    sharp = Image.open(temp_frame).convert("RGBA").resize((width, height))
+                    sharp = Image.open(temp_frame).convert("RGBA")
+                    if sharp.size != (width, height):
+                        sharp = sharp.resize(
+                            (width, height), Image.Resampling.LANCZOS
+                        )
                     mix = float(style.get("bg_blur_mix", 0.10))
                     r = float(style.get("bg_blur_radius", 14))
                     if mix > 0.001:
@@ -1785,10 +1796,15 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
             flush=True,
         )
 
-    # 3. 封面图（与去静音后首帧一致）
+    # 3. 封面图（与去静音后首帧一致；竖条须与成片同 crop-vf 取底图，勿整幅横版压竖条）
     print(f"  [1/5] 封面生成中…", flush=True)
     cover_img = os.path.join(temp_dir, "cover.png")
-    create_cover_image(hook_text, out_w, out_h, cover_img, working_clip)
+    cover_extract_vf = None
+    if vertical and not vertical_fit_full:
+        cover_extract_vf = vf_use
+    create_cover_image(
+        hook_text, out_w, out_h, cover_img, working_clip, cover_extract_vf=cover_extract_vf
+    )
     print(f"  ✓ 封面生成", flush=True)
 
     if subtitles:
@@ -1964,8 +1980,10 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     # 5.4 输出：竖条（宽由 vf）或全画面 letterbox
     if vertical and not vertical_fit_full:
         print(f"  [5/5] 竖屏输出（{out_w}×{out_h}）…", flush=True)
+    elif vertical and vertical_fit_full:
+        print(f"  [5/5] 竖屏输出（全画面 letterbox）…", flush=True)
     else:
-        print(f"  [5/5] 竖屏输出…", flush=True)
+        print(f"  [5/5] 横版输出（未开竖屏）…", flush=True)
     if vertical and vertical_fit_full:
         r = subprocess.run([
             'ffmpeg', '-y', '-i', current_video,
@@ -2065,14 +2083,22 @@ def main():
     
     vertical = getattr(args, 'vertical', False)
     title_only = getattr(args, 'title_only', False)
-    print("="*60)
-    print("🎬 Soul切片增强" + ("（成片竖屏直出）" if vertical else ""))
-    print("="*60)
     crop_vf_arg = (getattr(args, "crop_vf", "") or "").strip()
     overlay_x_arg = getattr(args, "overlay_x", -1)
     overlay_x_arg = None if overlay_x_arg < 0 else overlay_x_arg
     typewriter = getattr(args, "typewriter_subs", False)
     vfit = getattr(args, "vertical_fit_full", False)
+    # Soul 成片：--title-only 或塑形相关参数时默认竖屏直出，避免只传 --crop-vf 却漏 --vertical 误出 1920×1080 横版
+    if not vertical and (title_only or crop_vf_arg or vfit):
+        vertical = True
+        print(
+            "ℹ️ 已默认启用竖屏直出（因 --title-only 和/或 --crop-vf / --vertical-fit-full）；"
+            "显式加 --vertical 亦同。",
+            flush=True,
+        )
+    print("="*60)
+    print("🎬 Soul切片增强" + ("（成片竖屏直出）" if vertical else ""))
+    print("="*60)
     print(
         f"功能: 封面+字幕+加速10%+去语气词"
         + ("+去长静音" if not getattr(args, "no_trim_silence", False) else "")

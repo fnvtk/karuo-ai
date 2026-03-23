@@ -6,6 +6,7 @@ B站视频发布 — 纯 API 优先 + Playwright 兜底
 """
 import asyncio
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -21,6 +22,16 @@ UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
 )
+
+def _playwright_headless() -> bool:
+    """默认 True（无窗口）；PUBLISH_PLAYWRIGHT_HEADLESS=0 时有头调试。"""
+    return os.environ.get("PUBLISH_PLAYWRIGHT_HEADLESS", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
 
 TITLES = {
     "AI最大的缺点是上下文太短，这样来解决.mp4":
@@ -84,8 +95,16 @@ async def _api_publish(video_path: str, title: str, scheduled_time=None) -> Publ
 
     if scheduled_time:
         dtime = int(scheduled_time.timestamp())
+        now_ts = int(time.time())
+        # B站 API：发布时间须 ≥5 分钟且 ≤15 天（21173）
+        min_d = now_ts + 330
+        if dtime < min_d:
+            dtime = min_d
         meta["dtime"] = dtime
-        print(f"  [API] 定时发布: {scheduled_time.strftime('%Y-%m-%d %H:%M')}", flush=True)
+        print(
+            f"  [API] 定时发布: {time.strftime('%Y-%m-%d %H:%M', time.localtime(dtime))}",
+            flush=True,
+        )
 
     page = video_uploader.VideoUploaderPage(
         path=video_path,
@@ -131,14 +150,15 @@ async def _api_publish(video_path: str, title: str, scheduled_time=None) -> Publ
 
 
 async def _playwright_publish(video_path: str, title: str) -> PublishResult:
-    """方案二：Playwright 可见浏览器（兜底）"""
+    """方案二：Playwright 兜底（默认 headless，无弹窗）"""
     from playwright.async_api import async_playwright
 
     t0 = time.time()
+    hl = _playwright_headless()
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
-            headless=False,
+            headless=hl,
             args=["--disable-blink-features=AutomationControlled"],
         )
         ctx = await browser.new_context(
@@ -281,7 +301,10 @@ async def publish_one(video_path: str, title: str, idx: int = 1, total: int = 1,
         print(f"  [方案一失败] {err_msg}", flush=True)
 
     # 方案二：Playwright 兜底
-    print("  [方案二] 降级到 Playwright 可见浏览器...", flush=True)
+    print(
+        f"  [方案二] 降级 Playwright（{'headless 无窗口' if _playwright_headless() else '有头浏览器'}）...",
+        flush=True,
+    )
     try:
         result = await _playwright_publish(video_path, title)
         print(f"  {result.log_line()}", flush=True)

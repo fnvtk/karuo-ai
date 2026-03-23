@@ -12,18 +12,19 @@ updated: "2026-03-23"
 
 # 视频号发布 Skill（v3.0）
 
-> **核心能力**：纯 API（httpx）视频号发布，零 Playwright 依赖。
+> **核心能力**：发布链路纯 **httpx**；**登录**阶段用 Playwright（默认持久化 Chromium，减少重复扫码）。
 > **实测**：120 场 12 条切片全部 API 直发成功，单条 5~9 秒。
 > **去重**：基于 publish_log.jsonl，同一视频不重复发。
-> **Cookie 有效期**：~24-48h，通过 channels_login.py 扫码刷新。
+> **Cookie 有效期**：~24-48h，过期需刷新。`channels_login.py` 默认 **持久化 Chromium 用户目录**（`~/.soul-channels-playwright-profile`），同机同账号在腾讯会话未失效时**通常不必每次扫码**；`CHANNELS_PERSISTENT_LOGIN=0` 或 `--no-persistent` 可关。  
+> **开放平台 access_token**：**不能**替代助手 Cookie 发短视频（官方助手 API 列表无上传发表接口），见 `REFERENCE_开放能力_数据与集成.md` 与 `脚本/channels_open_platform_publish.py`。
 
 ---
 
 ## 一、纯 API 完整流程（5 步）
 
 ```
-[Step 1] Cookie 认证（一次性）
-  Playwright 微信扫码 → channels_storage_state.json
+[Step 1] Cookie 认证（助手态）
+  Playwright（默认持久化 profile，减少重复扫码）→ channels_storage_state.json
   登录地址: https://channels.weixin.qq.com/login
   获取: cookies, localStorage (_finger_print_device_id, __ml::aid)
 

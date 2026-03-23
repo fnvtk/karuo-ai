@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """
 多平台一键分发 v3 — 全链路自动化 + 定时排期
-- 定时排期：30-120 分钟随机间隔，超 24h 自动压缩
+- 定时排期（默认）：generate_smart_schedule — 按条数自适应间隔/总跨度，并尽量避开本地 0–7 点
+- 旧排期：--legacy-schedule + --min-gap / --max-gap / --max-hours（原 30–120min 随机）
 - 并行分发：5 平台同时上传（asyncio.gather）
-- 去重机制：已成功发布的视频自动跳过
-- 失败重试：--retry 自动重跑历史失败任务
-- Cookie 预警：过期/即将过期自动通知
-- 智能标题：优先手动字典，否则文件名自动生成
-- 结果持久化：JSON Lines 日志 + 控制台汇总
+- 去重：每条视频按其在目录中的序号对齐排期（不因前面跳过而错位）
+- 失败重试：--retry；Cookie 预警；结果写入 publish_log.json
+- 视频号登录：默认静默（仅同步 Cookie 路径，不弹窗）；需要自动扫码时加 --auto-channels-login；NO_AUTO_CHANNELS_LOGIN=1 强制静默
 
 用法:
-  python3 distribute_all.py                        # 定时排期并行分发
+  python3 distribute_all.py                        # 智能错峰定时排期
   python3 distribute_all.py --now                  # 立即发布（不排期）
+  python3 distribute_all.py --legacy-schedule      # 固定随机间隔（旧逻辑）
   python3 distribute_all.py --platforms B站 快手     # 只发指定平台
   python3 distribute_all.py --check                # 检查 Cookie
   python3 distribute_all.py --retry                # 重试失败任务
   python3 distribute_all.py --video /path/to.mp4   # 发单条视频
   python3 distribute_all.py --no-dedup             # 跳过去重检查
   python3 distribute_all.py --serial               # 串行模式（调试用）
-  python3 distribute_all.py --min-gap 30 --max-gap 120  # 自定义间隔
+  python3 distribute_all.py --min-gap 30 --max-gap 120  # 仅与 --legacy-schedule 联用
 """
 import argparse
 import asyncio
@@ -44,18 +44,23 @@ from cookie_manager import (
 from publish_result import (PublishResult, print_summary, save_results,
                             load_published_set, load_failed_tasks)
 from title_generator import generate_title
-from schedule_generator import generate_schedule, format_schedule
+from schedule_generator import (
+    generate_schedule,
+    generate_smart_schedule,
+    format_schedule,
+)
 from video_metadata import VideoMeta
 
 CHANNELS_LOGIN_SCRIPT = BASE_DIR / "视频号发布" / "脚本" / "channels_login.py"
 
 
-def _ensure_channels_cookie_or_login(skip_auto: bool) -> None:
-    """指定发视频号时：先对齐双路径 Cookie；无效则直接调起扫码登录（保存后继续）。"""
-    if skip_auto or os.environ.get("NO_AUTO_CHANNELS_LOGIN"):
-        sync_channels_cookie_files()
-        return
+def _ensure_channels_cookie_or_login(*, auto_login: bool) -> None:
+    """发视频号前对齐双路径 Cookie。默认静默；仅 auto_login 且未设 NO_AUTO_CHANNELS_LOGIN 时才调起扫码。"""
     sync_channels_cookie_files()
+    if os.environ.get("NO_AUTO_CHANNELS_LOGIN", "").strip().lower() in ("1", "true", "yes"):
+        return
+    if not auto_login:
+        return
     ok, _ = check_cookie_valid("视频号")
     if ok:
         return
@@ -139,6 +144,34 @@ def check_cookies_with_alert() -> tuple[list[str], list[str]]:
     return available, alerts
 
 
+def print_resume_report(
+    targets: list[str],
+    videos: list[Path],
+    published_set: set,
+    *,
+    detail: bool = False,
+) -> None:
+    """
+    断点续传说明：publish_log.json 里 success=true 的 (平台, 文件名) 会跳过，其余重传。
+    """
+    print(f"\n{'─' * 60}")
+    print("  断点续传 / 待传清单（已成功条目自动跳过）")
+    print(f"{'─' * 60}")
+    total_pending = 0
+    for p in targets:
+        pending = [v for v in videos if (p, v.name) not in published_set]
+        done = len(videos) - len(pending)
+        total_pending += len(pending)
+        print(f"  [{p}] 已成功 {done}/{len(videos)}  |  待上传 {len(pending)}")
+        if detail and pending:
+            for v in pending[:50]:
+                print(f"      · {v.name}")
+            if len(pending) > 50:
+                print(f"      … 另有 {len(pending) - 50} 条")
+    print(f"  合计待传任务: {total_pending} 条（多平台分别计数）")
+    print(f"{'─' * 60}\n")
+
+
 def send_feishu_alert(alerts: list[str]):
     """通过飞书 Webhook 发送 Cookie 过期预警"""
     import os
@@ -217,19 +250,19 @@ async def distribute_to_platform(
             success=True, status="skipped", message="去重跳过（已发布）",
         ))
 
-    publish_schedule = None
-    if schedule_times and len(to_publish) > 0:
-        if len(schedule_times) >= len(to_publish):
-            publish_schedule = schedule_times[:len(to_publish)]
-        else:
-            publish_schedule = generate_schedule(len(to_publish))
+    idx_by_vp = {vp: j for j, vp in enumerate(videos)}
+    schedule_ok = bool(schedule_times) and len(schedule_times) == len(videos)
 
     total = len(to_publish)
     pub_fn = getattr(module, "publish_one_compat", None) or module.publish_one
     for i, vp in enumerate(to_publish):
         vmeta = VideoMeta.from_filename(str(vp))
         title = vmeta.title(platform)
-        stime = publish_schedule[i] if publish_schedule else None
+        stime = (
+            schedule_times[idx_by_vp[vp]]
+            if schedule_ok
+            else None
+        )
         try:
             r = await pub_fn(str(vp), title, i + 1, total, scheduled_time=stime)
             if isinstance(r, PublishResult):
@@ -348,29 +381,98 @@ async def main():
     parser.add_argument("--no-dedup", action="store_true", help="跳过去重")
     parser.add_argument("--serial", action="store_true", help="串行模式")
     parser.add_argument("--now", action="store_true", help="立即发布（不排期）")
-    parser.add_argument("--min-gap", type=int, default=30, help="最小间隔(分钟)")
-    parser.add_argument("--max-gap", type=int, default=120, help="最大间隔(分钟)")
-    parser.add_argument("--max-hours", type=float, default=24.0, help="最大排期跨度(小时)")
+    parser.add_argument("--min-gap", type=int, default=30, help="最小间隔(分钟)，仅 --legacy-schedule 生效")
+    parser.add_argument("--max-gap", type=int, default=120, help="最大间隔(分钟)，仅 --legacy-schedule 生效")
+    parser.add_argument("--max-hours", type=float, default=24.0, help="最大排期跨度(小时)，仅 --legacy-schedule 生效")
+    parser.add_argument(
+        "--legacy-schedule",
+        action="store_true",
+        help="使用固定随机间隔（--min-gap/--max-gap/--max-hours）；默认智能错峰排期",
+    )
+    parser.add_argument(
+        "--auto-channels-login",
+        action="store_true",
+        help="视频号 Cookie 失效时自动调起扫码登录（默认静默，不弹窗）",
+    )
     parser.add_argument(
         "--no-auto-channels-login",
         action="store_true",
-        help="禁用「仅发视频号时」Cookie 失效自动弹窗登录",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
+        "--allow-ui-browser",
+        action="store_true",
+        help="B站 Playwright 兜底使用有头浏览器（默认无窗口 headless）",
+    )
+    parser.add_argument(
+        "--until-success",
+        action="store_true",
+        help="失败时每轮间隔后整表重试，直到全部成功或达 --until-success-max-rounds",
+    )
+    parser.add_argument(
+        "--until-success-sleep",
+        type=int,
+        default=90,
+        help="--until-success 每轮间隔秒数（默认 90）",
+    )
+    parser.add_argument(
+        "--until-success-max-rounds",
+        type=int,
+        default=0,
+        help="--until-success 最大轮数，0 表示不限制",
+    )
+    parser.add_argument(
+        "--resume-report",
+        action="store_true",
+        help="仅打印各平台已成功/待传条数与清单，不执行上传",
+    )
+    parser.add_argument(
+        "--resume-report-detail",
+        action="store_true",
+        help="与 --resume-report 合用，列出待传文件名",
     )
     args = parser.parse_args()
 
-    if (
+    if not args.allow_ui_browser:
+        os.environ.setdefault("PUBLISH_PLAYWRIGHT_HEADLESS", "1")
+
+    will_touch_channels = (
         not args.check
         and not args.retry
-        and args.platforms
-        and "视频号" in args.platforms
-    ):
-        _ensure_channels_cookie_or_login(args.no_auto_channels_login)
-
-    available, alerts = check_cookies_with_alert()
-    if alerts:
-        send_feishu_alert(alerts)
+        and (not args.platforms or "视频号" in args.platforms)
+    )
+    if will_touch_channels:
+        _ensure_channels_cookie_or_login(
+            auto_login=bool(args.auto_channels_login) and not args.no_auto_channels_login,
+        )
 
     if args.check:
+        available, alerts = check_cookies_with_alert()
+        if alerts:
+            send_feishu_alert(alerts)
+        return 0
+
+    if args.resume_report:
+        available, alerts = check_cookies_with_alert()
+        if alerts:
+            send_feishu_alert(alerts)
+        targets = args.platforms if args.platforms else available
+        targets = [t for t in targets if t in available]
+        video_dir = Path(args.video_dir) if args.video_dir else DEFAULT_VIDEO_DIR
+        if args.video:
+            videos = [Path(args.video)]
+        else:
+            videos = sorted(video_dir.glob("*.mp4"))
+        if not videos:
+            print(f"\n[✗] 未找到视频: {video_dir}")
+            return 1
+        published_set = set() if args.no_dedup else load_published_set()
+        if not targets:
+            print("\n[✗] 无可用平台，无法生成续传报告")
+            return 1
+        print_resume_report(
+            targets, videos, published_set, detail=args.resume_report_detail
+        )
         return 0
 
     if args.retry:
@@ -380,18 +482,59 @@ async def main():
             save_results(results)
         return 0
 
+    round_num = 0
+    while True:
+        round_num += 1
+        if args.until_success and round_num > 1:
+            print(
+                f"\n{'#' * 20} until-success 第 {round_num} 轮 "
+                f"（{args.until_success_sleep}s 后开始）{'#' * 20}\n",
+                flush=True,
+            )
+            await asyncio.sleep(args.until_success_sleep)
+
+        exit_code, failed_count = await _publish_one_round(args)
+
+        if not args.until_success:
+            return exit_code
+        # 无可发平台 / 无视频等致命错误，勿无限重试
+        if failed_count >= 9990:
+            return exit_code
+        if failed_count == 0:
+            print("\n[✓] until-success：本轮无失败条目，结束。", flush=True)
+            return 0
+        if args.until_success_max_rounds and round_num >= args.until_success_max_rounds:
+            print(
+                f"\n[✗] until-success：已达最大轮数 {args.until_success_max_rounds}，"
+                f"仍有约 {failed_count} 条失败。",
+                flush=True,
+            )
+            return 1
+        print(
+            f"\n[i] until-success：仍有失败，约 {failed_count} 条；"
+            f"{args.until_success_sleep}s 后重试（已成功写入日志会去重跳过）…",
+            flush=True,
+        )
+
+
+async def _publish_one_round(args: argparse.Namespace) -> tuple[int, int]:
+    """执行一轮分发。返回 (exit_code, 非跳过且失败的条数)。"""
+    available, alerts = check_cookies_with_alert()
+    if alerts:
+        send_feishu_alert(alerts)
+
     if not available:
         print("\n[✗] 没有可用平台，请先登录:")
         for p, c in PLATFORM_CONFIG.items():
             login = str(c["script"]).replace("publish", "login").replace("pure_api", "login")
             print(f"    {p}: python3 {login}")
-        return 1
+        return 1, 9999
 
     targets = args.platforms if args.platforms else available
     targets = [t for t in targets if t in available]
     if not targets:
         print("\n[✗] 指定的平台均不可用")
-        return 1
+        return 1, 9999
 
     video_dir = Path(args.video_dir) if args.video_dir else DEFAULT_VIDEO_DIR
     if args.video:
@@ -400,9 +543,12 @@ async def main():
         videos = sorted(video_dir.glob("*.mp4"))
     if not videos:
         print(f"\n[✗] 未找到视频: {video_dir}")
-        return 1
+        return 1, 9999
 
     published_set = set() if args.no_dedup else load_published_set()
+
+    if not args.no_dedup:
+        print_resume_report(targets, videos, published_set, detail=False)
 
     mode = "串行" if args.serial else "并行"
     total_new = 0
@@ -411,15 +557,17 @@ async def main():
             if (p, v.name) not in published_set:
                 total_new += 1
 
-    # 生成排期
     schedule_times = None
     if not args.now and total_new > 1:
-        schedule_times = generate_schedule(
-            len(videos),
-            min_gap=args.min_gap,
-            max_gap=args.max_gap,
-            max_hours=args.max_hours,
-        )
+        if args.legacy_schedule:
+            schedule_times = generate_schedule(
+                len(videos),
+                min_gap=args.min_gap,
+                max_gap=args.max_gap,
+                max_hours=args.max_hours,
+            )
+        else:
+            schedule_times = generate_smart_schedule(len(videos))
 
     print(f"\n{'='*60}")
     print(f"  分发计划 ({mode})")
@@ -427,7 +575,10 @@ async def main():
     print(f"  视频数: {len(videos)}")
     print(f"  目标平台: {', '.join(targets)}")
     print(f"  新任务: {total_new} 条")
-    print(f"  发布方式: {'立即发布' if args.now or not schedule_times else '定时排期'}")
+    sched_label = "立即发布"
+    if schedule_times:
+        sched_label = "定时排期（智能错峰）" if not args.legacy_schedule else "定时排期（legacy 随机间隔）"
+    print(f"  发布方式: {sched_label if not args.now else '立即发布'}")
     if not args.no_dedup:
         skipped = len(videos) * len(targets) - total_new
         if skipped > 0:
@@ -440,7 +591,7 @@ async def main():
 
     if total_new == 0:
         print("[i] 所有视频已发布到所有平台，无新任务")
-        return 0
+        return 0, 0
 
     t0 = time.time()
     if args.serial:
@@ -461,7 +612,8 @@ async def main():
     if failed_count > 0:
         print(f"\n  有 {failed_count} 条失败，可执行: python3 distribute_all.py --retry")
 
-    return 0 if ok == total else 1
+    failed_non_success = sum(1 for r in actual_results if not r.success)
+    return (0 if ok == total else 1), failed_non_success
 
 
 if __name__ == "__main__":

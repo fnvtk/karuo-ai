@@ -3,25 +3,28 @@ name: 多平台分发
 description: >
   一键将视频分发到 5 个平台（抖音、B站、视频号、小红书、快手）。
   API 优先策略：视频号纯 API、B站 bilibili-api-python、抖音纯 API。
-  支持定时排期（第1条立即发，后续 30-120 分钟随机间隔）、并行分发、去重、失败自动重试。
+  支持定时排期（默认智能错峰；可选 legacy）、默认静默不自动弹窗登录视频号、并行分发、去重、失败自动重试。
 triggers: 多平台分发、一键分发、全平台发布、批量分发、视频分发
 owner: 木叶
 group: 木
-version: "4.1"
-updated: "2026-03-20"
+version: "4.5"
+updated: "2026-03-23"
 ---
 
-# 多平台分发 Skill（v4.1）
+# 多平台分发 Skill（v4.5）
 
 > **核心原则**：API 发布为主，Playwright 为辅。确保确定性地分发到各平台。
-> **v4.1 变更**：视频号 Cookie 双路径自动对齐；指定 `--platforms 视频号` 时 Cookie 失效自动调起扫码登录；登录完成即写入并同步中央存储；执行上**先直达目的**（跑命令、保存 Cookie、再发），**不对用户反问**。
+> **v4.5 视频号铁律**：**必须先等微信扫码完成（Cookie 连续校验通过），再上传。** `video_channels_resume.py` **默认弹出 Chromium 窗口**扫码，扫完再自动上传；`--silent-login` 才是无头。  
+> **v4.4**：默认无窗口、B 站 headless、定时 ≥5min、`--until-success`、二维码路径标记。  
+> **v4.3**：默认不自动弹视频号登录。**v4.2**：智能排期与去重下标对齐。
 
 ## 〇、执行原则（第一性原理）
 
-- **目标优先**：用户要「发到视频号 / 全平台」→ 直接执行 `distribute_all.py` 与必要登录脚本，再简短汇报结果。
+- **视频号两步（强制）**：① 微信扫码登录助手并落盘 Cookie；② 再跑上传。**禁止**在 Cookie 未确认有效时上传。一键：`video_channels_resume.py`（**默认弹窗** Chromium；`--silent-login` 无头；`--step1-only` 只登录）。
+- **目标优先**：全平台时若含视频号且 Cookie 无效 → 先完成第①步，再 `distribute_all`；或直接跑 `video_channels_resume.py` 仅发视频号。
 - **Cookie 优先**：任何登录成功 → **必须落盘**；视频号同时写入 `视频号发布/脚本/channels_storage_state.json` 与 `多平台分发/cookies/视频号_cookies.json`（脚本已自动同步）。
-- **少问多做**：缺 Cookie 时自动打开 `channels_login.py`（仅发视频号场景）；除非环境无法弹窗，否则不先停下来问「要不要登录」。
-- **扫码只在 Cursor 里**：`channels_login.py` 用 `cursor://…/simple-browser` 打开登录页，**不**唤起 Safari/Chrome；要**完全避免**回退 Chromium，请用带 `--remote-debugging-port=9223` 的方式启动 Cursor（见脚本内说明）。
+- **默认静默**：批量分发**不弹窗**、不自动拉起登录流程，适合 Cursor 内无人值守跑命令。
+- **需要扫码时**：显式 `python3 channels_login.py`，或 `distribute_all.py --auto-channels-login`，或 `CHANNELS_AUTO_LOGIN=1 python3 channels_api_publish.py`。`channels_login.py` 可用 `cursor://…/simple-browser`；完全避免 Chromium 回退见脚本内 CDP 说明。
 
 ---
 
@@ -39,6 +42,9 @@ updated: "2026-03-20"
 > 按《视频号与腾讯相关 API 整理》结论，微信官方目前**没有开放「短视频上传/发布」接口**；本 Skill 中的视频号发布能力，属于对 `https://channels.weixin.qq.com` 视频号助手网页协议的逆向封装（DFS 上传 + `post_create`），仅在你本机使用，需自行承担协议变更与合规风险。  
 > 官方可控能力（直播记录、橱窗、留资、罗盘数据、本地生活等）的服务端 API 入口为：`https://developers.weixin.qq.com/doc/channels/api/`。**整合脑图与接口速查**见同木叶的 `视频号发布/REFERENCE_开放能力_数据与集成.md`；开放平台凭证约定见 `视频号发布/credentials/README.md`（`.env.open_platform`）。
 
+> **「视频号 API token」与成片上传**：微信公众号 **`access_token`**（`cgi-bin/token`）用于开放平台文档中的各类接口，**不能**替代本链路里的 **视频号助手网页态**。`distribute_all` → `channels_api_publish.py` 发表短视频，依赖的是 **`channels_storage_state.json`**（Cookie + `localStorage`，如 `__ml::aid`、`_finger_print_device_id`），经 `auth/auth_data` 校验通过后方可 DFS 上传与 `post_create`。`channels_token.json` 只是登录脚本写出的摘要字段，**不能单独当「发视频 token」用**。若要用 **appid+secret** 拉直播/罗盘等数据，走 `视频号发布/脚本/channels_open_fetch.py`，**与上传 127 场成片无关**。  
+> **127 场全平台（静默）**（助手态与各平台 Cookie 已就绪）：`python3 distribute_all.py --video-dir "/Users/karuo/Movies/soul视频/第127场_20260318_output/成片"`
+
 ---
 
 ## 二、一键命令
@@ -46,10 +52,13 @@ updated: "2026-03-20"
 ```bash
 cd /Users/karuo/Documents/个人/卡若AI/03_卡木（木）/木叶_视频内容/多平台分发/脚本
 
-# 定时排期：第1条立即，后续 30-120min 随机间隔
+# 定时排期：默认智能错峰（条数自适应 + 尽量避开本地 0–7 点）
 python3 distribute_all.py
 
-# 立即全部发布
+# 旧版：固定 30–120min 随机间隔
+python3 distribute_all.py --legacy-schedule
+
+# 立即全部发布（不排期）
 python3 distribute_all.py --now
 
 # 只发指定平台
@@ -62,22 +71,42 @@ python3 distribute_all.py --video-dir "/path/to/videos/"
 python3 distribute_all.py --check
 python3 distribute_all.py --retry
 
-# 仅视频号：Cookie 失效时禁止自动弹窗登录（CI/无头环境）
-python3 distribute_all.py --platforms 视频号 --no-auto-channels-login --video-dir "/path/to/成片"
-# 或环境变量：NO_AUTO_CHANNELS_LOGIN=1
+# 视频号 Cookie 失效且希望脚本自动弹窗扫码（默认不弹窗）
+python3 distribute_all.py --platforms 视频号 --auto-channels-login --video-dir "/path/to/成片"
+
+# 强制静默（即使写了 --auto-channels-login 也不弹窗）：NO_AUTO_CHANNELS_LOGIN=1
+# 独立跑视频号脚本且允许自动登录：CHANNELS_AUTO_LOGIN=1 python3 ../视频号发布/脚本/channels_api_publish.py
+
+# 视频号仅要二维码到对话：无窗口，终端会打印 SOUL_QR_IMAGE_FOR_CHAT 路径
+cd ../视频号发布/脚本 && CHANNELS_SILENT_QR=1 python3 channels_login.py
+
+# 全平台直到全部成功（间隔 90s，无限轮；加 --until-success-max-rounds 20 可封顶）
+python3 distribute_all.py --video-dir "/path/to/成片" --until-success
+
+# 仅查看断点：各平台已成功/待传（不执行上传）；加 --resume-report-detail 列出文件名
+python3 distribute_all.py --resume-report --resume-report-detail --video-dir "/path/to/成片"
+
+# 视频号一条龙：后台静默登录 → 终端打印二维码路径 → 你在对话里让助手读图扫码 → Cookie 好后自动仅发视频号（断点+until-success）
+python3 video_channels_resume.py --video-dir "/path/to/成片"
+# 无头（不弹窗）：加 --silent-login
+# 只做扫码不上传：加 --step1-only
 ```
 
 ---
 
-## 三、定时排期（v4.0 优化）
+## 三、定时排期（v4.2 默认智能错峰）
 
-### 3.1 排期规则
-- **第 1 条**：立即发布（`first_delay=0`）
-- **第 2 条起**：前一条 + random(30, 120) 分钟
-- 若总跨度 > 24h，自动按比例压缩
-- 12 条视频典型跨度 ~10-14h
+### 3.1 默认规则（`schedule_generator.generate_smart_schedule`）
+- **第 1 条**：立即（`first_delay=0`）；视频号侧 2 分钟内仍视为立即（`_scheduled_ts_for_channels`）
+- **间隔与总跨度**：随条数 `n` 自适应（`suggest_stagger_params`）：条数越多略缩短单条间隔、允许更长总跨度（如 8 条约 28–48h 量级，具体随机）
+- **凌晨规避**：本地时间 0–7 点附近的点会挪到当日/次日 12:xx（`refine_avoid_late_night`）；关闭：`SCHEDULE_NO_NIGHT_REFINE=1`
+- **回退旧逻辑**：`python3 distribute_all.py --legacy-schedule`（仍可用 `--min-gap` / `--max-gap` / `--max-hours`）
+- **去重对齐**：排期与 `videos` 列表下标一致；中间已发布的文件跳过，其余仍按原文件名顺序对应原定时间
 
-### 3.2 各平台定时实现
+### 3.2 独立跑 `channels_api_publish.py` 时
+- 与上相同的 `generate_smart_schedule` → Unix 定时，与分发器一致
+
+### 3.3 各平台定时实现
 
 | 平台 | 定时方式 | 参数 |
 |------|----------|------|
@@ -134,8 +163,9 @@ meta.hashtags("视频号")    # … + #小程序卡若创业派对 #公众号卡
 - 中央存储：`多平台分发/cookies/{平台}_cookies.json`
 - **视频号双路径**：`sync_channels_cookie_files()`；登录脚本写 legacy 后 **copy** 到 `cookies/视频号_cookies.json`
 - **登录页只在 Cursor 内打开**：`channels_login.py` v7 用 `cursor://vscode.simple-browser/show?url=…` 唤起 **Simple Browser**，**不**用系统默认浏览器。
-- **不落盘会话**：在 Cursor 已开 `--remote-debugging-port`（默认脚本连 `CHANNELS_CDP_URL=http://127.0.0.1:9223`）时，Playwright **CDP 附着** Cursor，从 Simple Browser 上下文导出 `storage_state`；**无 CDP** 时才回退独立 Chromium（`--playwright-only` 可强制只走 Chromium）。
-- `distribute_all.py` 指定 `--platforms 视频号` 且 Cookie 失效时自动跑 `channels_login.py`（可用 `--no-auto-channels-login` 关闭）
+- **不落盘会话**：在 Cursor 已开 `--remote-debugging-port`（默认脚本连 `CHANNELS_CDP_URL=http://127.0.0.1:9223`）时，Playwright **CDP 附着** Cursor，从 Simple Browser 上下文导出 `storage_state`；**无 CDP** 时回退 Chromium；默认 **持久化用户目录** `~/.soul-channels-playwright-profile`（`CHANNELS_PERSISTENT_LOGIN=0` / `--no-persistent` 可关），减少重复扫码。
+- **无 Cookie 发片**：微信助手 API **无**官方「access_token 上传短视频」接口，见 `视频号发布/脚本/channels_open_platform_publish.py` 与 `REFERENCE_开放能力_数据与集成.md`。
+- **`distribute_all.py`**：默认**不**自动跑 `channels_login.py`；仅 `--auto-channels-login` 且 Cookie 无效时才调起。历史参数 `--no-auto-channels-login` 仍接受（无效果，与默认一致）。
 - API 预检：各平台 auth API
 
 ---

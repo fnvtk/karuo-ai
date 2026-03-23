@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""视频号登录 v7 — 优先 Cursor 内置 Simple Browser 扫码；会话落盘优先 CDP 附着 Cursor，失败再回退 Playwright。"""
+"""视频号登录 v7 — Simple Browser / CDP / Playwright。
+静默二维码：`CHANNELS_SILENT_QR=1` 或 `--silent-qr` → headless、不弹窗，二维码写入 /tmp/channels_qr.png，
+stdout 打印 SOUL_QR_IMAGE_FOR_CHAT 标记路径，便于在 Cursor 对话中由助手展示给你扫。
+"""
 import asyncio
 import json
 import os
@@ -18,6 +21,10 @@ LOGIN_URL = "https://channels.weixin.qq.com/login"
 QR_SCREENSHOT = Path("/tmp/channels_qr.png")
 
 DEFAULT_CDP = os.environ.get("CHANNELS_CDP_URL", "http://127.0.0.1:9223")
+# 持久化 Chromium：同目录保留登录态，显著减少重复扫码（腾讯侧过期/风控时仍需重登）
+PERSISTENT_PROFILE_DIR = Path(
+    os.environ.get("CHANNELS_CHROMIUM_USER_DATA", str(Path.home() / ".soul-channels-playwright-profile"))
+)
 
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -28,6 +35,11 @@ REQUIRED_LS_KEYS = [
     "finder_raw", "finder_username", "finder_uin",
     "finder_login_token", "finder_external_key",
 ]
+
+
+def _ls_ready_for_publish(merged_items: dict) -> bool:
+    """发表 API 需要 finder_raw；仅有 __ml::aid 不够（post_create 会 300002）。"""
+    return bool((merged_items.get("finder_raw") or "").strip())
 
 
 def open_cursor_simple_browser(url: str) -> None:
@@ -74,6 +86,13 @@ async def extract_ls(page, keys):
         return {}
 
 
+def _use_persistent_chromium() -> bool:
+    if "--no-persistent" in sys.argv:
+        return False
+    v = os.environ.get("CHANNELS_PERSISTENT_LOGIN", "1").strip().lower()
+    return v not in ("0", "false", "no", "off")
+
+
 async def wait_until_logged_in(page, label: str = "") -> bool:
     prefix = f"[{label}] " if label else ""
     for i in range(120):
@@ -117,20 +136,39 @@ async def save_session_from_context(context, page, ls_vals: dict) -> bool:
         COOKIE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2))
         _sync_to_central_cookie_store()
 
-        cookies = await context.cookies()
-        cookie_dict = {c["name"]: c["value"] for c in cookies}
+        cookie_dict: dict[str, str] = {}
+        try:
+            cookies = await context.cookies()
+            cookie_dict = {c["name"]: c["value"] for c in cookies}
+        except Exception:
+            cookie_dict = {c["name"]: c["value"] for c in state.get("cookies", []) if c.get("name")}
+
+        page_url = ""
+        try:
+            page_url = page.url or ""
+        except Exception:
+            page_url = ""
+
         token_data = {
             "sessionid": cookie_dict.get("sessionid", ""),
             "wxuin": cookie_dict.get("wxuin", ""),
-            "cookie_str": "; ".join(f'{c["name"]}={c["value"]}' for c in cookies),
+            "cookie_str": "; ".join(f"{k}={v}" for k, v in cookie_dict.items()),
             "finder_raw": ls_vals.get("finder_raw", ""),
             "finder_username": ls_vals.get("finder_username", ""),
             "finder_uin": ls_vals.get("finder_uin", ""),
             "finder_login_token": ls_vals.get("finder_login_token", ""),
-            "url": page.url,
+            "url": page_url,
         }
         TOKEN_FILE.write_text(json.dumps(token_data, ensure_ascii=False, indent=2))
-        return bool(ls_vals.get("finder_raw"))
+
+        ready = _ls_ready_for_publish(merged_items)
+        if not ready:
+            print(
+                "[!] 已写入 Cookie，但 localStorage 仍缺 finder_raw（rawKeyBuff），"
+                "勿关窗口，继续等待直至本项为 ✓。",
+                flush=True,
+            )
+        return ready
     except Exception as e:
         print(f"[!] 保存会话异常: {e}", flush=True)
         return False
@@ -210,72 +248,167 @@ async def try_capture_via_cdp(pw, cdp_url: str) -> bool:
     return ok
 
 
-async def capture_via_playwright_external() -> bool:
-    """回退：独立 Chromium 窗口（仅当 CDP 不可用时）。"""
-    print("\n[i] 未使用 CDP → 将打开本机 Chromium 窗口仅用于写入 Cookie 文件（可扫码后尽快关闭）\n", flush=True)
-    ls_vals = {}
+def _silent_qr_mode() -> bool:
+    return "--silent-qr" in sys.argv or os.environ.get("CHANNELS_SILENT_QR", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
+def _print_qr_for_chat_dialog() -> None:
+    """ stdout 标记：便于把路径复制到对话，由助手 Read 图片展示给你扫。"""
+    p = QR_SCREENSHOT.resolve()
+    print("\n========== SOUL_QR_IMAGE_FOR_CHAT ==========", flush=True)
+    print(str(p), flush=True)
+    print(
+        "→ 用微信扫视频号登录码：在 Cursor 里打开上述路径图片，或把路径发给助手展示。",
+        flush=True,
+    )
+    print("========== END_SOUL_QR_MARKER ==========\n", flush=True)
+
+
+async def _assistant_login_flow_save(context, page) -> bool:
+    """在已有 context/page 上完成：打开登录页 → 等跳转 → 抽 localStorage → 写 COOKIE_FILE。"""
+    ls_vals: dict = {}
+    await page.goto(LOGIN_URL, timeout=60000)
+    await asyncio.sleep(3)
+    await page.screenshot(path=str(QR_SCREENSHOT))
+    print(f"[QR] 二维码截图: {QR_SCREENSHOT}", flush=True)
+    if _silent_qr_mode():
+        _print_qr_for_chat_dialog()
+
+    if not await wait_until_logged_in(page, "Playwright"):
+        return False
+
+    print(
+        "[!] 请勿立即关闭 Chromium：须等脚本写入 Cookie；"
+        "看到「Cookie 已保存」或本进程退出后再关窗。",
+        flush=True,
+    )
+    print("[i] 登录成功，2 秒后先落盘一轮会话（防止提前关窗导致 Cookie 未写入）…", flush=True)
+    await asyncio.sleep(2)
+    ls_vals = await extract_ls(page, REQUIRED_LS_KEYS)
+    snapshot_ready = await save_session_from_context(context, page, ls_vals)
+    if snapshot_ready:
+        print("[✓] 早期快照已含上传所需 localStorage 关键项", flush=True)
+    elif COOKIE_FILE.exists():
+        print("[i] 已写入部分会话，将继续等待 rawKeyBuff / __ml::aid 补全…", flush=True)
+
+    print("[i] 等待平台 JS 加载完成...", flush=True)
+    await asyncio.sleep(10)
+
+    for attempt in range(60):
+        try:
+            _ = page.url
+        except Exception:
+            print("[!] 页面或浏览器已关闭，使用此前快照结束。", flush=True)
+            return snapshot_ready
+        ls_vals = await extract_ls(page, REQUIRED_LS_KEYS)
+        if ls_vals.get("finder_raw"):
+            print(f"[✓] rawKeyBuff 已就绪 (等待 {attempt}s)", flush=True)
+            break
+        await asyncio.sleep(1)
+        if attempt % 15 == 14:
+            print(f"  等待 localStorage 写入... ({attempt + 1}s)", flush=True)
+
+    if not ls_vals.get("finder_raw"):
+        print("[i] rawKeyBuff 未出现，尝试访问内容列表页...", flush=True)
+        try:
+            await page.goto(
+                "https://channels.weixin.qq.com/platform/post/list",
+                timeout=15000,
+                wait_until="domcontentloaded",
+            )
+            await asyncio.sleep(8)
+            for _ in range(30):
+                try:
+                    _ = page.url
+                except Exception:
+                    return snapshot_ready
+                ls_vals = await extract_ls(page, REQUIRED_LS_KEYS)
+                if ls_vals.get("finder_raw"):
+                    print("[✓] 导航后 rawKeyBuff 已就绪", flush=True)
+                    break
+                await asyncio.sleep(1)
+        except Exception as e:
+            print(f"[!] 导航异常: {e}", flush=True)
+
+    print("\n[i] localStorage 提取结果:", flush=True)
+    for k in REQUIRED_LS_KEYS:
+        v = ls_vals.get(k, "")
+        status = "✓" if v else "✗"
+        display = f"{v[:60]}..." if len(v) > 60 else (v or "(空)")
+        print(f"    {status} {k}: {display}", flush=True)
+
+    final_ok = await save_session_from_context(context, page, ls_vals)
+    return final_ok or snapshot_ready
+
+
+async def capture_via_playwright_external(*, headless: bool) -> bool:
+    """CDP 不可用时：本机 Chromium；headless=True 时不弹窗口（配合 CHANNELS_SILENT_QR 输出二维码路径）。"""
+    persistent = _use_persistent_chromium()
+    if persistent:
+        print(
+            f"\n[i] 持久化 Chromium（headless={headless}），目录: {PERSISTENT_PROFILE_DIR}\n"
+            f"    关闭持久化：CHANNELS_PERSISTENT_LOGIN=0 或 --no-persistent\n",
+            flush=True,
+        )
+    else:
+        print(f"\n[i] 临时 Chromium 会话（headless={headless}）\n", flush=True)
+
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=False)
+        if persistent:
+            PERSISTENT_PROFILE_DIR.mkdir(parents=True, exist_ok=True)
+            context = await pw.chromium.launch_persistent_context(
+                str(PERSISTENT_PROFILE_DIR),
+                headless=headless,
+                user_agent=UA,
+                viewport={"width": 1280, "height": 720},
+                args=["--disable-blink-features=AutomationControlled"],
+            )
+            await context.add_init_script(
+                "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
+            )
+            page = context.pages[0] if context.pages else await context.new_page()
+            try:
+                ok = await _assistant_login_flow_save(context, page)
+            finally:
+                await context.close()
+            return ok
+
+        browser = await pw.chromium.launch(
+            headless=headless,
+            args=["--disable-blink-features=AutomationControlled"],
+        )
         context = await browser.new_context(user_agent=UA, viewport={"width": 1280, "height": 720})
         await context.add_init_script(
             "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
         )
         page = await context.new_page()
-        await page.goto(LOGIN_URL, timeout=60000)
-        await asyncio.sleep(3)
-        await page.screenshot(path=str(QR_SCREENSHOT))
-        print(f"[QR] 二维码截图: {QR_SCREENSHOT}", flush=True)
-
-        if not await wait_until_logged_in(page, "Playwright"):
+        try:
+            ok = await _assistant_login_flow_save(context, page)
+        finally:
             await browser.close()
-            return False
-
-        print("[i] 等待平台 JS 加载完成...", flush=True)
-        await asyncio.sleep(10)
-
-        for attempt in range(60):
-            ls_vals = await extract_ls(page, REQUIRED_LS_KEYS)
-            if ls_vals.get("finder_raw"):
-                print(f"[✓] rawKeyBuff 已就绪 (等待 {attempt}s)", flush=True)
-                break
-            await asyncio.sleep(1)
-            if attempt % 15 == 14:
-                print(f"  等待 localStorage 写入... ({attempt + 1}s)", flush=True)
-
-        if not ls_vals.get("finder_raw"):
-            print("[i] rawKeyBuff 未出现，尝试访问内容列表页...", flush=True)
-            try:
-                await page.goto(
-                    "https://channels.weixin.qq.com/platform/post/list",
-                    timeout=15000,
-                    wait_until="domcontentloaded",
-                )
-                await asyncio.sleep(8)
-                for _ in range(30):
-                    ls_vals = await extract_ls(page, REQUIRED_LS_KEYS)
-                    if ls_vals.get("finder_raw"):
-                        print("[✓] 导航后 rawKeyBuff 已就绪", flush=True)
-                        break
-                    await asyncio.sleep(1)
-            except Exception as e:
-                print(f"[!] 导航异常: {e}", flush=True)
-
-        print("\n[i] localStorage 提取结果:", flush=True)
-        for k in REQUIRED_LS_KEYS:
-            v = ls_vals.get(k, "")
-            status = "✓" if v else "✗"
-            display = f"{v[:60]}..." if len(v) > 60 else (v or "(空)")
-            print(f"    {status} {k}: {display}", flush=True)
-
-        ok = await save_session_from_context(context, page, ls_vals)
-        await browser.close()
         return ok
 
 
 async def main() -> int:
+    # --playwright-only：直接弹 Chromium 窗口扫码（与 headless / Simple Browser 分流）
     force_pw = "--playwright-only" in sys.argv or os.environ.get("CHANNELS_LOGIN_PLAYWRIGHT_ONLY")
     skip_cursor_tab = "--no-cursor-tab" in sys.argv
     cdp_url = DEFAULT_CDP
+    silent_qr = _silent_qr_mode()
+
+    if silent_qr:
+        print(
+            "[i] 静默扫码模式（CHANNELS_SILENT_QR=1 或 --silent-qr）："
+            "不打开 Simple Browser / 不弹 Chromium 窗口，二维码见标记路径。\n",
+            flush=True,
+        )
+        ok = await capture_via_playwright_external(headless=True)
+        print(f"\n[{'✓' if ok else '✗'}] Cookie 保存: {COOKIE_FILE}", flush=True)
+        return 0 if ok else 1
 
     if not force_pw:
         if not skip_cursor_tab:
@@ -303,7 +436,7 @@ async def main() -> int:
                 print(f"\n[✓] Cookie 已保存: {COOKIE_FILE}", flush=True)
                 return 0
 
-        ok = await capture_via_playwright_external()
+        ok = await capture_via_playwright_external(headless=False)
         print(f"\n[{'✓' if ok else '✗'}] Cookie 保存: {COOKIE_FILE}", flush=True)
         return 0 if ok else 1
 

@@ -15,6 +15,7 @@ import asyncio
 import hashlib
 import json
 import math
+import os
 import random
 import subprocess
 import sys
@@ -31,6 +32,7 @@ VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul_派对_121场_20260311_out
 
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "多平台分发" / "脚本"))
 from publish_result import PublishResult, is_published, save_results, print_summary
+from schedule_generator import generate_smart_schedule
 
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -265,6 +267,19 @@ def _gen_task_id() -> str:
     return str(ts_ms * 10**7 + rand)
 
 
+def _payload_raw_key_buff(finder_raw: str | None):
+    """localStorage finder_raw → post_create / clip 的 rawKeyBuff（字符串或已解析 JSON）。"""
+    if not finder_raw or not str(finder_raw).strip():
+        return None
+    s = str(finder_raw).strip()
+    if (s.startswith("{") and s.endswith("}")) or (s.startswith("[") and s.endswith("]")):
+        try:
+            return json.loads(s)
+        except json.JSONDecodeError:
+            pass
+    return s
+
+
 def _micro_headers(cookie_str: str, uin: str, finger_print: str = "") -> dict:
     h = {
         "Cookie": cookie_str,
@@ -405,8 +420,10 @@ async def create_post(
     upload_cost: int,
     scheduled_ts: int = 0,
     original: bool = True,
+    finder_raw: str | None = None,
 ) -> dict:
     now_ts = int(time.time())
+    rkb = _payload_raw_key_buff(finder_raw)
 
     payload = {
         "objectType": 0,
@@ -460,7 +477,7 @@ async def create_post(
         "timestamp": str(int(time.time() * 1000)),
         "_log_finder_uin": "",
         "_log_finder_id": finder_id,
-        "rawKeyBuff": None,
+        "rawKeyBuff": rkb,
         "pluginSessionId": None,
         "scene": 7,
         "reqScene": 7,
@@ -468,6 +485,13 @@ async def create_post(
 
     if scheduled_ts > 0:
         payload["postTimingInfo"] = {"timing": 1, "postTime": scheduled_ts}
+
+    if not rkb:
+        print(
+            "  [!] 警告: Cookie 文件缺少 finder_raw，post_create 可能返回 300002；"
+            "请用 channels_login 完整登录（勿提前关浏览器）。",
+            flush=True,
+        )
 
     # 尝试 CGI_PREFIX（标准助手端点）和 MICRO_PREFIX 两个路径
     for prefix, referer in [
@@ -517,6 +541,7 @@ async def publish_one(
     idx: int,
     total: int,
     scheduled_ts: int = 0,
+    finder_raw: str | None = None,
 ) -> PublishResult:
     fname = Path(video_path).name
     real_path = Path(video_path).resolve()
@@ -611,6 +636,7 @@ async def publish_one(
             vinfo, fsize, finder_id, uin, finger_print, aid,
             clip_key, draft_id, upload_cost,
             scheduled_ts=scheduled_ts, original=True,
+            finder_raw=finder_raw,
         )
         elapsed = time.time() - t0
 
@@ -680,6 +706,19 @@ async def _ensure_ctx() -> dict:
     if not up_params:
         raise RuntimeError("获取 upload_params 失败")
 
+    finder_raw_val = ls.get("finder_raw") or ""
+    if isinstance(finder_raw_val, str):
+        finder_raw_val = finder_raw_val.strip()
+    else:
+        finder_raw_val = str(finder_raw_val or "").strip()
+
+    if not finder_raw_val:
+        raise RuntimeError(
+            "localStorage 缺少 finder_raw（rawKeyBuff），post_create 会报 300002。"
+            "请运行: python3 视频号发布/脚本/channels_login.py --playwright-only "
+            "扫码登录后勿关 Chromium，直至终端出现「rawKeyBuff 已就绪」或「Cookie 已保存」。"
+        )
+
     _ctx.update({
         "ready": True,
         "cookie_str": cookie_str,
@@ -688,6 +727,7 @@ async def _ensure_ctx() -> dict:
         "finger_print": finger_print,
         "aid": aid,
         "up_params": up_params,
+        "finder_raw": finder_raw_val or None,
     })
     return _ctx
 
@@ -724,6 +764,7 @@ async def publish_one_compat(
         ctx["uin"], ctx["finger_print"], ctx["aid"],
         ctx["up_params"], video_path, title, idx, total,
         scheduled_ts=sched_ts,
+        finder_raw=ctx.get("finder_raw"),
     )
     if result.success:
         new_p = await get_upload_params(ctx["cookie_str"], ctx["finder_id"])
@@ -736,7 +777,18 @@ async def publish_one_compat(
 # Main
 # ---------------------------------------------------------------------------
 
-def _run_login_then_retry():
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes")
+
+
+def _channels_auto_login_allowed() -> bool:
+    """默认静默；仅 CHANNELS_AUTO_LOGIN=1 且未设 NO_AUTO_CHANNELS_LOGIN 时才允许自动弹窗登录。"""
+    if _env_truthy("NO_AUTO_CHANNELS_LOGIN"):
+        return False
+    return _env_truthy("CHANNELS_AUTO_LOGIN")
+
+
+def _run_login_then_retry() -> bool:
     """Cookie 无效时自动调起登录，写回 storage 后由调用方重试。"""
     login_script = SCRIPT_DIR / "channels_login.py"
     if not login_script.exists():
@@ -747,18 +799,18 @@ def _run_login_then_retry():
     return COOKIE_FILE.exists() and COOKIE_FILE.stat().st_size > 100
 
 
-def _gen_schedule(count: int) -> list[int]:
-    """生成定时发布时间戳列表：第一条立即(0)，后续30-120分钟递增"""
+def _maybe_login_then_retry() -> bool:
+    if not _channels_auto_login_allowed():
+        return False
+    return _run_login_then_retry()
+
+
+def _gen_schedule_unix(count: int) -> list[int]:
+    """与 distribute_all 一致：智能错峰 datetime → 视频号定时 Unix；近未来视为立即(0)。"""
     if count <= 0:
         return []
-    result = [0]
-    base = int(time.time())
-    accumulated = 0
-    for _ in range(1, count):
-        gap = random.randint(30, 120) * 60
-        accumulated += gap
-        result.append(base + accumulated)
-    return result
+    times = generate_smart_schedule(count)
+    return [_scheduled_ts_for_channels(dt) for dt in times]
 
 
 async def main():
@@ -766,10 +818,14 @@ async def main():
 
     state = load_state()
     if not state:
-        if _run_login_then_retry():
+        if _maybe_login_then_retry():
             state = load_state()
         if not state:
-            print("[!] Cookie 文件不存在且登录未完成", flush=True)
+            print(
+                "[!] Cookie 文件不存在。默认静默：请先手动执行同目录 channels_login.py，"
+                "或设置 CHANNELS_AUTO_LOGIN=1 后再运行本脚本。",
+                flush=True,
+            )
             return 1
 
     cookie_str = get_cookie_str(state)
@@ -778,19 +834,22 @@ async def main():
     aid = ls.get("__ml::aid", "").strip('"')
     finger_print = ls.get("_finger_print_device_id", "")
     if not aid:
-        if _run_login_then_retry():
+        if _maybe_login_then_retry():
             state = load_state()
             cookie_str = get_cookie_str(state)
             ls = get_local_storage(state)
             aid = ls.get("__ml::aid", "").strip('"')
             finger_print = ls.get("_finger_print_device_id", "")
         if not aid:
-            print("[!] localStorage 缺少 __ml::aid", flush=True)
+            print(
+                "[!] localStorage 缺少 __ml::aid（助手态不完整）。默认静默：请手动 channels_login 或 CHANNELS_AUTO_LOGIN=1。",
+                flush=True,
+            )
             return 1
 
     auth = await auth_check(cookie_str)
     if not auth:
-        if _run_login_then_retry():
+        if _maybe_login_then_retry():
             state = load_state()
             cookie_str = get_cookie_str(state)
             ls = get_local_storage(state)
@@ -798,7 +857,10 @@ async def main():
             finger_print = ls.get("_finger_print_device_id", "")
             auth = await auth_check(cookie_str)
         if not auth:
-            print("[!] Cookie 仍无效，请稍后重试发布", flush=True)
+            print(
+                "[!] Cookie 仍无效。默认静默：请手动 channels_login 或设置 CHANNELS_AUTO_LOGIN=1 后重试。",
+                flush=True,
+            )
             return 1
 
     fu = auth.get("finderUser", {})
@@ -823,7 +885,7 @@ async def main():
         print("[OK] 全部已发布", flush=True)
         return 0
 
-    schedule = _gen_schedule(len(need_pub))
+    schedule = _gen_schedule_unix(len(need_pub))
 
     results = []
     consecutive_fail = 0
