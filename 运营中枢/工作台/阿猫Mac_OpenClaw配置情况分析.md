@@ -95,4 +95,18 @@
 
 ---
 
+## 八、2026-03-23 补充：ClashX Pro 与桌面手册
+
+| 项目 | 说明 |
+|------|------|
+| **应用** | **ClashX Pro**（\`com.west2online.ClashXPro\`），非开源 ClashX。 |
+| **配置目录** | \`~/.config/clash/\`；仅保留业务用 \`api.v6v.eu.yaml\` + 基础 \`config.yaml\`。 |
+| **已移除/归档** | \`222.yaml\`、\`深蓝云.yaml\` 已移至 \`~/.config/clash/_archive_removed_20260324/\`（与 v6v 配置同体积的重复项）。 |
+| **当前选用** | \`defaults write com.west2online.ClashXPro selectConfigName api.v6v.eu\` 并已重启应用。 |
+| **策略组** | 订阅内主组名为 **深蓝云**；已通过 REST API（\`127.0.0.1:9090\`）切到 **🇸🇬 新加坡(Tiktok) 01**。 |
+| **连通性说明** | 远程检测经 \`127.0.0.1:7890\` 访问外网曾出现 **502**，且 **npm** 访问 \`github.com:443\` 超时——需在阿猫本机确认 **已开启「设置为系统代理」**、节点可用与服务商流量；**勿**用 curl 直接把订阅 URL 写入 yaml（返回为 **Base64**，需由 Clash 解码或先解码再保存）。 |
+| **桌面手册** | \`~/Desktop/OpenClaw与ClashX-简明手册.md\`（OpenClaw + Clash + 演示命令，**不含**订阅 token）。 |
+
+---
+
 *文档生成：卡若AI 工作台。*

@@ -2,10 +2,10 @@
 name: 语音转写纠错
 description: 卡若闽南口音普通话语音输入 ASR 误听纠正库与执行规范。触发词含语音输入、闽南话、听写纠错、ASR纠错、纠错库迭代。
 group: 水
-triggers: **语音输入、闽南话、闽南口音、听写、ASR、转写纠错、纠错库、误听、卡罗拉、卡罗伊**、口述、嘴瓢
+triggers: **语音输入、闽南话、闽南口音、听写、ASR、转写纠错、纠错库、误听、卡罗拉、卡罗伊**、口述、嘴瓢、**网页CLI、终端浏览器、命令行看网页、browsh**
 owner: 水溪
-version: "1.0"
-updated: "2026-03-22"
+version: "1.1"
+updated: "2026-03-23"
 ---
 
 # 语音转写纠错（卡若 · 闽南口音 ASR）
@@ -46,6 +46,29 @@ echo "卡罗拉更新 skill" | python3 ".../apply_karuo_voice_corrections.py"
 
 - `03_卡木（木）/木叶_视频内容/视频切片/脚本/soul_enhance.py` 内置 `_CORRECTIONS_BASE`，运行时会再合并本 JSON，**JSON 优先覆盖**同名条目。
 - 视频场景专有纠错仍可保留在脚本内置表；**通用口语、人名、品牌**优先只维护 JSON。
+
+## 终端网页 CLI（工具备忘 · 口述场景）
+
+> 卡若口述「在 GitHub 上找**最新的网页 CLI**、要**星数**/**分数**最高的」时，ASR 常把 **「星数」误成「西游记」**；Agent **内部定意图**时按「GitHub stars 最高、终端里能渲现代网页」理解，**不必**把用户消息里的「西游记」强行改成「星数」展示回去。
+
+### 首选：Browsh（GitHub 星数居前的「真浏览器 → 终端」方案）
+
+| 项 | 内容 |
+|:---|:---|
+| 仓库 | [browsh-org/browsh](https://github.com/browsh-org/browsh)（终端实时交互、headless **Firefox** 后端，支持现代 HTML5/JS；星数在同类里长期领先） |
+| 依赖 | 本机需已安装 **Firefox** |
+| 安装 | [Releases](https://github.com/browsh-org/browsh/releases) 下载二进制（约 11MB）；或 `docker run --rm -it browsh/browsh`（镜像约 230MB） |
+| 文档 | [brow.sh 文档](https://www.brow.sh/docs/introduction/) |
+
+### 对比备忘（口语里「网页 CLI」可能指这些）
+
+- **传统 TTY 浏览器**（lynx、w3m、elinks）：轻量，但**不**等价现代 Chrome/Firefox 的 JS 与复杂布局。
+- **Browsh**：要的是「远程 SSH 里还能凑合用现代站」时优先想它。
+
+### 与纠错库的关系
+
+- **勿**在 `卡若闽南口音_ASR纠错库.json` 里做全局 `"西游记" → "星数"`（会污染真实「西游记」内容）。
+- 若未来出现**固定整句**误听且可安全替换，再考虑**长 key** 短语级纠错；当前以本段说明为准。
 
 ## 参考
 
