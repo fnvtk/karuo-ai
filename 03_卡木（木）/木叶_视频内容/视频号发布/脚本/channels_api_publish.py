@@ -42,7 +42,7 @@ try:
 except ImportError:
     VideoMeta = None
 
-DESC_SUFFIX = " #小程序 卡若创业派对"
+DESC_SUFFIX = " #小程序卡若创业派对 #公众号卡若-4点起床的男人"
 MINI_PROGRAM_LINK = "#小程序://卡若创业派对/gF4V8Vo4Ws4IiJa"
 CHUNK_SIZE = 8 * 1024 * 1024
 
@@ -692,13 +692,33 @@ async def _ensure_ctx() -> dict:
     return _ctx
 
 
+def _scheduled_ts_for_channels(scheduled_time) -> int:
+    """
+    distribute_all 传入 datetime；首条为「立即」时时间≈当前，应走 postTimingInfo 省略（立即发表）。
+    与 schedule_generator 一致：仅当发布时间明显在未来时才传定时。
+    """
+    if scheduled_time is None:
+        return 0
+    from datetime import datetime
+
+    if isinstance(scheduled_time, datetime):
+        ts = int(scheduled_time.timestamp())
+    else:
+        ts = int(scheduled_time)
+    now = int(time.time())
+    # 2 分钟内视为「立即」，避免 postTime 过近被服务端拒绝
+    if ts <= now + 120:
+        return 0
+    return ts
+
+
 async def publish_one_compat(
     video_path: str, title: str, idx: int, total: int,
     scheduled_time=None,
 ) -> PublishResult:
     """distribute_all.py 调用的简化接口"""
     ctx = await _ensure_ctx()
-    sched_ts = int(scheduled_time) if scheduled_time else 0
+    sched_ts = _scheduled_ts_for_channels(scheduled_time)
     result = await publish_one(
         ctx["cookie_str"], ctx["finder_id"],
         ctx["uin"], ctx["finger_print"], ctx["aid"],

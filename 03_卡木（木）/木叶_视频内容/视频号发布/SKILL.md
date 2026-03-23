@@ -6,8 +6,8 @@ description: >
 triggers: 视频号发布、发布到视频号、视频号登录、视频号上传、微信视频号
 owner: 木叶
 group: 木
-version: "3.0"
-updated: "2026-03-10"
+version: "3.1"
+updated: "2026-03-23"
 ---
 
 # 视频号发布 Skill（v3.0）
@@ -115,6 +115,10 @@ python3 channels_api_publish.py
 
 | 文件 | 说明 |
 |------|------|
+| `REFERENCE_开放能力_数据与集成.md` | **开放能力 + 官方助手 API + 直播/数据/橱窗/留资** 整合参考（与 A 轨发布对照） |
+| `credentials/README.md` | **开放平台 AppID/AppSecret** 存放约定（`.env.open_platform`，勿提交） |
+| `credentials/open_platform.env.example` | 环境变量模板 |
+| `脚本/channels_open_fetch.py` | **开放平台**：拉账号/直播记录/预约/罗盘 GMV（无单条短视频播放接口） |
 | `脚本/channels_api_publish.py` | **主脚本**：纯 API 视频上传+发布 (v5) |
 | `脚本/channels_publish.py` | 旧版 Playwright 发布（备用） |
 | `脚本/channels_login.py` | Playwright 微信扫码登录 |

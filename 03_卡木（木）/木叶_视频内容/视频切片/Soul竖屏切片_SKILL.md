@@ -131,7 +131,7 @@ python3 soul_enhance.py \
 
 ## 五、成片：封面 + 字幕 + 竖屏
 
-- **封面**：竖条画布内**不超出界面**；**半透明质感**（背景 alpha=165）；深色渐变、左上角 Soul logo；**封面显示标题 = 成片文件名 = highlights.title**（去杠、去下划线后一致，无 `：｜—/_`、无序号）；标题严格居中、多行自动换行。透明度由 `VERTICAL_COVER_ALPHA` 调节。
+- **封面**：竖条画布内**不超出界面**；**冷色半透明渐变**（`VERTICAL_COVER_ALPHA` 约 148）+ **底部电影感渐隐**（`STYLE['cover']` 的 `vignette_*`）+ **顶栏单条 Soul 绿 + 可选 1px 淡金线** + **细白内框**；主标题为**柔阴影暖白字**（非粗描边），字体优先思源黑体 Bold；左上角双圈 Soul 标。**封面文案**优先 `hook_3sec`（见 `pick_cover_hook_text`）。成片文件名仍与 `highlights.title` 规则一致。
 - **封面底层模糊（重要）**：**不要全屏强糊**。`soul_enhance.py` 默认 **`STYLE['cover']['bg_blur_mix']=0.1`**：清晰视频帧与一层高斯模糊按 **约 10% 混合**（`bg_blur_radius` 生成模糊层），界面仍大致可辨，仅轻微虚化衬托文字。若需更强/更弱，改脚本内两常量，勿回到「整帧 radius=50+ 全糊」。
 - **字幕**：**封面一结束即叠字幕**（无额外「空几秒再等字」）；SRT 安全起点为封面结束 + **约 0.05s** epsilon，避免与最后一帧封面打架。字幕**居中**在竖条内。先尝试**单次 FFmpeg 通道**（一次 pass 完成所有字幕叠加，最快）；若失败自动回退到分批模式（batch_size=40）；语助词在解析阶段已由 `clean_filler_words` 去除。重新加字幕时加 `--force-burn-subs`。⚠️ 注意：当前 FFmpeg 不支持 drawtext/subtitles 滤镜，只能用 PIL 图像 overlay 方案。（脚本常量：`SUBS_START_AFTER_COVER_SEC`，**默认 0.0**）
 - **字幕字形**：Whisper 词级轴常在**中日文之间插空格**，逐字/逐词显字时会像「字与字被撑开」；脚本在 `improve_subtitle_punctuation` 路径对 **CJK 相邻空白**做折叠（`_collapse_cjk_interchar_spaces`），保证整句显示正常、无异常中空。
@@ -142,7 +142,7 @@ python3 soul_enhance.py \
 
 | 项 | 约定 |
 |----|------|
-| **与封面对比** | 封面为**半透明墨绿渐变**；字幕为**暖深棕圆角条 + 琥珀色描边**，避免与主题绿混成一团 |
+| **与封面对比** | 封面为**冷灰青渐变 + 底渐隐 + 顶栏绿**；字幕为**暖深棕圆角条 + 琥珀色描边**，避免与顶栏绿混成一团 |
 | **纠错** | `transcript.srt` 解析时走 `_improve_subtitle_text`（繁转简、CORRECTIONS 错词、违禁替换、去语助词）；**渲染每一帧前**再走 `improve_subtitle_punctuation`，与口播稿对齐 |
 | **重点词** | `KEYWORDS` 列表命中则**亮金色高亮**（同字号同基线，仅颜色区分，避免大字号造成"两排字"），长词优先匹配 |
 | **逐字渐显** | 推荐成片加 **`--typewriter-subs`**：同一条字幕时间内前缀逐步加长，更贴人声节奏；配合 CJK 去空格避免字间假空白 |

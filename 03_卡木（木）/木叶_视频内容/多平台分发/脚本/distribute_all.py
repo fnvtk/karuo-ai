@@ -24,6 +24,8 @@ import argparse
 import asyncio
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -33,12 +35,46 @@ BASE_DIR = SCRIPT_DIR.parent.parent
 DEFAULT_VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul 派对 120场 20260320_output/成片_大师版")
 
 sys.path.insert(0, str(SCRIPT_DIR))
-from cookie_manager import check_cookie_valid, load_cookies, SUPPORTED_PLATFORMS
+from cookie_manager import (
+    check_cookie_valid,
+    load_cookies,
+    SUPPORTED_PLATFORMS,
+    sync_channels_cookie_files,
+)
 from publish_result import (PublishResult, print_summary, save_results,
                             load_published_set, load_failed_tasks)
 from title_generator import generate_title
 from schedule_generator import generate_schedule, format_schedule
 from video_metadata import VideoMeta
+
+CHANNELS_LOGIN_SCRIPT = BASE_DIR / "视频号发布" / "脚本" / "channels_login.py"
+
+
+def _ensure_channels_cookie_or_login(skip_auto: bool) -> None:
+    """指定发视频号时：先对齐双路径 Cookie；无效则直接调起扫码登录（保存后继续）。"""
+    if skip_auto or os.environ.get("NO_AUTO_CHANNELS_LOGIN"):
+        sync_channels_cookie_files()
+        return
+    sync_channels_cookie_files()
+    ok, _ = check_cookie_valid("视频号")
+    if ok:
+        return
+    if not CHANNELS_LOGIN_SCRIPT.exists():
+        return
+    print(
+        "\n[*] 视频号 Cookie 无效 → 打开浏览器扫码登录（登录完成即写入并同步 Cookie）\n",
+        flush=True,
+    )
+    try:
+        subprocess.run(
+            [sys.executable, str(CHANNELS_LOGIN_SCRIPT)],
+            cwd=str(CHANNELS_LOGIN_SCRIPT.parent),
+            timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        print("[!] 登录流程超时（600s）", flush=True)
+    sync_channels_cookie_files()
+
 
 PLATFORM_CONFIG = {
     "抖音": {
@@ -315,7 +351,20 @@ async def main():
     parser.add_argument("--min-gap", type=int, default=30, help="最小间隔(分钟)")
     parser.add_argument("--max-gap", type=int, default=120, help="最大间隔(分钟)")
     parser.add_argument("--max-hours", type=float, default=24.0, help="最大排期跨度(小时)")
+    parser.add_argument(
+        "--no-auto-channels-login",
+        action="store_true",
+        help="禁用「仅发视频号时」Cookie 失效自动弹窗登录",
+    )
     args = parser.parse_args()
+
+    if (
+        not args.check
+        and not args.retry
+        and args.platforms
+        and "视频号" in args.platforms
+    ):
+        _ensure_channels_cookie_or_login(args.no_auto_channels_login)
 
     available, alerts = check_cookies_with_alert()
     if alerts:

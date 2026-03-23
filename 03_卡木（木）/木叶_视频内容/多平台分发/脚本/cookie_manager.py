@@ -7,6 +7,7 @@
 - 视频号保存时同步至 channels_storage_state.json 以兼容旧脚本
 """
 import json
+import shutil
 import time
 from pathlib import Path
 from datetime import datetime
@@ -236,11 +237,39 @@ def _check_platform_stub(platform: str, cookies: dict[str, str]) -> tuple[bool, 
     return True, "存在（未做接口校验）"
 
 
+def sync_channels_cookie_files() -> None:
+    """
+    视频号 Cookie 双路径对齐：
+    - 登录脚本写入：视频号发布/脚本/channels_storage_state.json（legacy）
+    - 预检读取：多平台分发/cookies/视频号_cookies.json（central）
+    以较新 mtime 为准互相覆盖，避免一份过期、一份未更新导致「能登录却校验失败」。
+    """
+    legacy = PLATFORM_LEGACY_PATHS.get("视频号")
+    if not legacy:
+        return
+    _ensure_cookie_dir()
+    central = get_cookie_path("视频号")
+    if not legacy.exists() and not central.exists():
+        return
+    if legacy.exists() and not central.exists():
+        shutil.copy2(legacy, central)
+        return
+    if central.exists() and not legacy.exists():
+        shutil.copy2(central, legacy)
+        return
+    if legacy.stat().st_mtime >= central.stat().st_mtime:
+        shutil.copy2(legacy, central)
+    else:
+        shutil.copy2(central, legacy)
+
+
 def check_cookie_valid(platform: str) -> tuple[bool, str]:
     """
     校验平台 cookie 是否有效，调用平台特定 auth API。
     返回 (is_valid, message)。
     """
+    if platform == "视频号":
+        sync_channels_cookie_files()
     cookies = load_cookies(platform)
     if not cookies:
         return False, "文件不存在或为空"

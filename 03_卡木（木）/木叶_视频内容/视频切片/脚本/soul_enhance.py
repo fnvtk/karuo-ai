@@ -2,7 +2,7 @@
 """
 Soul切片增强脚本 v2.0
 功能：
-1. 封面贴片：高光 hook_3sec 优先（吸睛），竖屏底图为**清晰帧 + 约 10% 轻模糊混入**（非全糊）+ 渐变
+1. 封面贴片：高光 hook_3sec 优先（吸睛），竖屏底图为**清晰帧 + 约 10% 轻模糊混入**（非全糊）+ 冷色渐变；**顶栏单条 Soul 绿 + 底部电影感渐隐 + 细内框 + 柔阴影标题**（避免粗描边与多条绿边廉价感）
 2. 烧录字幕（关键词高亮、可选逐字）
 3. 切除检出的长静音并重映射字幕时间轴
 4. 片尾 CTA（cta_ending）字幕条
@@ -351,19 +351,22 @@ FONT_PRIORITY = [
     "/Library/Fonts/Arial Unicode.ttf",
 ]
 COVER_FONT_PRIORITY = [
-    "/System/Library/Fonts/PingFang.ttc",  # 苹方，封面优先
+    FONT_BOLD,  # 思源黑体 Bold，标题更有海报感
+    "/System/Library/Fonts/PingFang.ttc",
     "/System/Library/Fonts/Supplemental/Songti.ttc",
 ]
 
 # Soul 品牌绿（绿点/绿色社交）
 SOUL_GREEN = (0, 210, 106)   # #00D26A
 SOUL_GREEN_DARK = (0, 160, 80)
-# 竖屏封面高级背景：深色渐变（不超出界面）
-VERTICAL_COVER_TOP = (12, 32, 24)    # 深墨绿
-VERTICAL_COVER_BOTTOM = (8, 48, 36)  # 略亮绿
-VERTICAL_COVER_PADDING = 44  # 左右留白，保证文字不贴边、不超出
-# 成片封面半透明质感：背景层 alpha，便于透出底层画面
-VERTICAL_COVER_ALPHA = 165  # 0~255，越大越不透明
+# 竖屏封面高级背景：冷灰青渐变（比纯墨绿更显质感，与 Soul 绿顶栏形成对比）
+VERTICAL_COVER_TOP = (18, 26, 34)    # 深板岩
+VERTICAL_COVER_BOTTOM = (8, 14, 22)  # 近黑蓝
+VERTICAL_COVER_PADDING = 48  # 左右留白，保证文字不贴边、不超出
+# 成片封面半透明质感：背景层 alpha，便于透出底层画面（略降，减少发灰）
+VERTICAL_COVER_ALPHA = 148  # 0~255，越大越不透明
+# 点缀金（细线用，低存在感）
+COVER_ACCENT_GOLD = (201, 169, 98)
 
 # 样式配置
 STYLE = {
@@ -373,12 +376,21 @@ STYLE = {
         'bg_blur_radius': 14,  # 仅用于生成模糊层的高斯半径，再与清晰帧 blend
         'overlay_alpha': 200,
         'duration': 2.5,
+        # 竖屏「高级封面」装饰（横版仍走原 overlay 逻辑）
+        'dim_alpha': 88,  # 首帧压暗，略提亮画面层次
+        'top_accent_px': 6,  # 顶栏 Soul 绿实条高度
+        'gold_hairline': True,  # 顶栏下 1px 淡金线
+        'vignette_from_ratio': 0.46,  # 从下往上渐隐起点（占画面高度比例）
+        'vignette_max_alpha': 138,
+        'frame_inset_alpha': 42,  # 内框白边透明度
     },
     'hook': {
         'font_size': 82,  # 更大更清晰
         'color': (255, 255, 255),
         'outline_color': (30, 30, 50),
         'outline_width': 5,
+        # 竖屏主标题：略暖白，与冷底对比
+        'vertical_fill': (252, 252, 250),
     },
     'subtitle': {
         'font_size': 44,
@@ -438,6 +450,43 @@ def draw_text_with_outline(draw, pos, text, font, color, outline_color, outline_
         draw.text((x + dx, y + dy), text, font=font, fill=outline_color)
     # 主体
     draw.text((x, y), text, font=font, fill=color)
+
+
+def draw_text_with_soft_shadow(draw, pos, text, font, fill_rgb):
+    """竖屏封面标题：右下柔阴影 + 主字，比粗描边更偏杂志/海报质感"""
+    x, y = pos
+    if len(fill_rgb) == 4:
+        main = fill_rgb
+    else:
+        main = (*fill_rgb, 255)
+    layers = [
+        (6, 6, 72),
+        (5, 5, 100),
+        (4, 4, 130),
+        (3, 3, 155),
+        (2, 2, 175),
+        (1, 1, 195),
+    ]
+    for dx, dy, a in layers:
+        draw.text((x + dx, y + dy), text, font=font, fill=(0, 0, 0, a))
+    draw.text((x, y), text, font=font, fill=main)
+
+
+def _apply_cover_bottom_vignette(img_rgba, from_ratio: float, max_alpha: int):
+    """底部电影感渐隐，压暗杂边、托住标题区；返回合成后的新图"""
+    w, h = img_rgba.size
+    y0 = int(max(0, min(1, from_ratio)) * h)
+    if y0 >= h - 2:
+        return img_rgba
+    layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ld = ImageDraw.Draw(layer)
+    span = max(h - y0, 1)
+    for y in range(y0, h):
+        t = (y - y0) / span
+        a = int(max_alpha * (t ** 1.35))
+        a = max(0, min(255, a))
+        ld.rectangle([0, y, w, y + 1], fill=(0, 0, 0, a))
+    return Image.alpha_composite(img_rgba, layer)
 
 def _normalize_title_for_display(title: str) -> str:
     """标题去杠去下划线：将 ：｜、—、/、_ 等全部替换为空格，避免文件名和封面出现杂符号"""
@@ -1012,7 +1061,7 @@ def _strip_cover_number_prefix(text):
 
 
 def create_cover_image(hook_text, width, height, output_path, video_path=None):
-    """创建封面贴片。竖条（高 1080、宽由塑形）时：半透明渐变、文字在条内居中、左上角 Soul logo；不显示切片序号前缀。"""
+    """创建封面贴片。竖条：视频底 + 冷色渐变 + 底栏渐隐 + 顶栏 Soul 绿与细金线 + 内框 + 柔阴影标题 + 左上角标。"""
     hook_text = _to_simplified(str(hook_text or "").strip())
     hook_text = _strip_cover_number_prefix(hook_text)
     if not hook_text:
@@ -1052,7 +1101,8 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
                         bf = Image.blend(sharp, blurred, mix)
                     else:
                         bf = sharp
-                    dim = Image.new("RGBA", (width, height), (0, 0, 0, 115))
+                    da = int(style.get("dim_alpha", 88))
+                    dim = Image.new("RGBA", (width, height), (0, 0, 0, da))
                     base = Image.alpha_composite(bf, dim)
                 finally:
                     try:
@@ -1065,9 +1115,25 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
             gdraw, width, height, VERTICAL_COVER_TOP, VERTICAL_COVER_BOTTOM, alpha=VERTICAL_COVER_ALPHA
         )
         img = Image.alpha_composite(base, grad)
-        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 60))
+        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 36))
         img = Image.alpha_composite(img, overlay)
+        img = _apply_cover_bottom_vignette(
+            img,
+            float(style.get("vignette_from_ratio", 0.46)),
+            int(style.get("vignette_max_alpha", 138)),
+        )
         draw = ImageDraw.Draw(img)
+        apx = int(style.get("top_accent_px", 6))
+        draw.rectangle([0, 0, width, apx], fill=(*SOUL_GREEN, 255))
+        if style.get("gold_hairline", True):
+            draw.rectangle([0, apx, width, apx + 1], fill=(*COVER_ACCENT_GOLD, 105))
+        fa = int(style.get("frame_inset_alpha", 42))
+        if fa > 0:
+            draw.rectangle(
+                [2, 2, width - 3, height - 3],
+                outline=(255, 255, 255, fa),
+                width=1,
+            )
     else:
         # 横版：清晰帧 + 少量模糊混入（与竖条封面一致）
         if video_path and os.path.exists(video_path):
@@ -1095,29 +1161,59 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
         img = Image.alpha_composite(img, overlay)
         draw = ImageDraw.Draw(img)
     
-    # Soul 绿装饰线（顶部、底部）
-    for i in range(3):
-        alpha = 180 - i * 50
-        draw.rectangle([0, i * 3, width, i * 3 + 2], fill=(*SOUL_GREEN, alpha))
-    for i in range(3):
-        alpha = 180 - i * 50
-        draw.rectangle([0, height - i * 3 - 2, width, height - i * 3], fill=(*SOUL_GREEN, alpha))
-    
-    # 左上角 Soul logo 小图标（绿圆 + 白字 S），保证在界面内
-    logo_x, logo_y = 28, 28
-    logo_r = 20
-    draw.ellipse([logo_x - logo_r, logo_y - logo_r, logo_x + logo_r, logo_y + logo_r], fill=SOUL_GREEN, outline=(255, 255, 255))
+    # 横版保留原「上下 Soul 绿条」；竖屏已用顶栏 + 渐隐，不再叠多条绿边
+    if not is_vertical:
+        for i in range(3):
+            alpha = 180 - i * 50
+            draw.rectangle([0, i * 3, width, i * 3 + 2], fill=(*SOUL_GREEN, alpha))
+        for i in range(3):
+            alpha = 180 - i * 50
+            draw.rectangle([0, height - i * 3 - 2, width, height - i * 3], fill=(*SOUL_GREEN, alpha))
+
+    apx_v = int(style.get("top_accent_px", 6)) if is_vertical else 0
+    hair_v = (1 if style.get("gold_hairline", True) else 0) if is_vertical else 0
+    top_bar_h = apx_v + hair_v
+    if is_vertical:
+        logo_x, logo_y = 30, max(34, top_bar_h + 18)
+        logo_r = 21
+        draw.ellipse(
+            [
+                logo_x - logo_r - 2,
+                logo_y - logo_r - 2,
+                logo_x + logo_r + 2,
+                logo_y + logo_r + 2,
+            ],
+            outline=(255, 255, 255, 100),
+            width=2,
+        )
+        draw.ellipse(
+            [logo_x - logo_r, logo_y - logo_r, logo_x + logo_r, logo_y + logo_r],
+            fill=SOUL_GREEN,
+            outline=(255, 255, 255, 165),
+            width=1,
+        )
+    else:
+        logo_x, logo_y = 28, 28
+        logo_r = 20
+        draw.ellipse(
+            [logo_x - logo_r, logo_y - logo_r, logo_x + logo_r, logo_y + logo_r],
+            fill=SOUL_GREEN,
+            outline=(255, 255, 255),
+        )
     try:
-        logo_font = get_cover_font(26)
-        draw.text((logo_x - 5, logo_y - 12), "S", font=logo_font, fill=(255, 255, 255))
+        logo_font = get_cover_font(27 if is_vertical else 26)
+        sx = logo_x - (6 if is_vertical else 5)
+        sy = logo_y - (13 if is_vertical else 12)
+        draw.text((sx, sy), "S", font=logo_font, fill=(255, 255, 255))
     except Exception:
         pass
     
     # 标题文字：竖屏时严格限制在 padding 内，多行居中，绝不超出界面
     if is_vertical:
         max_text_width = width - 2 * VERTICAL_COVER_PADDING
-        cover_font_size = 48
+        cover_font_size = 50
         font = get_cover_font(cover_font_size)
+        vfill = hook_style.get("vertical_fill", (252, 252, 250))
         lines = []
         for _ in range(20):
             current_line = ""
@@ -1145,12 +1241,7 @@ def create_cover_image(hook_text, width, height, output_path, video_path=None):
             x = (width - line_w) // 2
             x = max(VERTICAL_COVER_PADDING, min(width - VERTICAL_COVER_PADDING - line_w, x))
             y = start_y + i * line_height
-            draw_text_with_outline(
-                draw, (x, y), line, font,
-                hook_style['color'],
-                hook_style['outline_color'],
-                min(hook_style['outline_width'], 3)
-            )
+            draw_text_with_soft_shadow(draw, (x, y), line, font, vfill)
     else:
         cover_font_size = hook_style['font_size']
         font = get_cover_font(cover_font_size)
@@ -2074,7 +2165,7 @@ def generate_index(highlights, output_dir):
     with open(index_path, 'w', encoding='utf-8') as f:
         f.write("# Soul派对 - 成片目录\n\n")
         f.write(
-            "**优化**: 高光 Hook 封面（强模糊底）+逐字字幕+去长静音+片尾 CTA+加速10%（竖屏宽随 crop-vf）\n\n"
+            "**优化**: 高光 Hook 封面（轻模糊底+冷色渐变+底渐隐+顶栏品牌色）+逐字字幕+去长静音+片尾 CTA+加速10%（竖屏宽随 crop-vf）\n\n"
         )
         f.write("## 切片列表\n\n")
         f.write("| 序号 | 标题 | Hook | CTA |\n")

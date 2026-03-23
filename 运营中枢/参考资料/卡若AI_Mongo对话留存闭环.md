@@ -54,5 +54,5 @@ python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储
 
 ## 五、与飞书 / Gitea 的相对顺序（建议）
 
-- **Mongo 同步** → **飞书复盘 webhook**（若有）→ **Gitea 自动同步**（若本轮改仓库文件）→ **复盘块收尾**。  
+- **Mongo 同步** → **飞书复盘 webhook**（**仅当**用户或 Skill 步骤明确要求，见 `karuo-ai.mdc`）→ **Gitea 自动同步**（若本轮改仓库文件）→ **复盘块收尾**。  
 具体以 `.cursor/rules/karuo-ai.mdc` 为准。

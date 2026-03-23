@@ -20,6 +20,8 @@ from content_filter import filter_for_platform
 
 BRAND_TAG = "#卡若创业派对"
 MINI_PROGRAM = "#小程序 卡若创业派对"
+# 视频号描述末尾固定话题（与微信搜一搜/话题展示一致，无空格写法）
+CHANNELS_FIXED_TAGS = ("#小程序卡若创业派对", "#公众号卡若-4点起床的男人")
 
 PLATFORM_CATEGORIES = {
     "B站": {"tid": 160, "name": "生活 > 日常"},
@@ -116,6 +118,8 @@ class VideoMeta:
                 tags_extra=curated.get("tags_extra", []),
             )
         stem = Path(fname).stem
+        stem = re.sub(r"^soul\d+_\d+_", "", stem, flags=re.I)
+        stem = re.sub(r"^\d+场", "", stem)
         stem = re.sub(r'^\d+[._\-\s]*', '', stem)
         stem = stem.replace('_', ' ').replace('  ', ' ').strip()
 
@@ -149,7 +153,10 @@ class VideoMeta:
         """# 标签字符串"""
         tags = self._smart_tags(platform)
         parts = [f"#{t}" for t in tags]
-        parts.append(MINI_PROGRAM)
+        if platform == "视频号":
+            parts.extend(CHANNELS_FIXED_TAGS)
+        else:
+            parts.append(MINI_PROGRAM)
         return " ".join(parts)
 
     def description(self, platform: str, max_len: int = 500) -> str:

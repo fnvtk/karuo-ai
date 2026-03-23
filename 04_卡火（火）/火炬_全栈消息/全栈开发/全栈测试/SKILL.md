@@ -285,7 +285,7 @@ for (const col of collections) {
 
 2. **更新本 SKILL 经验库**（本文件末尾 §八）
 
-3. **发飞书复盘总结**
+3. **飞书复盘总结（按需）**：仅当用户明说发群或规程要求时调用 `send_review_to_feishu_webhook.py`；默认不每轮自动发，见 `.cursor/rules/karuo-ai.mdc`
 
 ---
 
