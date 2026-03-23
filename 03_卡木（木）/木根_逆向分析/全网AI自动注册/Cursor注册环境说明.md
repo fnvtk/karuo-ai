@@ -34,6 +34,12 @@
    `python3 auto_register.py register -p cerebras -n 10`  
    或 `python3 key_pool_manager.py auto-fill -n 10`
 
+## 固定 mail.tm 邮箱（复用上一轮创建的地址）
+
+- 环境变量：`MAILTM_ADDRESS`、`MAILTM_PASSWORD`（与 `email.type: mailtm` 同时生效时优先用固定账号换 token，不再新建随机邮箱）。
+- 有界面绕过 Turnstile：`CURSOR_HEADLESS=0`（或 `false` / `no`）。
+- **若收件箱始终为空**：Cursor 可能对部分一次性域名限流或拒发；可改 `domain_imap` 自有域名收信，或换未用过的 mail.tm 地址重试。
+
 ## 已修改的 Cursor Provider（cursor_provider.py）
 
 - 独立 `--remote-debugging-port`、`set_local_port`、`set_user_data_path`，避免多实例冲突
