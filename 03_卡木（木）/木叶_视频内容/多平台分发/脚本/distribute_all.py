@@ -50,8 +50,70 @@ from schedule_generator import (
     format_schedule,
 )
 from video_metadata import VideoMeta
+from browser_profile import get_browser_profile_dir, profile_root_str
 
 CHANNELS_LOGIN_SCRIPT = BASE_DIR / "视频号发布" / "脚本" / "channels_login.py"
+LOGIN_COMMANDS = {
+    "抖音": f'python3 "{BASE_DIR / "抖音发布" / "脚本" / "douyin_login.py"}"',
+    "B站": f'python3 "{BASE_DIR / "B站发布" / "脚本" / "bilibili_login.py"}"',
+    "视频号": f'python3 "{BASE_DIR / "视频号发布" / "脚本" / "channels_login.py"} --playwright-only"',
+    "小红书": f'python3 "{BASE_DIR / "小红书发布" / "脚本" / "xiaohongshu_login.py"}"',
+    "快手": f'python3 "{BASE_DIR / "快手发布" / "脚本" / "kuaishou_login.py"}"',
+}
+BAN_KEYWORDS = ("封禁", "封号", "禁止", "冻结", "suspend", "banned", "risk", "风控", "限制")
+
+
+def _print_unified_browser_profiles() -> None:
+    print(f"\n  统一浏览器根目录: {profile_root_str()}")
+    for p in PLATFORM_CONFIG:
+        print(f"    - {p}: {get_browser_profile_dir(p)}")
+
+
+def _classify_platform_status(
+    platform: str,
+    platform_results: list[PublishResult],
+) -> tuple[str, str]:
+    if not platform_results:
+        ok, msg = check_cookie_valid(platform)
+        if ok:
+            return "空闲/未执行", "本轮未执行该平台发布"
+        return "需重登", f"Cookie 无效：{msg}"
+
+    successes = [r for r in platform_results if r.success]
+    failures = [r for r in platform_results if not r.success]
+    failure_msgs = " | ".join((r.message or "").lower() for r in failures)
+
+    if any(k in failure_msgs for k in BAN_KEYWORDS):
+        return "疑似封禁/风控", "失败信息包含封禁/风控关键词"
+    if successes and not failures:
+        return "正常", f"成功 {len(successes)}/{len(platform_results)}"
+    if failures and not successes:
+        ok, msg = check_cookie_valid(platform)
+        if not ok:
+            return "需重登", f"Cookie 无效：{msg}"
+        return "持续失败", f"失败 {len(failures)} 条，需人工排查平台侧限制"
+    if failures:
+        return "部分失败", f"成功 {len(successes)} / 失败 {len(failures)}"
+    return "正常", f"成功 {len(successes)}/{len(platform_results)}"
+
+
+def print_platform_account_status(all_results: list[PublishResult], targets: list[str]) -> None:
+    print(f"\n{'=' * 60}")
+    print("  平台账号状态复盘")
+    print(f"{'=' * 60}")
+    regroup: dict[str, list[PublishResult]] = {p: [] for p in targets}
+    for r in all_results:
+        if r.platform in regroup and r.status != "skipped":
+            regroup[r.platform].append(r)
+
+    for p in targets:
+        status, detail = _classify_platform_status(p, regroup[p])
+        print(f"  [{p}] {status} | {detail}")
+        if status in ("需重登", "持续失败", "疑似封禁/风控"):
+            cmd = LOGIN_COMMANDS.get(p, "")
+            if cmd:
+                print(f"    重登命令: {cmd}")
+    print(f"{'=' * 60}\n")
 
 
 def _ensure_channels_cookie_or_login(*, auto_login: bool) -> None:
@@ -433,6 +495,8 @@ async def main():
     )
     args = parser.parse_args()
 
+    _print_unified_browser_profiles()
+
     if not args.allow_ui_browser:
         os.environ.setdefault("PUBLISH_PLAYWRIGHT_HEADLESS", "1")
 
@@ -525,9 +589,8 @@ async def _publish_one_round(args: argparse.Namespace) -> tuple[int, int]:
 
     if not available:
         print("\n[✗] 没有可用平台，请先登录:")
-        for p, c in PLATFORM_CONFIG.items():
-            login = str(c["script"]).replace("publish", "login").replace("pure_api", "login")
-            print(f"    {p}: python3 {login}")
+        for p in PLATFORM_CONFIG:
+            print(f"    {p}: {LOGIN_COMMANDS.get(p, '(未配置)')}")
         return 1, 9999
 
     targets = args.platforms if args.platforms else available
@@ -613,6 +676,7 @@ async def _publish_one_round(args: argparse.Namespace) -> tuple[int, int]:
         print(f"\n  有 {failed_count} 条失败，可执行: python3 distribute_all.py --retry")
 
     failed_non_success = sum(1 for r in actual_results if not r.success)
+    print_platform_account_status(actual_results, targets)
     return (0 if ok == total else 1), failed_non_success
 
 

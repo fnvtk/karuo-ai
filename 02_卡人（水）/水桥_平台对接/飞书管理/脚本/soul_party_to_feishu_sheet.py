@@ -73,8 +73,8 @@ ROWS = {
     '129': [ 'AI手机金融坏账投流', 200, 0, 250, 14, 187, 4, 561, 21, 31 ],
     # 130场 2026-03-21：视频号直播结束页 02:25:49≈146min；观众总数2278、最高在线355、新增关注4、总热度3、送礼1；Soul推流无截图数据填0→脚本跳过第5行保留空
     '130': [ 'Soul爆量脸视频号问微信', 146, 0, 2278, 0, 3, 1, 3, 4, 355 ],
-    # 131场 2026-03-23：结束页 02:05:55≈126min；观众总数1144、最高在线75、新增关注4；点赞1595+评论498+分享12=2105；礼物/灵魂力/人均未给填0；Soul推流无填0→跳过第5行
-    '131': [ '视频号中枢Soul哨兵', 126, 0, 1144, 0, 2105, 0, 0, 4, 75 ],
+    # 131场 2026-03-23：文章口径场观2580/进房328/128min；视频号结束页补关注4、最高在线75、点赞评论分享计互动；礼物灵魂力无截图填0
+    '131': [ '视频号中枢Soul做哨兵', 128, 2580, 328, 0, 2105, 0, 0, 4, 75 ],
 }
 # 场次→按日期列填写时的日期（表头为当月日期 1~31）
 SESSION_DATE_COLUMN = {'105': '20', '106': '21', '107': '23', '113': '2', '114': '3', '115': '4', '116': '5', '117': '6', '118': '7', '119': '8', '124': '14', '126': '17', '127': '18', '128': '19', '129': '20', '130': '21', '131': '23'}
@@ -96,6 +96,8 @@ PARTY_VIDEO_LINKS = {
     '127': 'https://cunkebao.feishu.cn/minutes/obcnhybw322112tad6916v8r',
     '129': 'https://cunkebao.feishu.cn/minutes/obcnjb994323l12lhl448177',
     '130': 'https://cunkebao.feishu.cn/minutes/obcnj1y95z73n53e8m6m1s3j',
+    # 131场：urls_soul_party.txt 中紧接 130 的新妙记
+    '131': 'https://cunkebao.feishu.cn/minutes/obcnjzx7dyxco67btud7y8gz',
 }
 
 # 团队会议（飞书妙记）链接：场次 → 完整 URL，填表时写入「团队会议」行对应列（row 31）
@@ -110,6 +112,7 @@ TEAM_MEETING_LINKS = {
     '126': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcng991jg3114b2nj99548d',
     '127': 'https://cunkebao.feishu.cn/minutes/obcnhxs8usi8c7n27a9f66ux',
     '129': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcnjbn178iy6919od4119ww',
+    '131': 'https://kcnxrqd5ata7.feishu.cn/minutes/obcnjzx7dyxco67btud7y8gz',
 }
 
 # 小程序当日运营数据：日期号 → {访问次数, 访客, 交易金额}，填表时自动写入对应日期列

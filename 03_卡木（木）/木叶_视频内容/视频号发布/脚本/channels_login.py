@@ -22,8 +22,14 @@ QR_SCREENSHOT = Path("/tmp/channels_qr.png")
 
 DEFAULT_CDP = os.environ.get("CHANNELS_CDP_URL", "http://127.0.0.1:9223")
 # 持久化 Chromium：同目录保留登录态，显著减少重复扫码（腾讯侧过期/风控时仍需重登）
+sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "多平台分发" / "脚本"))
+from browser_profile import get_browser_profile_dir
+
 PERSISTENT_PROFILE_DIR = Path(
-    os.environ.get("CHANNELS_CHROMIUM_USER_DATA", str(Path.home() / ".soul-channels-playwright-profile"))
+    os.environ.get(
+        "CHANNELS_CHROMIUM_USER_DATA",
+        str(get_browser_profile_dir("视频号")),
+    )
 )
 
 UA = (

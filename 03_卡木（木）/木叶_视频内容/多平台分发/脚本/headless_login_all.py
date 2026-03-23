@@ -17,6 +17,9 @@ import time
 from pathlib import Path
 
 BASE = Path("/Users/karuo/Documents/个人/卡若AI/03_卡木（木）/木叶_视频内容")
+sys.path.insert(0, str(BASE / "多平台分发" / "脚本"))
+from browser_profile import get_browser_profile_dir
+
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
@@ -96,14 +99,13 @@ async def headless_login(platform: str) -> bool:
     print(f"{'='*60}")
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
+        context = await pw.chromium.launch_persistent_context(
+            str(get_browser_profile_dir(platform)),
             headless=True,
-            args=["--disable-blink-features=AutomationControlled"],
-        )
-        context = await browser.new_context(
             user_agent=UA,
             viewport={"width": 1280, "height": 900},
             locale="zh-CN",
+            args=["--disable-blink-features=AutomationControlled"],
         )
         await context.add_init_script(
             "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
@@ -189,7 +191,7 @@ async def headless_login(platform: str) -> bool:
 
             await context.storage_state(path=str(cookie_file))
             size = cookie_file.stat().st_size
-            await browser.close()
+            await context.close()
 
             # API 验证
             print(f"  [4] API 验证 Cookie...", flush=True)
@@ -203,7 +205,7 @@ async def headless_login(platform: str) -> bool:
         else:
             print(f"  [✗] {platform} 登录超时（5分钟）", flush=True)
             await page.screenshot(path=f"/tmp/login_timeout_{platform}.png")
-            await browser.close()
+            await context.close()
             return False
 
 

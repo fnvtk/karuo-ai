@@ -4,19 +4,27 @@
 扫码后无需手动操作，脚本自动检测登录状态并保存。
 """
 import asyncio
+import sys
 from pathlib import Path
 from playwright.async_api import async_playwright
 
 COOKIE_FILE = Path(__file__).parent / "douyin_storage_state.json"
+PROFILE_PLATFORM = "抖音"
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "多平台分发" / "脚本"))
+from browser_profile import get_browser_profile_dir
 
 
 async def main():
+    profile_dir = get_browser_profile_dir(PROFILE_PLATFORM)
     print("即将弹出浏览器，请用抖音 APP 扫码登录。")
+    print(f"固定浏览器目录: {profile_dir}")
     print("登录成功后脚本会自动保存 Cookie，无需手动操作。\n")
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=False)
-        context = await browser.new_context(
+        context = await pw.chromium.launch_persistent_context(
+            str(profile_dir),
+            headless=False,
             user_agent=(
                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -27,7 +35,7 @@ async def main():
         await context.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         """)
-        page = await context.new_page()
+        page = context.pages[0] if context.pages else await context.new_page()
         await page.goto("https://creator.douyin.com/", timeout=60000)
 
         print("[i] 等待扫码登录... (最长等待 120 秒)")
@@ -56,7 +64,6 @@ async def main():
         await asyncio.sleep(2)
         await context.storage_state(path=str(COOKIE_FILE))
         await context.close()
-        await browser.close()
 
     print(f"\n[✓] Cookie 已保存到: {COOKIE_FILE}")
     print(f"    文件大小: {COOKIE_FILE.stat().st_size} bytes")

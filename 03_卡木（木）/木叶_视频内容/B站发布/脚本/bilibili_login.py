@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """B站 Cookie 获取 - Playwright 扫码登录 → 保存 storage_state"""
 import asyncio
+import sys
 from pathlib import Path
 from playwright.async_api import async_playwright
 
 COOKIE_FILE = Path(__file__).parent / "bilibili_storage_state.json"
 LOGIN_URL = "https://passport.bilibili.com/login"
+PROFILE_PLATFORM = "B站"
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "多平台分发" / "脚本"))
+from browser_profile import get_browser_profile_dir
 
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -14,14 +19,20 @@ UA = (
 
 
 async def main():
+    profile_dir = get_browser_profile_dir(PROFILE_PLATFORM)
     print("即将弹出浏览器，请用 B站 APP 扫码登录。")
+    print(f"固定浏览器目录: {profile_dir}")
     print("登录成功后（看到创作中心页面），按 Enter 或在 Inspector 点绿色 ▶。\n")
 
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(headless=False)
-        context = await browser.new_context(user_agent=UA, viewport={"width": 1280, "height": 720})
+        context = await pw.chromium.launch_persistent_context(
+            str(profile_dir),
+            headless=False,
+            user_agent=UA,
+            viewport={"width": 1280, "height": 720},
+        )
         await context.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>undefined})")
-        page = await context.new_page()
+        page = context.pages[0] if context.pages else await context.new_page()
         await page.goto(LOGIN_URL, timeout=60000)
 
         print("等待登录完成...")
@@ -33,7 +44,6 @@ async def main():
 
         await context.storage_state(path=str(COOKIE_FILE))
         await context.close()
-        await browser.close()
 
     print(f"\n[✓] B站 Cookie 已保存: {COOKIE_FILE}")
     print(f"    文件大小: {COOKIE_FILE.stat().st_size} bytes")
