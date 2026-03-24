@@ -14,6 +14,7 @@ import argparse
 import atexit
 import json
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -45,9 +46,11 @@ CLIPS_DIR = Path("/Users/karuo/Movies/soul视频/soul81_final/clips")
 OUTPUT_DIR = Path("/Users/karuo/Movies/soul视频/soul81_final/clips_enhanced")
 HIGHLIGHTS_PATH = Path("/Users/karuo/Movies/soul视频/soul81_final/highlights.json")
 TRANSCRIPT_PATH = Path("/Users/karuo/Movies/soul视频/soul81_final/transcript.srt")
+STICKER_LIBRARY_DIR = SKILL_DIR / "贴片库" / "emoji_png_72"
 
 # 字体路径（兼容多种目录结构）
 FONTS_DIR = SKILL_DIR / "fonts" if (SKILL_DIR / "fonts").exists() else Path("/Users/karuo/Documents/个人/卡若AI/03_卡木（木）/视频切片/fonts")
+FONT_SMILEY = str(FONTS_DIR / "SmileySans-Oblique.ttf")
 FONT_HEAVY = str(FONTS_DIR / "SourceHanSansSC-Heavy.otf")
 FONT_BOLD = str(FONTS_DIR / "SourceHanSansSC-Bold.otf")
 FALLBACK_FONT = "/System/Library/Fonts/STHeiti Medium.ttc"
@@ -148,7 +151,9 @@ def build_typewriter_subtitle_images(
                     w_end = e
                 w_end = max(w_start + min_step_sec, w_end)
                 accumulated += wt["word"]
-                clean = improve_subtitle_punctuation(_improve_subtitle_text(accumulated))
+                clean = _normalize_subtitle_text_strict(
+                    improve_subtitle_punctuation(_improve_subtitle_text(accumulated))
+                )
                 if not (clean or "").strip():
                     continue
                 img_path = os.path.join(temp_dir, f"sub_{img_idx:04d}.png")
@@ -158,7 +163,9 @@ def build_typewriter_subtitle_images(
             continue
 
         # ── 路径 B：按字符数等分（兜底） ─────────────────────────────────────
-        safe_text = improve_subtitle_punctuation(_improve_subtitle_text(sub["text"]))
+        safe_text = _normalize_subtitle_text_strict(
+            improve_subtitle_punctuation(_improve_subtitle_text(sub["text"]))
+        )
         if not safe_text or not safe_text.strip():
             continue
         dur = e - s
@@ -176,18 +183,31 @@ def build_typewriter_subtitle_images(
         if step_dur < min_step_sec:
             num_steps = max(2, int(dur / min_step_sec))
             step_dur = dur / num_steps
+        weights = [_subtitle_char_weight(ch) for ch in chars]
+        total_w = sum(max(w, 0.01) for w in weights)
+        cumulative = []
+        acc_w = 0.0
+        for w in weights:
+            acc_w += max(w, 0.01)
+            cumulative.append(acc_w)
+        prev_t = s
         for step in range(1, num_steps + 1):
             end_char = max(1, int(round(n * step / num_steps)))
             end_char = min(end_char, n)
             partial = "".join(chars[:end_char])
-            t0 = s + (step - 1) * step_dur
-            t1 = s + step * step_dur if step < num_steps else e
+            ratio_end = cumulative[end_char - 1] / total_w if total_w > 0 else (step / num_steps)
+            t0 = prev_t
+            t1 = s + dur * ratio_end if step < num_steps else e
             if t1 <= t0 + 0.001:
+                continue
+            partial = _normalize_subtitle_text_strict(partial)
+            if not partial:
                 continue
             img_path = os.path.join(temp_dir, f"sub_{img_idx:04d}.png")
             create_subtitle_image(partial, out_w, out_h, img_path)
             sub_images.append({"path": img_path, "start": t0, "end": t1})
             img_idx += 1
+            prev_t = t1
 
     return sub_images
 
@@ -393,17 +413,19 @@ STYLE = {
         'vertical_fill': (252, 252, 250),
     },
     'subtitle': {
-        'font_size': 44,
+        'font_size': 46,
+        'font_path': FONT_SMILEY,
         'color': (255, 255, 255),
-        'outline_color': (20, 12, 8),
+        'outline_color': (10, 10, 10),
         'outline_width': 4,
-        'keyword_color': (255, 232, 120),   # 亮金，与条底色对比强
-        'keyword_outline': (90, 55, 0),
-        'keyword_size_add': 0,              # 与正文同字号单行，避免「两排字」观感（仅颜色区分关键词）
-        # 与封面「墨绿半透明」区分：暖深棕底 + 琥珀描边，一眼可辨是字幕条
-        'bg_color': (34, 20, 16, 238),
-        'border_color': (255, 186, 90, 255),
-        'border_width': 2,
+        'keyword_color': (255, 230, 80),
+        'keyword_outline': (10, 10, 10),
+        'keyword_size_add': 0,
+        'bg_color': None,
+        'border_color': None,
+        'border_width': 0,
+        'gloss_alpha': 0,
+        'shadow_alpha': 0,
         'margin_bottom': 70,
     }
 }
@@ -601,6 +623,156 @@ def _collapse_cjk_interchar_spaces(text: str) -> str:
         s = re.sub(r"([\u4e00-\u9fff])\s+([\u4e00-\u9fff])", r"\1\2", s)
     s = re.sub(r" +", " ", s)
     return s.strip()
+
+
+def _normalize_subtitle_text_strict(text: str) -> str:
+    """字幕严格清洗：去空白、去空字、去多余标点空格，避免出现空字幕帧。"""
+    if not text:
+        return ""
+    t = _collapse_cjk_interchar_spaces(_to_simplified(str(text)))
+    t = re.sub(r"\s+", " ", t).strip()
+    t = re.sub(r"\s+([，。！？；：,.!?;:])", r"\1", t)
+    t = re.sub(r"([（【《])\s+", r"\1", t)
+    t = re.sub(r"\s+([）】》])", r"\1", t)
+    if not re.search(r"[\u4e00-\u9fffA-Za-z0-9]", t):
+        return ""
+    return t
+
+
+def _subtitle_char_weight(ch: str) -> float:
+    """逐字节奏权重：标点更慢、普通字适中，实现轻重缓急。"""
+    if not ch or ch.isspace():
+        return 0.0
+    if ch in "。！？!?":
+        return 2.6
+    if ch in "，、；：,;:":
+        return 1.8
+    if ch in "…":
+        return 2.2
+    if re.match(r"[A-Za-z0-9]", ch):
+        return 0.9
+    return 1.0
+
+
+EMOJI_STICKER_MAP = {
+    "money": ["1f4b0", "1f4b8", "1f911"],
+    "fire": ["1f525", "2728"],
+    "idea": ["1f4a1", "1f9e0"],
+    "growth": ["1f680", "1f4c8", "1f3af"],
+    "risk": ["26a0", "1f6a8"],
+    "happy": ["1f973", "1f44f", "1f60e"],
+}
+
+
+def _detect_sticker_theme(text: str) -> str:
+    t = (text or "").lower()
+    if any(k in t for k in ["营收", "赚钱", "成交", "变现", "利润", "现金流", "money"]):
+        return "money"
+    if any(k in t for k in ["风险", "封号", "告警", "风控", "risk"]):
+        return "risk"
+    if any(k in t for k in ["增长", "裂变", "爆发", "拉升", "增长率", "growth"]):
+        return "growth"
+    if any(k in t for k in ["方法", "模型", "方案", "思路", "idea"]):
+        return "idea"
+    if any(k in t for k in ["高光", "爆", "冲", "火", "热点", "fire"]):
+        return "fire"
+    return "happy"
+
+
+def _build_sticker_events(highlight_info: dict, duration: float):
+    """按时长和主题生成贴片事件。超过2分钟至少2次，避免干扰字幕区域。"""
+    if duration < 45:
+        return []
+    source_text = " ".join(
+        [
+            str(highlight_info.get("hook_3sec") or ""),
+            str(highlight_info.get("title") or ""),
+            str(highlight_info.get("question") or ""),
+        ]
+    )
+    theme = _detect_sticker_theme(source_text)
+    sticker_codes = EMOJI_STICKER_MAP.get(theme) or EMOJI_STICKER_MAP["happy"]
+    base_count = 2 if duration >= 120 else 1
+    if duration >= 180:
+        base_count = 3
+    events = []
+    random.seed(int(duration * 1000) ^ len(source_text))
+    for i in range(base_count):
+        code = random.choice(sticker_codes)
+        seg = duration / (base_count + 1)
+        t0 = max(3.0, seg * (i + 1) + random.uniform(-2.2, 2.2))
+        t1 = min(duration - 2.0, t0 + random.uniform(1.1, 1.8))
+        if t1 <= t0 + 0.2:
+            continue
+        events.append(
+            {
+                "code": code,
+                "start": t0,
+                "end": t1,
+                "x": random.choice(["w*0.09", "w*0.74"]),
+                "y": random.choice(["h*0.16", "h*0.28"]),
+                "scale_w": random.choice([64, 72, 80]),
+            }
+        )
+    return events
+
+
+def apply_sticker_overlays(video_path: str, output_path: str, highlight_info: dict, duration: float):
+    """把表情贴片叠到视频里。贴片库缺失时自动跳过。"""
+    sticker_dir = Path(STICKER_LIBRARY_DIR)
+    if not sticker_dir.exists():
+        return False
+    events = _build_sticker_events(highlight_info, float(duration))
+    if not events:
+        return False
+
+    sticker_inputs = []
+    valid_events = []
+    for ev in events:
+        p = sticker_dir / f"{ev['code']}.png"
+        if p.exists():
+            sticker_inputs.append(str(p))
+            valid_events.append(ev)
+    if not valid_events:
+        return False
+
+    cmd = ["ffmpeg", "-y", "-i", video_path]
+    for p in sticker_inputs:
+        cmd += ["-i", p]
+
+    chains = []
+    last_label = "0:v"
+    for idx, ev in enumerate(valid_events, start=1):
+        s_label = f"s{idx}"
+        o_label = f"v{idx}"
+        chains.append(
+            f"[{idx}:v]scale={ev['scale_w']}:-1,format=rgba,colorchannelmixer=aa=0.88[{s_label}]"
+        )
+        chains.append(
+            f"[{last_label}][{s_label}]overlay=x={ev['x']}:y={ev['y']}:enable='between(t,{ev['start']:.3f},{ev['end']:.3f})'[{o_label}]"
+        )
+        last_label = o_label
+
+    filter_complex = ";".join(chains)
+    cmd += [
+        "-filter_complex",
+        filter_complex,
+        "-map",
+        f"[{last_label}]",
+        "-map",
+        "0:a",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "22",
+        "-c:a",
+        "copy",
+        output_path,
+    ]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    return r.returncode == 0 and os.path.exists(output_path)
 
 
 def improve_subtitle_punctuation(text: str) -> str:
@@ -1293,7 +1465,9 @@ def create_subtitle_image(text, width, height, output_path):
     """创建字幕图片（纠错+关键词加大加亮）。竖条画布时居中；全幅横版时偏下居中（为 --vertical-fit-full）。"""
     style = STYLE['subtitle']
     # 成片前再跑一遍纠错/标点，与 parse 阶段互补（逐字帧也走本函数）
-    text = improve_subtitle_punctuation(_improve_subtitle_text(text))
+    text = _normalize_subtitle_text_strict(
+        improve_subtitle_punctuation(_improve_subtitle_text(text))
+    )
     if not (text or "").strip():
         img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
         img.save(output_path, 'PNG')
@@ -1303,21 +1477,21 @@ def create_subtitle_image(text, width, height, output_path):
     draw = ImageDraw.Draw(img)
     
     base_size = style['font_size']
+    _font_path = style.get('font_path') or FONT_BOLD
+    _kw_font_path = style.get('font_path') or FONT_HEAVY
     if _is_vertical_strip_canvas(width, height):
         base_size = min(base_size, 38)
     elif height == 1080 and width >= 1280:
-        # 1920×1080 全画面叠字：字号略大，条带靠下，避免挡脸
         base_size = min(max(base_size, 46), 56)
-    font = get_font(FONT_BOLD, base_size)
+    font = get_font(_font_path, base_size)
     text_w, text_h = get_text_size(draw, text, font)
     margin_x = 120 if width >= 1280 else 80
     while text_w > width - margin_x and base_size > 24:
         base_size -= 2
-        font = get_font(FONT_BOLD, base_size)
+        font = get_font(_font_path, base_size)
         text_w, text_h = get_text_size(draw, text, font)
-    # 关键词与正文同一字号、同一基线，避免大字 + base_y-1 造成「上下两排」错觉
     kw_size = base_size + style.get('keyword_size_add', 0)
-    kw_font = get_font(FONT_HEAVY, kw_size) if kw_size != base_size else font
+    kw_font = get_font(_kw_font_path, kw_size) if kw_size != base_size else font
     
     base_x = (width - text_w) // 2
     if _is_vertical_strip_canvas(width, height):
@@ -1331,28 +1505,36 @@ def create_subtitle_image(text, width, height, output_path):
     else:
         base_y = (height - text_h) // 2
     
-    # 背景条（不超出画布）
-    padding = 15
-    bg_rect = [
-        max(0, base_x - padding - 10),
-        max(0, base_y - padding),
-        min(width, base_x + text_w + padding + 10),
-        min(height, base_y + text_h + padding)
-    ]
-    
-    # 绘制圆角背景（暖色底 + 与封面绿系区分的琥珀描边）
-    bg_layer = Image.new('RGBA', (width, height), (0, 0, 0, 0))
-    bg_draw = ImageDraw.Draw(bg_layer)
-    r = 14
-    fill = style['bg_color']
-    outline = style.get('border_color')
-    ow = int(style.get('border_width', 0) or 0)
-    if outline and ow > 0:
-        bg_draw.rounded_rectangle(bg_rect, radius=r, fill=fill, outline=outline[:3], width=ow)
-    else:
-        bg_draw.rounded_rectangle(bg_rect, radius=r, fill=fill)
-    img = Image.alpha_composite(img, bg_layer)
-    draw = ImageDraw.Draw(img)
+    # 背景条（bg_color 为 None 时跳过，纯描边模式）
+    fill = style.get('bg_color')
+    if fill:
+        padding = 15
+        bg_rect = [
+            max(0, base_x - padding - 10),
+            max(0, base_y - padding),
+            min(width, base_x + text_w + padding + 10),
+            min(height, base_y + text_h + padding)
+        ]
+        bg_layer = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        bg_draw = ImageDraw.Draw(bg_layer)
+        r = 14
+        outline = style.get('border_color')
+        ow = int(style.get('border_width', 0) or 0)
+        if outline and ow > 0:
+            bg_draw.rounded_rectangle(bg_rect, radius=r, fill=fill, outline=outline[:3], width=ow)
+        else:
+            bg_draw.rounded_rectangle(bg_rect, radius=r, fill=fill)
+        sa = int(style.get('shadow_alpha', 0))
+        if sa > 0:
+            shadow_rect = [bg_rect[0], min(height, bg_rect[3] + 8), bg_rect[2], min(height, bg_rect[3] + 16)]
+            bg_draw.rounded_rectangle(shadow_rect, radius=r, fill=(0, 0, 0, sa))
+        ga = int(style.get('gloss_alpha', 0))
+        if ga > 0:
+            gloss_h = max(8, int((bg_rect[3] - bg_rect[1]) * 0.22))
+            gloss_rect = [bg_rect[0] + 2, bg_rect[1] + 2, bg_rect[2] - 2, min(bg_rect[1] + gloss_h, bg_rect[3] - 2)]
+            bg_draw.rounded_rectangle(gloss_rect, radius=max(8, r - 4), fill=(255, 255, 255, ga))
+        img = Image.alpha_composite(img, bg_layer)
+        draw = ImageDraw.Draw(img)
     
     # 识别关键词位置（按长度降序，长词优先避免短词截断）
     highlights = []
@@ -1645,11 +1827,11 @@ def _parse_clip_index(filename: str) -> int:
     return int(m.group(1)) if m else 0
 
 
-def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_path,
+def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_path, 
                  force_burn_subs=False, skip_subs=False, vertical=False,
                  crop_vf=None, overlay_x=None, typewriter_subs=False,
                  vertical_fit_full=False, trim_silence=True,
-                 subtitle_extra_delay=0.0):
+                 subtitle_extra_delay=0.0, use_stickers=True):
     """增强单个切片。vertical=True 时输出竖条，宽由 --crop-vf 决定（原生包络常见 560～750×1080；旧 498 为两段裁或 scale）。
     vertical_fit_full：整幅 16:9 缩放入 498×1080 + 上下黑边。
     """
@@ -1928,6 +2110,14 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         if do_burn_subs and os.path.exists(transcript_path):
             print(f"  ⚠ 未烧录字幕：解析后无有效字幕（请用 MLX Whisper 重新生成 transcript.srt）", flush=True)
         print(f"  [3/5] 字幕跳过", flush=True)
+
+    # 5.25 贴片库（emoji）叠加：按主题自动插入，增强趣味但不遮挡字幕主体
+    sticker_out = os.path.join(temp_dir, "with_stickers.mp4")
+    if use_stickers and apply_sticker_overlays(current_video, sticker_out, highlight_info, duration):
+        current_video = sticker_out
+        print(f"  ✓ 表情贴片已叠加（自动主题匹配）", flush=True)
+    else:
+        print(f"  ⊘ 表情贴片跳过", flush=True)
     
     # 5.3 加速10% + 音频增强 + 同步（成片必做）
     print(f"  [4/5] 加速 10% + 音频清晰化…", flush=True)
@@ -2064,6 +2254,17 @@ def main():
         default=0.0,
         help="字幕整体时间轴再加若干秒（正数=字幕更晚出现），用于个别素材在精确切片后仍须微调时",
     )
+    parser.add_argument(
+        "--stickers",
+        action="store_true",
+        default=True,
+        help="启用表情贴片库自动叠加（默认开启）",
+    )
+    parser.add_argument(
+        "--no-stickers",
+        action="store_true",
+        help="关闭表情贴片",
+    )
     args = parser.parse_args()
     
     clips_dir = Path(args.clips) if args.clips else CLIPS_DIR
@@ -2165,13 +2366,14 @@ def main():
                 str(transcript_path),
                 force_burn_subs=getattr(args, "force_burn_subs", False),
                 skip_subs=getattr(args, "skip_subs", False),
-                vertical=getattr(args, "vertical", False),
+                vertical=vertical,
                 crop_vf=crop_vf_arg or None,
                 overlay_x=overlay_x_arg,
                 typewriter_subs=typewriter,
                 vertical_fit_full=vfit,
                 trim_silence=not getattr(args, "no_trim_silence", False),
                 subtitle_extra_delay=float(getattr(args, "subtitle_extra_delay", 0.0) or 0.0),
+                use_stickers=getattr(args, "stickers", True) and not getattr(args, "no_stickers", False),
             ):
                 success_count += 1
         finally:

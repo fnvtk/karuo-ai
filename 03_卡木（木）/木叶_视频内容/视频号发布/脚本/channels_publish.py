@@ -24,7 +24,7 @@ UA = (
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
 )
 
-DESC_SUFFIX = " #小程序 卡若创业派对"
+DESC_SUFFIX = " #小程序搜 #卡若创业派对 #Ai创业 #私域流量"
 
 TITLES = {
     "AI最大的缺点是上下文太短，这样来解决.mp4":
@@ -123,6 +123,161 @@ async def _verify_on_list(page, title_keyword: str) -> tuple[bool, str]:
         return False, f"验证异常: {str(e)[:60]}"
 
 
+def _to_schedule_ts(scheduled_time) -> int:
+    """datetime/int -> unix ts (s); 过近时间自动顺延 10 分钟。"""
+    if scheduled_time is None:
+        return 0
+    from datetime import datetime
+    if isinstance(scheduled_time, datetime):
+        ts = int(scheduled_time.timestamp())
+    else:
+        ts = int(scheduled_time)
+    now = int(time.time())
+    return max(ts, now + 600)
+
+
+def _inject_timing_payload(payload: dict, schedule_ts: int) -> dict:
+    """给 post_create 请求体注入定时字段，绕过页面控件不可见问题。"""
+    if not isinstance(payload, dict) or schedule_ts <= 0:
+        return payload
+    payload["postTimingInfo"] = {"timing": 1, "postTime": schedule_ts}
+    post_info = payload.get("postInfo")
+    if isinstance(post_info, dict):
+        post_info["postTime"] = schedule_ts
+        post_info["publishType"] = 1
+    return payload
+
+
+async def _setup_post_create_timing_route(page, scheduled_time):
+    """拦截 post_create 请求并注入定时参数。"""
+    schedule_ts = _to_schedule_ts(scheduled_time)
+    if schedule_ts <= 0:
+        return False
+
+    async def _handler(route, request):
+        try:
+            if request.method.upper() != "POST":
+                await route.continue_()
+                return
+            data = request.post_data_json
+            if not isinstance(data, dict):
+                await route.continue_()
+                return
+            patched = _inject_timing_payload(data, schedule_ts)
+            await route.continue_(post_data=json.dumps(patched, ensure_ascii=False))
+        except Exception:
+            await route.continue_()
+
+    await page.route("**/post/post_create**", _handler)
+    return True
+
+
+def _iter_surfaces(page):
+    """按优先级返回可操作 surface：先 page，再 micro/content 子 frame。"""
+    surfaces = [page]
+    for fr in page.frames:
+        u = (fr.url or "").lower()
+        if "/micro/content/post/create" in u:
+            surfaces.append(fr)
+    return surfaces
+
+
+async def _ensure_original_checked(page) -> bool:
+    """强制勾选“声明原创”。"""
+    for surface in _iter_surfaces(page):
+        ok = await surface.evaluate("""() => {
+            const vis = (el) => !!el && el.offsetParent !== null;
+            const isChecked = (el) => {
+                if (!el) return false;
+                if (el.checked === true) return true;
+                const aria = el.getAttribute && el.getAttribute('aria-checked');
+                if (aria === 'true') return true;
+                const cls = (el.className || '').toString();
+                return /checked|is-checked|active/.test(cls);
+            };
+            const nodes = Array.from(document.querySelectorAll('label, span, div, p, li'));
+            for (const n of nodes) {
+                const t = (n.textContent || '').trim();
+                if (!t || !vis(n) || !t.includes('声明原创')) continue;
+                const row = n.closest('label,div,li,section,form') || n.parentElement;
+                if (!row) continue;
+                const controls = row.querySelectorAll('input[type="checkbox"], [role="checkbox"], .checkbox, .el-checkbox, .ant-checkbox-wrapper');
+                for (const c of controls) {
+                    if (!isChecked(c)) {
+                        c.click();
+                    }
+                    if (isChecked(c)) return true;
+                }
+                n.click();
+                const checkedAfter = Array.from(controls).some(isChecked);
+                if (checkedAfter) return true;
+                return true; // 能定位到“声明原创”且已点击，按成功处理
+            }
+            return false;
+        }""")
+        if ok:
+            return True
+    return False
+
+
+async def _set_video_file(page, video_path: str) -> None:
+    """优先直写 file input，失败则回退 filechooser 点击上传按钮。"""
+    for surface in _iter_surfaces(page):
+        fl = surface.locator('input[type="file"][accept*="video"]').first
+        if await fl.count() == 0:
+            fl = surface.locator('input[type="file"]').first
+        if await fl.count() > 0:
+            await fl.set_input_files(video_path)
+            return
+
+    trigger_candidates = [
+        'text=上传视频',
+        'text=发表视频',
+        'button:has-text("上传")',
+        'button:has-text("添加视频")',
+        '[class*="upload"]',
+    ]
+    for surface in _iter_surfaces(page):
+        for sel in trigger_candidates:
+            trg = surface.locator(sel).first
+            try:
+                if await trg.count() > 0:
+                    async with page.expect_file_chooser(timeout=8000) as fc_info:
+                        await trg.click(force=True)
+                    fc = await fc_info.value
+                    await fc.set_files(video_path)
+                    return
+            except Exception:
+                continue
+
+    raise RuntimeError("未找到可用的视频上传控件（input/filechooser）")
+
+
+async def _dismiss_blocking_overlays(page) -> None:
+    """关闭可能拦截点击事件的遮罩/弹窗。"""
+    await page.evaluate("""() => {
+        const closeSelectors = [
+          '.weui-desktop-dialog__close',
+          '.weui-desktop-icon-btn.weui-desktop-icon-btn__close',
+          '.weui-desktop-dialog [aria-label="关闭"]',
+          '.weui-desktop-dialog .close',
+          '.ant-modal-close',
+        ];
+        for (const sel of closeSelectors) {
+          for (const el of document.querySelectorAll(sel)) {
+            if (el && el.offsetParent !== null) el.click();
+          }
+        }
+        // 部分遮罩没有关闭按钮，先去掉 pointer-events，避免阻塞发表按钮点击。
+        const masks = document.querySelectorAll('.weui-desktop-dialog__wrp, .weui-desktop-mask, .ant-modal-mask');
+        for (const m of masks) {
+          if (m && m.offsetParent !== null) {
+            m.style.pointerEvents = 'none';
+          }
+        }
+    }""")
+
+
 
 
 
@@ -183,6 +338,7 @@ async def publish_one(
             )
             page = await ctx.new_page()
             page.on("response", capture.handle)
+            timing_injected = await _setup_post_create_timing_route(page, scheduled_time)
 
             # --- Step 1: open publish page ---
             print("  [1] 打开发表页...", flush=True)
@@ -192,7 +348,6 @@ async def publish_one(
                 wait_until="domcontentloaded",
             )
             await asyncio.sleep(5)
-
             body_text = await page.evaluate("document.body.innerText")
             if "扫码" in body_text or "login" in page.url.lower():
                 await page.screenshot(path=ss("login"))
@@ -211,10 +366,7 @@ async def publish_one(
 
             # --- Step 2: upload video ---
             print("  [2] 上传视频...", flush=True)
-            fl = page.locator('input[type="file"][accept*="video"]').first
-            if await fl.count() == 0:
-                fl = page.locator('input[type="file"]').first
-            await fl.set_input_files(video_path)
+            await _set_video_file(page, video_path)
             print("  [2] 文件已选择", flush=True)
 
             upload_ok = False
@@ -246,10 +398,17 @@ async def publish_one(
             # --- Step 3: fill description ---
             full_desc = title + DESC_SUFFIX
             print(f"  [3] 填写描述: {full_desc[:60]}...", flush=True)
-
             editor = page.locator('.input-editor').first
             if await editor.count() == 0:
                 editor = page.locator('[data-placeholder="添加描述"]').first
+            if await editor.count() == 0:
+                for surface in _iter_surfaces(page):
+                    editor = surface.locator('.input-editor').first
+                    if await editor.count() > 0:
+                        break
+                    editor = surface.locator('[data-placeholder="添加描述"]').first
+                    if await editor.count() > 0:
+                        break
 
             if await editor.count() > 0:
                 await editor.fill(full_desc)
@@ -271,15 +430,55 @@ async def publish_one(
             await asyncio.sleep(1)
             await page.screenshot(path=ss("3_desc"))
 
+            # --- Step 3.2: original must be enabled ---
+            original_ok = await _ensure_original_checked(page)
+            if not original_ok:
+                await page.screenshot(path=ss("3_original_missing"))
+                await browser.close()
+                return PublishResult(
+                    platform="视频号",
+                    video_path=video_path,
+                    title=title,
+                    success=False,
+                    status="error",
+                    message="未识别到“声明原创”控件，已拦截发布",
+                    error_code="ORIGINAL_NOT_SET",
+                    screenshot=ss("3_original_missing"),
+                    elapsed_sec=time.time() - t0,
+                )
+            print("  [3.2] 已确认“声明原创”", flush=True)
+
             # --- Step 3.5: scheduled publish (if provided) ---
             if scheduled_time:
                 try:
                     from schedule_helper import set_scheduled_time
-                    sch_ok = await set_scheduled_time(page, scheduled_time, "视频号")
+                    sch_ok = await asyncio.wait_for(
+                        set_scheduled_time(page, scheduled_time, "视频号"),
+                        timeout=25,
+                    )
                     if sch_ok:
                         print("  [3.5] 视频号定时发布时间已设置", flush=True)
                     else:
-                        print("  [3.5] 未能设置定时，终止本条发布（避免误发为立即）", flush=True)
+                        if timing_injected:
+                            print("  [3.5] 页面定时控件失败，改用 post_create 注入定时继续发表", flush=True)
+                        else:
+                            print("  [3.5] 未能设置定时，终止本条发布（避免误发为立即）", flush=True)
+                            await browser.close()
+                            return PublishResult(
+                                platform="视频号",
+                                video_path=video_path,
+                                title=title,
+                                success=False,
+                                status="error",
+                                message="未识别到视频号定时控件，已拦截本条发布",
+                                error_code="SCHEDULE_NOT_SET",
+                                elapsed_sec=time.time() - t0,
+                            )
+                except Exception as e:
+                    if timing_injected:
+                        print(f"  [3.5] 定时控件异常，改用请求注入继续: {str(e)[:80]}", flush=True)
+                    else:
+                        print(f"  [3.5] 定时设置异常: {str(e)[:80]}，终止本条发布", flush=True)
                         await browser.close()
                         return PublishResult(
                             platform="视频号",
@@ -287,32 +486,24 @@ async def publish_one(
                             title=title,
                             success=False,
                             status="error",
-                            message="未识别到视频号定时控件，已拦截本条发布",
-                            error_code="SCHEDULE_NOT_SET",
+                            message=f"定时设置异常: {str(e)[:80]}",
+                            error_code="SCHEDULE_SET_ERROR",
                             elapsed_sec=time.time() - t0,
                         )
-                except Exception as e:
-                    print(f"  [3.5] 定时设置异常: {str(e)[:80]}，终止本条发布", flush=True)
-                    await browser.close()
-                    return PublishResult(
-                        platform="视频号",
-                        video_path=video_path,
-                        title=title,
-                        success=False,
-                        status="error",
-                        message=f"定时设置异常: {str(e)[:80]}",
-                        error_code="SCHEDULE_SET_ERROR",
-                        elapsed_sec=time.time() - t0,
-                    )
 
             # --- Step 4: publish ---
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
             await asyncio.sleep(1)
 
             print("  [4] 点击发表...", flush=True)
+            await _dismiss_blocking_overlays(page)
             pub_btn = page.locator('button:has-text("发表")').first
             if await pub_btn.count() > 0:
-                await pub_btn.click()
+                try:
+                    await pub_btn.click(timeout=3000)
+                except Exception:
+                    await _dismiss_blocking_overlays(page)
+                    await pub_btn.click(force=True, timeout=4000)
             else:
                 await page.evaluate(
                     """() => {
@@ -325,20 +516,36 @@ async def publish_one(
             # Wait for possible dialog
             for _ in range(10):
                 await asyncio.sleep(1)
-                dp = page.locator('button:has-text("直接发表")').first
-                if await dp.count() > 0:
-                    print("  [4b] 原创弹窗 → 直接发表", flush=True)
+                origin_btn = page.locator('button:has-text("声明原创")').first
+                if await origin_btn.count() > 0:
+                    print("  [4b] 原创弹窗 → 声明原创并发表", flush=True)
                     try:
-                        await dp.click(force=True, timeout=3000)
+                        await origin_btn.click(force=True, timeout=3000)
                     except Exception:
                         await page.evaluate(
                             """() => {
                             const btns = [...document.querySelectorAll('button')];
-                            const b = btns.find(e => e.textContent.includes('直接发表'));
+                            const b = btns.find(e => e.textContent.includes('声明原创'));
                             if (b) b.click();
                         }"""
                         )
                     break
+                dp = page.locator('button:has-text("直接发表")').first
+                if await dp.count() > 0:
+                    print("  [4b] 检测到“直接发表”弹窗，按原创强制规则拦截本条", flush=True)
+                    await page.screenshot(path=ss("4_direct_publish_blocked"))
+                    await browser.close()
+                    return PublishResult(
+                        platform="视频号",
+                        video_path=video_path,
+                        title=title,
+                        success=False,
+                        status="error",
+                        message="弹窗仅出现“直接发表”，已拦截避免未声明原创",
+                        error_code="ORIGINAL_CONFIRM_REQUIRED",
+                        screenshot=ss("4_direct_publish_blocked"),
+                        elapsed_sec=time.time() - t0,
+                    )
 
             # Wait for publish to process
             await asyncio.sleep(8)

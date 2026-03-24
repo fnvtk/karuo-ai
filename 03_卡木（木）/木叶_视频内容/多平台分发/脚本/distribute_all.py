@@ -117,6 +117,36 @@ def print_platform_account_status(all_results: list[PublishResult], targets: lis
     print(f"{'=' * 60}\n")
 
 
+def auto_reauth_for_failed_platforms(all_results: list[PublishResult], targets: list[str]) -> None:
+    """
+    自动重登触发：
+    - 某平台本轮结果全部失败，且错误信息包含“cookie 已过期/无效”
+    - 自动执行该平台重登命令（如可用）
+    """
+    grouped: dict[str, list[PublishResult]] = {p: [] for p in targets}
+    for r in all_results:
+        if r.platform in grouped and r.status != "skipped":
+            grouped[r.platform].append(r)
+
+    for platform in targets:
+        results = grouped.get(platform) or []
+        if not results:
+            continue
+        if any(r.success for r in results):
+            continue
+        merged = " | ".join((r.message or "").lower() for r in results)
+        if "cookie 已过期" not in merged and "cookie 无效" not in merged:
+            continue
+        cmd = LOGIN_COMMANDS.get(platform, "")
+        if not cmd:
+            continue
+        print(f"  [自动重登] 检测到 {platform} Cookie 过期，执行: {cmd}", flush=True)
+        try:
+            subprocess.run(cmd, shell=True, check=False)
+        except Exception as e:
+            print(f"  [自动重登失败] {platform}: {str(e)[:120]}", flush=True)
+
+
 def _enforce_channels_schedule_slots(
     schedule_times: list | None,
     total_videos: int,
@@ -470,7 +500,7 @@ async def main():
     parser.add_argument("--no-dedup", action="store_true", help="跳过去重")
     parser.add_argument("--serial", action="store_true", help="串行模式")
     parser.add_argument("--now", action="store_true", help="立即发布（不排期）")
-    parser.add_argument("--min-gap", type=int, default=30, help="最小间隔(分钟)，仅 --legacy-schedule 生效")
+    parser.add_argument("--min-gap", type=int, default=10, help="最小间隔(分钟)，仅 --legacy-schedule 生效")
     parser.add_argument("--max-gap", type=int, default=120, help="最大间隔(分钟)，仅 --legacy-schedule 生效")
     parser.add_argument("--max-hours", type=float, default=24.0, help="最大排期跨度(小时)，仅 --legacy-schedule 生效")
     parser.add_argument(
@@ -710,6 +740,7 @@ async def _publish_one_round(args: argparse.Namespace) -> tuple[int, int]:
 
     failed_non_success = sum(1 for r in actual_results if not r.success)
     print_platform_account_status(actual_results, targets)
+    auto_reauth_for_failed_platforms(actual_results, targets)
     return (0 if ok == total else 1), failed_non_success
 
 
