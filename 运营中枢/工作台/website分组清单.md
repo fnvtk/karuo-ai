@@ -24,7 +24,7 @@
 | OpenClaw 网关 | website-openclaw-gateway | **18789** / **18790** | 同上 | 镜像 openclaw:local 需在 OpenClaw 项目内先 build；配置用 `openclaw/.env` |
 | 存客宝 Web | cunkebao-web | **3100** | `开发/2、私域银行/cunkebao_v3/docker-compose.yml` | 独立编排（不设 name: website）；同编排含触客宝+后端+MySQL+Redis |
 | 触客宝 Web | touchkebao-web | **3101** | 同上 | 同上 |
-| 卡若ai网站 | website-karuo-site | **3102** | `开发/3、自营项目/卡若ai网站/docker-compose.yml` | 独立编排，name: website（端口与存客宝错开，见端口登记） |
+| 卡若ai网站 | website-karuo-site | **3102** | `开发/3、自营项目/卡若ai网站/docker-compose.yml` | 独立编排，name: website；镜像 **Node 22**；**卡罗拉 OpenAI 兼容**：宿主机 `http://localhost:3102/api/v1`，Bearer=`GATEWAY_PUBLIC_API_KEY`（见该目录 `.env.docker.example`） |
 | 玩值大屏 | website-wz-screen | **3034** | `开发/3、自营项目/玩值大屏/docker-compose.yml` | 独立编排，name: website |
 | Soul 创业实验 | website-soul-book | **3000** | `开发/3、自营项目/一场soul的创业实验-react/docker-compose.yml` | 独立编排，name: website（本地） |
 
@@ -67,3 +67,4 @@
 | 2026-03-01 | OpenClaw 网关迁入 website 编排，容器名 website-openclaw-gateway，端口 18789/18790；启动同神射手目录 |
 | 2026-03-04 | n8n 归入 website 编排，容器名 website-n8n，端口 5678；神射手目录 docker compose 启动 |
 | 2026-03-19 | 玩值电竞仅保留神射手编排一处部署，玩值电竞App 目录不再单独 docker compose 起站 |
+| 2026-03-26 | 卡若ai网站：Docker Node 22；卡罗拉兼容 API 说明与 `.env.docker.example` |
