@@ -2,6 +2,7 @@
 """视频号登录 v7 — Simple Browser / CDP / Playwright。
 静默二维码：`CHANNELS_SILENT_QR=1` 或 `--silent-qr` → headless、不弹窗，二维码写入 /tmp/channels_qr.png，
 stdout 打印 SOUL_QR_IMAGE_FOR_CHAT 标记路径，便于在 Cursor 对话中由助手展示给你扫。
+扫码等待：`CHANNELS_QR_WAIT_SEC`（默认 360，最大 7200）延长无人值守轮询时间。
 """
 import asyncio
 import json
@@ -138,9 +139,19 @@ def _use_persistent_chromium() -> bool:
     return v not in ("0", "false", "no", "off")
 
 
+def _qr_wait_seconds() -> int:
+    """扫码等待总秒数，默认 360（6 分钟）；环境变量 CHANNELS_QR_WAIT_SEC 可调，范围 60～7200。"""
+    raw = os.environ.get("CHANNELS_QR_WAIT_SEC", "").strip()
+    if raw.isdigit():
+        return max(60, min(int(raw), 7200))
+    return 360
+
+
 async def wait_until_logged_in(page, label: str = "") -> bool:
     prefix = f"[{label}] " if label else ""
-    for i in range(120):
+    wait_sec = _qr_wait_seconds()
+    iterations = max(1, wait_sec // 3)
+    for i in range(iterations):
         await asyncio.sleep(3)
         try:
             url = page.url
@@ -150,8 +161,8 @@ async def wait_until_logged_in(page, label: str = "") -> bool:
             print(f"{prefix}[✓] 登录成功，已跳转到: {url[:100]}", flush=True)
             return True
         if i % 10 == 0:
-            print(f"{prefix}  等待扫码并跳转中... ({i * 3}s)", flush=True)
-    print(f"{prefix}[✗] 6 分钟超时。", flush=True)
+            print(f"{prefix}  等待扫码并跳转中... ({i * 3}s / {wait_sec}s)", flush=True)
+    print(f"{prefix}[✗] {wait_sec} 秒超时（可调 CHANNELS_QR_WAIT_SEC）。", flush=True)
     return False
 
 
