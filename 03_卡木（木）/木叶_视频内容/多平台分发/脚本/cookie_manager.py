@@ -237,6 +237,54 @@ def _check_platform_stub(platform: str, cookies: dict[str, str]) -> tuple[bool, 
     return True, "存在（未做接口校验）"
 
 
+def channels_finder_raw_from_storage(path: Path | None = None) -> str:
+    """
+    从 Playwright storage_state（legacy 或 central）读取视频号发表所需的 finder_raw。
+    缺此项时 channels_api 会报 300002（仅 Cookie 有效不够）。
+    """
+    sync_channels_cookie_files()
+    p = path or PLATFORM_LEGACY_PATHS.get("视频号")
+    if not p or not p.exists():
+        p = get_cookie_path("视频号")
+    if not p.exists():
+        return ""
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return ""
+    fallback = ""
+    for origin_block in data.get("origins") or []:
+        if origin_block.get("origin") != "https://channels.weixin.qq.com":
+            continue
+        for it in origin_block.get("localStorage") or []:
+            name = str(it.get("name") or "")
+            v = str(it.get("value") or "").strip()
+            if not v:
+                continue
+            if name == "finder_raw":
+                return v
+            lk = name.lower()
+            if len(v) > 80 and (
+                "rawkey" in lk or "keybuff" in lk or lk in ("finderraw", "rawkeybuff")
+            ):
+                if len(v) > len(fallback):
+                    fallback = v
+    return fallback
+
+
+def channels_publish_storage_ready() -> tuple[bool, str]:
+    """视频号「可发表」：auth 通过且 storage 含非空 finder_raw。"""
+    sync_channels_cookie_files()
+    raw = channels_finder_raw_from_storage()
+    if not raw:
+        return False, "localStorage 缺少 finder_raw（需重新扫码登录并保持窗口至 rawKeyBuff 就绪）"
+    ok, msg = check_cookie_valid("视频号")
+    if not ok:
+        return False, msg
+    return True, f"可发表 | {msg}"
+
+
 def sync_channels_cookie_files() -> None:
     """
     视频号 Cookie 双路径对齐：

@@ -92,6 +92,45 @@ async def extract_ls(page, keys):
         return {}
 
 
+async def extract_ls_finder_candidates(page) -> dict:
+    """枚举可能与 rawKeyBuff 相关的 localStorage 键（微信改版后 key 名可能变）。"""
+    try:
+        return await page.evaluate("""() => {
+            const out = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const k = localStorage.key(i);
+                if (!k) continue;
+                const kl = k.toLowerCase();
+                if (kl.includes('finder_raw') || kl.includes('rawkey') || kl === 'rawkeybuff'
+                    || kl.includes('keybuff') || (kl.includes('finder') && kl.includes('raw'))) {
+                    const v = localStorage.getItem(k);
+                    if (v) out[k] = v;
+                }
+            }
+            return out;
+        }""")
+    except Exception as e:
+        print(f"  [!] 枚举 localStorage 异常: {e}", flush=True)
+        return {}
+
+
+async def navigate_to_trigger_raw_key(page) -> None:
+    """
+    finder_raw 常在「新建发表」页注入；仅首页/列表可能一直没有。
+    顺序：列表 → 新建发表页，每步后给 JS 预留时间。
+    """
+    urls = [
+        "https://channels.weixin.qq.com/platform/post/list",
+        "https://channels.weixin.qq.com/platform/post/create",
+    ]
+    for u in urls:
+        try:
+            await page.goto(u, timeout=45000, wait_until="domcontentloaded")
+            await asyncio.sleep(10)
+        except Exception as e:
+            print(f"  [!] 打开 {u} 异常: {e}", flush=True)
+
+
 def _use_persistent_chromium() -> bool:
     if "--no-persistent" in sys.argv:
         return False
@@ -308,9 +347,26 @@ async def _assistant_login_flow_save(context, page) -> bool:
         try:
             _ = page.url
         except Exception:
-            print("[!] 页面或浏览器已关闭，使用此前快照结束。", flush=True)
-            return snapshot_ready
+            print("[!] 当前页签不可用，尝试新开页面并进入内容列表以补全 rawKeyBuff…", flush=True)
+            try:
+                page = await context.new_page()
+                await page.goto(
+                    "https://channels.weixin.qq.com/platform/post/list",
+                    timeout=45000,
+                    wait_until="domcontentloaded",
+                )
+                await asyncio.sleep(6)
+            except Exception as ex:
+                print(f"[!] 无法恢复页面（{ex}），使用已落盘快照结束；请勿手动关浏览器直至写入完成。", flush=True)
+                return snapshot_ready
         ls_vals = await extract_ls(page, REQUIRED_LS_KEYS)
+        if not ls_vals.get("finder_raw"):
+            cand = await extract_ls_finder_candidates(page)
+            for ck, cv in cand.items():
+                if cv and len(str(cv).strip()) > 80:
+                    ls_vals["finder_raw"] = str(cv).strip()
+                    print(f"  [i] 候选键 {ck} 写入 finder_raw", flush=True)
+                    break
         if ls_vals.get("finder_raw"):
             print(f"[✓] rawKeyBuff 已就绪 (等待 {attempt}s)", flush=True)
             break
@@ -319,22 +375,24 @@ async def _assistant_login_flow_save(context, page) -> bool:
             print(f"  等待 localStorage 写入... ({attempt + 1}s)", flush=True)
 
     if not ls_vals.get("finder_raw"):
-        print("[i] rawKeyBuff 未出现，尝试访问内容列表页...", flush=True)
+        print("[i] rawKeyBuff 未出现，依次打开列表页与「新建发表」页以触发注入…", flush=True)
         try:
-            await page.goto(
-                "https://channels.weixin.qq.com/platform/post/list",
-                timeout=15000,
-                wait_until="domcontentloaded",
-            )
-            await asyncio.sleep(8)
-            for _ in range(30):
+            await navigate_to_trigger_raw_key(page)
+            for _ in range(90):
                 try:
                     _ = page.url
                 except Exception:
                     return snapshot_ready
                 ls_vals = await extract_ls(page, REQUIRED_LS_KEYS)
+                if not ls_vals.get("finder_raw"):
+                    cand = await extract_ls_finder_candidates(page)
+                    for ck, cv in cand.items():
+                        if cv and len(str(cv).strip()) > 80:
+                            ls_vals["finder_raw"] = str(cv).strip()
+                            print(f"  [i] 发表页候选键 {ck} → finder_raw", flush=True)
+                            break
                 if ls_vals.get("finder_raw"):
-                    print("[✓] 导航后 rawKeyBuff 已就绪", flush=True)
+                    print("[✓] 导航发表流程后 rawKeyBuff 已就绪", flush=True)
                     break
                 await asyncio.sleep(1)
         except Exception as e:

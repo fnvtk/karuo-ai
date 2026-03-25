@@ -20,6 +20,11 @@ import shutil
 import requests
 from pathlib import Path
 
+# 飞书群发送总开关（默认关闭）
+FEISHU_GROUP_SEND_DISABLED = os.environ.get("FEISHU_GROUP_SEND_DISABLED", "1").strip().lower() in {
+    "1", "true", "yes", "on"
+}
+
 # ─── 本地飞书 API 服务 ───────────────────────────────────────────────
 LOCAL_API = "http://127.0.0.1:5050"
 
@@ -112,6 +117,9 @@ def build_post_message(title: str, summary: str, image_key: str | None) -> dict:
 
 def send_webhook(webhook: str, payload: dict) -> bool:
     """发送消息到飞书群 webhook"""
+    if FEISHU_GROUP_SEND_DISABLED:
+        print("⛔ 已拦截：FEISHU_GROUP_SEND_DISABLED=1，禁止发送飞书群消息")
+        return False
     resp = requests.post(webhook, json=payload, timeout=15)
     data = resp.json()
     if data.get("code") == 0 or data.get("StatusCode") == 0:

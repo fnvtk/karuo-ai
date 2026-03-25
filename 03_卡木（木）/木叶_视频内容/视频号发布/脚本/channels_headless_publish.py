@@ -1,24 +1,26 @@
 """
 视频号 Headless 全自动发布脚本
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-- 完全无窗口（headless Playwright）
+- 默认无窗口（headless Playwright）；需窗口时加 --headed
 - 通过 iframe 内的真实发布表单操作
+- 描述与话题与多平台 video_metadata.VideoMeta 一致（与 channels_publish / CLI 同源）
 - 自动上传 → 填描述 → 填短标题 → 发表
-- 支持去重、定时发布
-- 以后所有视频号发布统一走这个脚本
+- 支持去重；定时能力请优先用 channels_web_cli.py（带 post_create 注入）
 
 用法:
-    python channels_headless_publish.py /path/to/video_dir
-    python channels_headless_publish.py /path/to/video1.mp4 /path/to/video2.mp4
+    python3 channels_headless_publish.py /path/to/video_dir
+    python3 channels_headless_publish.py /path/to/video1.mp4
+    CHANNELS_HEADED=1 python3 channels_headless_publish.py ./dir   # 有头调试
 """
-import asyncio, json, sys, random, time, argparse
+import asyncio, json, sys, random, time, argparse, os
 from pathlib import Path
 from playwright.async_api import async_playwright
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "多平台分发" / "脚本"))
 
-from publish_result import PublishResult, is_published, save_results
+from publish_result import PublishResult, is_published, save_results, print_summary
+from video_metadata import VideoMeta
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 STORAGE_FILE = SCRIPT_DIR / "channels_storage_state.json"
@@ -26,8 +28,6 @@ UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
-DESC_SUFFIX = " #小程序 卡若创业派对"
-MINI_PROGRAM_LINK = "#小程序://卡若创业派对/gF4V4Vo4Ws4IiJa"
 
 
 async def _get_iframe(page, timeout=20):
@@ -43,8 +43,9 @@ async def publish_one(page, video_path: Path, idx: int, total: int,
                       scheduled_ts: int = 0) -> PublishResult:
     stem = video_path.stem
     fsize_mb = video_path.stat().st_size / 1024 / 1024
-    title = f"{stem} #Soul派对 #创业日记{DESC_SUFFIX}"
-    desc_full = f"{title}\n{MINI_PROGRAM_LINK}"
+    meta = VideoMeta.from_filename(str(video_path))
+    title = meta.title("视频号")
+    desc_full = meta.description("视频号")[:500]
     t0 = time.time()
 
     sched_label = ""
@@ -135,7 +136,7 @@ async def publish_one(page, video_path: Path, idx: int, total: int,
         try:
             se = frame.locator('input[placeholder*="短标题"]').first
             if await se.count() > 0:
-                short = stem[:16] if len(stem) >= 6 else stem + "｜创业日记"
+                short = meta.title_short(16)
                 await se.fill(short, timeout=3000)
         except Exception:
             pass
@@ -210,8 +211,9 @@ async def publish_one(page, video_path: Path, idx: int, total: int,
         )
 
 
-async def run(video_paths: list[Path]):
-    print("=== 视频号 Headless 发布 (无窗口 · iframe) ===\n", flush=True)
+async def run(video_paths: list[Path], *, headed: bool):
+    mode = "有头" if headed else "无头(headless)"
+    print(f"=== 视频号发布 ({mode} · iframe · 话题=VideoMeta) ===\n", flush=True)
 
     need = [v for v in video_paths if not is_published("视频号", str(v))]
     print(f"  视频: {len(video_paths)} 条, 待发布: {len(need)} 条\n", flush=True)
@@ -221,7 +223,7 @@ async def run(video_paths: list[Path]):
 
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(
-            headless=True,
+            headless=not headed,
             args=["--disable-blink-features=AutomationControlled", "--no-sandbox"],
         )
         ctx = await browser.new_context(
@@ -271,13 +273,26 @@ async def run(video_paths: list[Path]):
     ok = sum(1 for r in actual if r.success)
     fail = len(actual) - ok
     print(f"\n=== 完成: 成功 {ok}, 失败 {fail} ===", flush=True)
+    if actual:
+        print_summary(actual)
     return 0 if fail == 0 else 1
 
 
 def main():
-    parser = argparse.ArgumentParser(description="视频号 Headless 发布")
+    parser = argparse.ArgumentParser(description="视频号发布（默认无头，话题同 video_metadata）")
     parser.add_argument("paths", nargs="+", help="视频文件或目录")
+    parser.add_argument(
+        "--headed",
+        action="store_true",
+        help="有头模式（弹出浏览器）；默认无头。也可设环境 CHANNELS_HEADED=1",
+    )
     args = parser.parse_args()
+
+    headed = bool(args.headed) or os.environ.get("CHANNELS_HEADED", "").strip().lower() in ("1", "true", "yes")
+    if os.environ.get("CHANNELS_FORCE_HEADLESS", "").strip().lower() in ("1", "true", "yes"):
+        headed = False
+        if args.headed:
+            print("[i] CHANNELS_FORCE_HEADLESS=1，已忽略 --headed", flush=True)
 
     videos: list[Path] = []
     for p in args.paths:
@@ -291,7 +306,7 @@ def main():
         print("未找到 mp4 文件", flush=True)
         sys.exit(1)
 
-    sys.exit(asyncio.run(run(videos)))
+    sys.exit(asyncio.run(run(videos, headed=headed)))
 
 
 if __name__ == "__main__":

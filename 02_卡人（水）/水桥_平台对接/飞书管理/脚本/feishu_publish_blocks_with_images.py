@@ -26,6 +26,11 @@ from pathlib import Path
 from datetime import datetime
 import requests
 
+# 飞书群发送总开关（默认关闭）
+FEISHU_GROUP_SEND_DISABLED = os.environ.get("FEISHU_GROUP_SEND_DISABLED", "1").strip().lower() in {
+    "1", "true", "yes", "on"
+}
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import feishu_wiki_create_doc as fwd  # 复用 token 逻辑
@@ -583,6 +588,9 @@ def write_blocks(doc_token: str, headers: dict, blocks: list) -> None:
 
 def send_webhook(webhook: str, text: str) -> None:
     if not webhook:
+        return
+    if FEISHU_GROUP_SEND_DISABLED:
+        print("⛔ 已拦截：FEISHU_GROUP_SEND_DISABLED=1，跳过飞书群 webhook 推送")
         return
     payload = {"msg_type": "text", "content": {"text": text}}
     r = requests.post(webhook, json=payload, timeout=10)

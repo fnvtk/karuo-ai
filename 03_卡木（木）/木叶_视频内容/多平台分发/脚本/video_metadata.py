@@ -21,7 +21,7 @@ from content_filter import filter_for_platform
 BRAND_TAG = "#卡若创业派对"
 MINI_PROGRAM = "#小程序 卡若创业派对"
 # 视频号描述末尾固定话题（发布强制标签）
-CHANNELS_FIXED_TAGS = ("#小程序搜", "#卡若创业派对", "#Ai创业", "#私域流量")
+CHANNELS_FIXED_TAGS = ("#小程序", "#卡若创业派对", "#Ai创业", "#私域流量")
 
 PLATFORM_CATEGORIES = {
     "B站": {"tid": 160, "name": "生活 > 日常"},

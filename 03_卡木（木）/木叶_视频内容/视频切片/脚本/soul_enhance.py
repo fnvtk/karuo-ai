@@ -54,12 +54,24 @@ FONT_SMILEY = str(FONTS_DIR / "SmileySans-Oblique.ttf")
 FONT_HEAVY = str(FONTS_DIR / "SourceHanSansSC-Heavy.otf")
 FONT_BOLD = str(FONTS_DIR / "SourceHanSansSC-Bold.otf")
 FALLBACK_FONT = "/System/Library/Fonts/STHeiti Medium.ttc"
+# 成片字幕：macOS 系统中文黑体（苹方 → 冬青黑体 → 华文黑体）
+_FONT_APPLE_SUBTITLE_CANDIDATES = (
+    "/System/Library/Fonts/PingFang.ttc",
+    "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    "/System/Library/Fonts/STHeiti Medium.ttc",
+)
+FONT_APPLE_SUBTITLE = next(
+    (p for p in _FONT_APPLE_SUBTITLE_CANDIDATES if os.path.exists(p)),
+    FONT_BOLD,
+)
 
 # 视频增强参数
 SPEED_FACTOR = 1.10  # 加速10%
 SILENCE_THRESHOLD = -38  # 静音阈值(dB)，略放宽以多检出停顿
 SILENCE_MIN_DURATION = 0.32  # 短于此前值，中间「断点」切得更干净
 SILENCE_TRIM_MARGIN = 0.06  # 保留段与静音接缝留白（秒），略小则多剪
+# 片尾若干秒不参与「去静音」切除，避免成片最后几秒被剪成完全无声（需保留收尾人声）
+SILENCE_TAIL_PRESERVE_SEC = 2.85
 
 # Soul 竖屏裁剪（与 soul_vertical_crop 一致，成片直出用）
 # 默认与 analyze_feishu_ui_crop.py（20% 帧、扩边到桌面白 + 横向 scale）典型输出一致；他场次请先跑分析再 --crop-vf。
@@ -120,14 +132,14 @@ def build_typewriter_subtitle_images(
     out_w,
     out_h,
     subtitle_overlay_start,
-    min_step_sec=0.05,
+    min_step_sec=0.03,
     max_steps_per_line=28,
 ):
     """
-    逐词/逐字渐显：
-    - 若字幕带 word_times（whisper word-level SRT），按词的真实开始时间逐词追加，与人声严格同步；
-    - 否则按字符数等分句子时长（兜底）。
-    subtitle_overlay_start：最早显示字幕的时间轴（秒），须 ≥ 封面结束（默认与封面紧接，无额外留白）。
+    逐字渐显（跟语速）：
+    - 若字幕带 word_times：每个 ASR 词的时间段内再按字权重切分，一字一帧，整体对齐口播；
+    - 否则整句时长按字权重逐字切分（兜底）。
+    subtitle_overlay_start：最早显示字幕的时间轴（秒），须 ≥ 封面结束。
     """
     sub_images = []
     img_idx = 0
@@ -140,29 +152,58 @@ def build_typewriter_subtitle_images(
 
         word_times = sub.get("word_times")
 
-        # ── 路径 A：word-level 时间轴（精准逐词） ────────────────────────────
-        if word_times and len(word_times) > 1:
+        # ── 路径 A：word-level：词边界内再按字拆时间 ─────────────────────────
+        if word_times and len(word_times) >= 1:
             accumulated = ""
             for wi, wt in enumerate(word_times):
-                w_start = max(float(wt["start"]), subtitle_overlay_start)
-                if wi + 1 < len(word_times):
-                    w_end = float(word_times[wi + 1]["start"])
-                else:
-                    w_end = e
-                w_end = max(w_start + min_step_sec, w_end)
-                accumulated += wt["word"]
-                clean = _normalize_subtitle_text_strict(
-                    improve_subtitle_punctuation(_improve_subtitle_text(accumulated))
-                )
-                if not (clean or "").strip():
+                raw_w = _to_simplified((wt.get("word") or "").strip())
+                if not raw_w:
                     continue
-                img_path = os.path.join(temp_dir, f"sub_{img_idx:04d}.png")
-                create_subtitle_image(clean, out_w, out_h, img_path)
-                sub_images.append({"path": img_path, "start": w_start, "end": w_end})
-                img_idx += 1
+                word_t0 = max(float(wt["start"]), subtitle_overlay_start, s)
+                if wi + 1 < len(word_times):
+                    word_t1 = float(word_times[wi + 1]["start"])
+                else:
+                    word_t1 = e
+                we = wt.get("end")
+                if we is not None:
+                    we = float(we)
+                    if we > word_t0 + 0.02:
+                        word_t1 = min(word_t1, max(we, word_t0 + min_step_sec))
+                word_t1 = min(word_t1, e)
+                word_t1 = max(word_t1, word_t0 + min_step_sec)
+                dur_w = word_t1 - word_t0
+                chars_w = list(raw_w)
+                if not chars_w:
+                    continue
+                weights = [_subtitle_char_weight(c) for c in chars_w]
+                total_ww = sum(max(w, 0.01) for w in weights)
+                prev_tw = word_t0
+                for ci, ch in enumerate(chars_w):
+                    accumulated += ch
+                    frac_end = (
+                        sum(max(weights[j], 0.01) for j in range(ci + 1)) / total_ww
+                        if total_ww > 0
+                        else (ci + 1) / len(chars_w)
+                    )
+                    t1 = word_t0 + dur_w * frac_end
+                    if ci == len(chars_w) - 1:
+                        t1 = word_t1
+                    t0 = prev_tw
+                    t1 = max(t1, t0 + min_step_sec * 0.25)
+                    clean = _normalize_subtitle_text_strict(
+                        improve_subtitle_punctuation(_improve_subtitle_text(accumulated))
+                    )
+                    if not (clean or "").strip():
+                        prev_tw = t1
+                        continue
+                    img_path = os.path.join(temp_dir, f"sub_{img_idx:04d}.png")
+                    create_subtitle_image(clean, out_w, out_h, img_path)
+                    sub_images.append({"path": img_path, "start": t0, "end": t1})
+                    img_idx += 1
+                    prev_tw = t1
             continue
 
-        # ── 路径 B：按字符数等分（兜底） ─────────────────────────────────────
+        # ── 路径 B：无词轴：整句按字权重切时间（一字一帧）────────────────────
         safe_text = _normalize_subtitle_text_strict(
             improve_subtitle_punctuation(_improve_subtitle_text(sub["text"]))
         )
@@ -177,29 +218,19 @@ def build_typewriter_subtitle_images(
             sub_images.append({"path": img_path, "start": s, "end": e})
             img_idx += 1
             continue
-        num_steps = min(max_steps_per_line, n)
-        num_steps = max(2, num_steps)
-        step_dur = dur / num_steps
-        if step_dur < min_step_sec:
-            num_steps = max(2, int(dur / min_step_sec))
-            step_dur = dur / num_steps
         weights = [_subtitle_char_weight(ch) for ch in chars]
         total_w = sum(max(w, 0.01) for w in weights)
-        cumulative = []
-        acc_w = 0.0
-        for w in weights:
-            acc_w += max(w, 0.01)
-            cumulative.append(acc_w)
         prev_t = s
-        for step in range(1, num_steps + 1):
-            end_char = max(1, int(round(n * step / num_steps)))
-            end_char = min(end_char, n)
-            partial = "".join(chars[:end_char])
-            ratio_end = cumulative[end_char - 1] / total_w if total_w > 0 else (step / num_steps)
+        for ci in range(n):
+            partial = "".join(chars[: ci + 1])
+            frac_end = (
+                sum(max(weights[j], 0.01) for j in range(ci + 1)) / total_w
+                if total_w > 0
+                else (ci + 1) / n
+            )
+            t1 = s + dur * frac_end if ci < n - 1 else e
             t0 = prev_t
-            t1 = s + dur * ratio_end if step < num_steps else e
-            if t1 <= t0 + 0.001:
-                continue
+            t1 = max(t1, t0 + min_step_sec * 0.25)
             partial = _normalize_subtitle_text_strict(partial)
             if not partial:
                 continue
@@ -413,20 +444,27 @@ STYLE = {
         'vertical_fill': (252, 252, 250),
     },
     'subtitle': {
-        'font_size': 46,
-        'font_path': FONT_SMILEY,
-        'color': (255, 255, 255),
-        'outline_color': (10, 10, 10),
-        'outline_width': 4,
-        'keyword_color': (255, 230, 80),
-        'keyword_outline': (10, 10, 10),
+        'font_size': 48,
+        'font_path': FONT_APPLE_SUBTITLE,
+        'color': (252, 252, 254),
+        'outline_color': (0, 0, 0),
+        'outline_width': 0,
+        'keyword_color': (255, 220, 120),
+        'keyword_outline': (40, 28, 0),
+        'keyword_outline_width': 0,
         'keyword_size_add': 0,
-        'bg_color': None,
+        # 大号「毛玻璃感」底条：竖条模式下横向拉满（留边），内边距加大；无底条描边
+        'bg_color': (24, 26, 34, 228),
         'border_color': None,
         'border_width': 0,
-        'gloss_alpha': 0,
-        'shadow_alpha': 0,
-        'margin_bottom': 70,
+        'gloss_alpha': 26,
+        'shadow_alpha': 52,
+        'bg_padding_v': 28,
+        'bg_padding_h': 22,
+        'bg_full_strip': True,
+        'bg_side_margin': 12,
+        'bg_corner_radius': 20,
+        'margin_bottom': 72,
     }
 }
 
@@ -456,21 +494,36 @@ def get_font(font_path, size):
                 continue
     return ImageFont.load_default()
 
+
+def get_font_subtitle(size):
+    """成片字幕专用：固定走 macOS 苹方/冬青/华文黑，再回退思源，避免与通用 get_font 混链。"""
+    for path in list(_FONT_APPLE_SUBTITLE_CANDIDATES) + [FONT_BOLD, FALLBACK_FONT]:
+        if path and os.path.exists(path):
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
+
 def get_text_size(draw, text, font):
     """获取文字尺寸"""
     bbox = draw.textbbox((0, 0), text, font=font)
     return bbox[2] - bbox[0], bbox[3] - bbox[1]
 
 def draw_text_with_outline(draw, pos, text, font, color, outline_color, outline_width):
-    """绘制带描边的文字"""
+    """绘制带描边的文字；outline_width<=0 时不描边（无字框）。"""
     x, y = pos
+    if not text:
+        return
+    ow = int(outline_width or 0)
+    if ow <= 0:
+        draw.text((x, y), text, font=font, fill=color)
+        return
     import math
-    # 8方向描边
     for angle in range(0, 360, 45):
-        dx = int(outline_width * math.cos(math.radians(angle)))
-        dy = int(outline_width * math.sin(math.radians(angle)))
+        dx = int(ow * math.cos(math.radians(angle)))
+        dy = int(ow * math.sin(math.radians(angle)))
         draw.text((x + dx, y + dy), text, font=font, fill=outline_color)
-    # 主体
     draw.text((x, y), text, font=font, fill=color)
 
 
@@ -537,16 +590,16 @@ def _limit_cover_title_cjk(text: str, max_cjk: int = COVER_TITLE_MAX_CJK) -> str
 
 
 def pick_cover_hook_text(highlight_info: dict) -> str:
-    """高光成片封面：优先 3 秒钩子句（抓眼球），其次核心问句，最后才用短标题。"""
+    """高光成片封面：优先 3 秒钩子句（抓眼球），其次核心问句，最后才用短标题。全程简体。"""
     if not highlight_info:
         return ""
-    h = (highlight_info.get("hook_3sec") or "").strip()
+    h = _to_simplified((highlight_info.get("hook_3sec") or "").strip())
     if h:
         return h
     q = highlight_info.get("question")
     if q is not None and str(q).strip():
-        return str(q).strip()
-    return (highlight_info.get("title") or "").strip()
+        return _to_simplified(str(q).strip())
+    return _to_simplified((highlight_info.get("title") or "").strip())
 
 
 def _limit_cover_hook_display(text: str, max_cjk: int = COVER_HOOK_MAX_CJK) -> str:
@@ -783,13 +836,14 @@ def improve_subtitle_punctuation(text: str) -> str:
     2. 感叹、强调语气加感叹号
     3. 普通陈述句末加句号（如果长度 >= 5）
     4. 修正多余标点
+    全程先走繁体→简体（与成片规范一致）。
     """
-    t = text.strip()
+    t = _to_simplified((text or "").strip())
     if not t:
         return t
     # 末尾已有标点则不重复加
     if t and t[-1] in '，。？！,.:!?；':
-        return apply_platform_safety(_collapse_cjk_interchar_spaces(t))
+        return apply_platform_safety(_collapse_cjk_interchar_spaces(_to_simplified(t)))
     # 疑问词检测
     question_words = ('吗', '吧', '呢', '么', '嘛', '什么', '怎么', '为什么',
                       '哪', '哪里', '谁', '几', '多少', '是否', '可以吗', '对吗')
@@ -804,7 +858,7 @@ def improve_subtitle_punctuation(text: str) -> str:
         t = t + '！'
     elif len(t) >= 5:
         t = t + '。'
-    return apply_platform_safety(_collapse_cjk_interchar_spaces(t))
+    return apply_platform_safety(_collapse_cjk_interchar_spaces(_to_simplified(t)))
 
 def _detect_clip_pts_offset(clip_path: str) -> float:
     """探测切片实际起始 PTS（秒），用于补偿 -ss input seeking 的关键帧偏移。
@@ -925,7 +979,7 @@ def parse_srt_for_clip(srt_path, start_sec, end_sec, delay_sec=None):
         for match in matches:
             ws = time_to_sec(match[1])
             we = time_to_sec(match[2])
-            text = match[3].strip()
+            text = _to_simplified(match[3].strip())
             if _is_noise_line(text):
                 continue
             if we > start_sec and ws < end_sec + 2:
@@ -981,7 +1035,7 @@ def parse_srt_for_clip(srt_path, start_sec, end_sec, delay_sec=None):
     for match in matches:
         sub_start = time_to_sec(match[1])
         sub_end   = time_to_sec(match[2])
-        text = match[3].strip()
+        text = _to_simplified(match[3].strip())
 
         # 噪声行提前过滤
         if _is_noise_line(text):
@@ -1464,6 +1518,8 @@ def create_cover_image(
 def create_subtitle_image(text, width, height, output_path):
     """创建字幕图片（纠错+关键词加大加亮）。竖条画布时居中；全幅横版时偏下居中（为 --vertical-fit-full）。"""
     style = STYLE['subtitle']
+    # 强制简体：字幕烧录最后一关，无论上游路径如何，所有繁体一律转简体
+    text = _to_simplified(text or "")
     # 成片前再跑一遍纠错/标点，与 parse 阶段互补（逐字帧也走本函数）
     text = _normalize_subtitle_text_strict(
         improve_subtitle_punctuation(_improve_subtitle_text(text))
@@ -1477,21 +1533,19 @@ def create_subtitle_image(text, width, height, output_path):
     draw = ImageDraw.Draw(img)
     
     base_size = style['font_size']
-    _font_path = style.get('font_path') or FONT_BOLD
-    _kw_font_path = style.get('font_path') or FONT_HEAVY
     if _is_vertical_strip_canvas(width, height):
-        base_size = min(base_size, 38)
+        base_size = min(base_size, 42)
     elif height == 1080 and width >= 1280:
         base_size = min(max(base_size, 46), 56)
-    font = get_font(_font_path, base_size)
+    font = get_font_subtitle(base_size)
     text_w, text_h = get_text_size(draw, text, font)
     margin_x = 120 if width >= 1280 else 80
-    while text_w > width - margin_x and base_size > 24:
+    while text_w > width - margin_x and base_size > 22:
         base_size -= 2
-        font = get_font(_font_path, base_size)
+        font = get_font_subtitle(base_size)
         text_w, text_h = get_text_size(draw, text, font)
     kw_size = base_size + style.get('keyword_size_add', 0)
-    kw_font = get_font(_kw_font_path, kw_size) if kw_size != base_size else font
+    kw_font = get_font_subtitle(kw_size) if kw_size != base_size else font
     
     base_x = (width - text_w) // 2
     if _is_vertical_strip_canvas(width, height):
@@ -1508,16 +1562,21 @@ def create_subtitle_image(text, width, height, output_path):
     # 背景条（bg_color 为 None 时跳过，纯描边模式）
     fill = style.get('bg_color')
     if fill:
-        padding = 15
+        pad_v = int(style.get('bg_padding_v', 20))
+        pad_h = int(style.get('bg_padding_h', 18))
         bg_rect = [
-            max(0, base_x - padding - 10),
-            max(0, base_y - padding),
-            min(width, base_x + text_w + padding + 10),
-            min(height, base_y + text_h + padding)
+            max(0, base_x - pad_h),
+            max(0, base_y - pad_v),
+            min(width, base_x + text_w + pad_h),
+            min(height, base_y + text_h + pad_v),
         ]
+        if style.get('bg_full_strip') and _is_vertical_strip_canvas(width, height):
+            sm = int(style.get('bg_side_margin', 12))
+            bg_rect[0] = sm
+            bg_rect[2] = width - sm
         bg_layer = Image.new('RGBA', (width, height), (0, 0, 0, 0))
         bg_draw = ImageDraw.Draw(bg_layer)
-        r = 14
+        r = int(style.get('bg_corner_radius', 14))
         outline = style.get('border_color')
         ow = int(style.get('border_width', 0) or 0)
         if outline and ow > 0:
@@ -1566,10 +1625,10 @@ def create_subtitle_image(text, width, height, output_path):
                 break
         
         if in_keyword:
-            # 关键词：同色阶描边 + 亮金黄字，字号与正文一致（单行）
+            # 关键词：亮金黄字；描边宽度用 keyword_outline_width，默认与正文一致（可为 0 无边框）
             keyword_text = text[char_idx:keyword_end]
             kw_outline = style.get('keyword_outline', (60, 40, 0))
-            kw_ow = style.get('outline_width', 3)
+            kw_ow = int(style.get('keyword_outline_width', style.get('outline_width', 0)) or 0)
             draw_text_with_outline(
                 draw, (current_x, base_y), keyword_text, kw_font,
                 style['keyword_color'],
@@ -1605,7 +1664,12 @@ def append_cta_ending_subtitle(
     duration,
     subtitle_overlay_start,
 ):
-    """片尾 CTA：高光 JSON 的 cta_ending，固定显示在成片末尾若干秒。"""
+    """片尾 CTA：叠加在最后一条真实字幕的结尾处（有声段），不延伸到静音区域。
+
+    锚点：取 sub_images 里已有字幕的最大 end 时间（即最后一条语音字幕结束时间）作为
+    CTA 的 end，而不是视频总时长 duration。这样 CTA 永远出现在有声音的帧上，
+    不会产生「字幕悬在无声段」的空洞感。
+    """
     cta = (highlight_info.get("cta_ending") or "").strip()
     if not cta:
         return sub_images
@@ -1613,15 +1677,27 @@ def append_cta_ending_subtitle(
     if not cta:
         return sub_images
     dur = float(duration)
-    if dur < CTA_END_MIN_SEC + subtitle_overlay_start * 0.5:
+
+    # 找最后一条真实字幕的结尾时间作为 CTA 的锚点
+    real_subs = [s for s in sub_images if "sub_cta_ending" not in s.get("path", "")]
+    if real_subs:
+        last_sub_end = max(float(s["end"]) for s in real_subs)
+        # CTA 结束时间 = 最后一条字幕结束，不超过视频时长
+        anchor_end = min(last_sub_end, dur)
+    else:
+        anchor_end = dur
+
+    if anchor_end < CTA_END_MIN_SEC + float(subtitle_overlay_start) * 0.5:
         return sub_images
-    span = min(CTA_END_MAX_SEC, max(CTA_END_MIN_SEC, dur * 0.09))
-    cta_start = max(float(subtitle_overlay_start), dur - span)
-    if cta_start >= dur - 0.15:
-        cta_start = max(0.0, dur - CTA_END_MIN_SEC)
+
+    span = min(CTA_END_MAX_SEC, max(CTA_END_MIN_SEC, anchor_end * 0.08))
+    cta_start = max(float(subtitle_overlay_start), anchor_end - span)
+    if cta_start >= anchor_end - 0.15:
+        cta_start = max(0.0, anchor_end - CTA_END_MIN_SEC)
+
     img_path = os.path.join(temp_dir, "sub_cta_ending.png")
     create_subtitle_image(cta, out_w, out_h, img_path)
-    sub_images.append({"path": img_path, "start": cta_start, "end": dur})
+    sub_images.append({"path": img_path, "start": cta_start, "end": anchor_end})
     sub_images.sort(key=lambda x: (float(x["start"]), float(x["end"])))
     return sub_images
 
@@ -1654,6 +1730,33 @@ def detect_silence(video_path, threshold=-40, min_duration=0.5):
                 silence_start = None
     
     return silences
+
+
+def filter_silences_keep_tail_audio(silences, duration, tail_sec=None):
+    """片尾 tail_sec 内不把静音段计入「可切除」区间，避免成片最后几秒被剪成完全无声。
+
+    silencedetect 可能把收尾人声误判为静音；或长静音延伸到片尾时，原先会把尾段整块剪掉。
+    本函数在 [duration-tail_sec, duration] 内丢弃/截断静音区间，使 kept_segments 保留该段原音轨。
+    """
+    if tail_sec is None:
+        tail_sec = float(SILENCE_TAIL_PRESERVE_SEC)
+    duration = float(duration)
+    if duration <= 0 or tail_sec <= 0:
+        return silences
+    cut = max(0.0, duration - tail_sec)
+    out = []
+    for s, e in sorted(silences):
+        s, e = float(s), float(e)
+        if s >= cut:
+            continue
+        if e <= cut:
+            out.append((s, e))
+        else:
+            e2 = min(e, cut)
+            if e2 - s > 0.08:
+                out.append((s, e2))
+    return out
+
 
 def create_silence_filter(silences, duration, margin=0.1):
     """创建去除静音的filter表达式"""
@@ -1956,6 +2059,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
 
     # 2. 去静音：trim+concat 重编码，并 remap 字幕时间轴（此前仅检测未切除，成片仍带长停顿）
     silences = detect_silence(clip_path, SILENCE_THRESHOLD, SILENCE_MIN_DURATION)
+    silences = filter_silences_keep_tail_audio(silences, original_duration)
     kept = kept_segments_from_silences(silences, original_duration, margin=SILENCE_TRIM_MARGIN)
     removed_total = original_duration - sum(e - s for s, e in kept)
     if trim_silence and removed_total >= MIN_SILENCE_TRIM_TOTAL_SEC:
@@ -1966,7 +2070,8 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
             if subtitles:
                 remap_subtitles_after_trim(subtitles, kept)
             print(
-                f"  ✓ 去静音：约减 {removed_total:.1f}s → 基长 {duration:.1f}s（检出 {len(silences)} 段）",
+                f"  ✓ 去静音：约减 {removed_total:.1f}s → 基长 {duration:.1f}s"
+                f"（检出 {len(silences)} 段，片尾 {SILENCE_TAIL_PRESERVE_SEC:.1f}s 不剪静音保收尾）",
                 flush=True,
             )
         else:
@@ -1974,7 +2079,8 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
             duration = original_duration
     else:
         print(
-            f"  ✓ 静音 {len(silences)} 段，可剪 {removed_total:.2f}s（<{MIN_SILENCE_TRIM_TOTAL_SEC}s 不剪）",
+            f"  ✓ 静音 {len(silences)} 段，可剪 {removed_total:.2f}s（<{MIN_SILENCE_TRIM_TOTAL_SEC}s 不剪；"
+            f"片尾 {SILENCE_TAIL_PRESERVE_SEC:.1f}s 不剪静音）",
             flush=True,
         )
 

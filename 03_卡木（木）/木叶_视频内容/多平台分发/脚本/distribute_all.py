@@ -23,6 +23,7 @@
 import argparse
 import asyncio
 import importlib.util
+import inspect
 import json
 import os
 import subprocess
@@ -41,6 +42,7 @@ from cookie_manager import (
     load_cookies,
     SUPPORTED_PLATFORMS,
     sync_channels_cookie_files,
+    channels_publish_storage_ready,
 )
 from publish_result import (PublishResult, print_summary, save_results,
                             load_published_set, load_failed_tasks)
@@ -62,6 +64,9 @@ LOGIN_COMMANDS = {
     "快手": f'python3 "{BASE_DIR / "快手发布" / "脚本" / "kuaishou_login.py"}"',
 }
 BAN_KEYWORDS = ("封禁", "封号", "禁止", "冻结", "suspend", "banned", "risk", "风控", "限制")
+FEISHU_GROUP_SEND_DISABLED = os.environ.get("FEISHU_GROUP_SEND_DISABLED", "1").strip().lower() in {
+    "1", "true", "yes", "on"
+}
 
 
 def _print_unified_browser_profiles() -> None:
@@ -174,24 +179,33 @@ def _enforce_channels_schedule_slots(
 
 
 def _ensure_channels_cookie_or_login(*, auto_login: bool) -> None:
-    """发视频号前对齐双路径 Cookie。默认静默；仅 auto_login 且未设 NO_AUTO_CHANNELS_LOGIN 时才调起扫码。"""
+    """发视频号前对齐双路径 Cookie + finder_raw（发表必需）。默认静默；仅 auto_login 且未设 NO_AUTO_CHANNELS_LOGIN 时才调起扫码。"""
     sync_channels_cookie_files()
+    pub_ok, pub_detail = channels_publish_storage_ready()
+    if pub_ok:
+        return
+    print(f"\n[*] 视频号全链路预检: {pub_detail}", flush=True)
     if os.environ.get("NO_AUTO_CHANNELS_LOGIN", "").strip().lower() in ("1", "true", "yes"):
+        print(
+            "    （已设 NO_AUTO_CHANNELS_LOGIN：不自动弹窗，请先手动 channels_login 至 rawKeyBuff 就绪）\n",
+            flush=True,
+        )
         return
     if not auto_login:
-        return
-    ok, _ = check_cookie_valid("视频号")
-    if ok:
+        print(
+            "    （未加 --auto-channels-login：请手动登录或重跑时加上该参数）\n",
+            flush=True,
+        )
         return
     if not CHANNELS_LOGIN_SCRIPT.exists():
         return
     print(
-        "\n[*] 视频号 Cookie 无效 → 打开浏览器扫码登录（登录完成即写入并同步 Cookie）\n",
+        "\n[*] 视频号需补全登录态 → 打开浏览器扫码（须保持窗口直至终端提示 rawKeyBuff / Cookie 完成）\n",
         flush=True,
     )
     try:
         subprocess.run(
-            [sys.executable, str(CHANNELS_LOGIN_SCRIPT)],
+            [sys.executable, str(CHANNELS_LOGIN_SCRIPT), "--playwright-only"],
             cwd=str(CHANNELS_LOGIN_SCRIPT.parent),
             timeout=600,
         )
@@ -293,6 +307,9 @@ def print_resume_report(
 
 def send_feishu_alert(alerts: list[str]):
     """通过飞书 Webhook 发送 Cookie 过期预警"""
+    if FEISHU_GROUP_SEND_DISABLED:
+        print("  [i] 飞书群禁发已开启，跳过 Cookie 预警推送")
+        return
     import os
     webhook = os.environ.get("FEISHU_WEBHOOK_URL", "")
     if not webhook or not alerts:
@@ -374,6 +391,7 @@ async def distribute_to_platform(
 
     total = len(to_publish)
     pub_fn = getattr(module, "publish_one_compat", None) or module.publish_one
+    pub_fn_params = set(inspect.signature(pub_fn).parameters.keys())
     for i, vp in enumerate(to_publish):
         vmeta = VideoMeta.from_filename(str(vp))
         title = vmeta.title(platform)
@@ -383,7 +401,11 @@ async def distribute_to_platform(
             else None
         )
         try:
-            r = await pub_fn(str(vp), title, i + 1, total, scheduled_time=stime)
+            kwargs = {"scheduled_time": stime}
+            # 某些平台函数支持 skip_dedup，确保 --no-dedup 真正下传到平台实现。
+            if "skip_dedup" in pub_fn_params:
+                kwargs["skip_dedup"] = bool(skip_dedup)
+            r = await pub_fn(str(vp), title, i + 1, total, **kwargs)
             if isinstance(r, PublishResult):
                 results.append(r)
             else:

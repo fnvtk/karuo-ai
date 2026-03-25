@@ -1,104 +1,104 @@
 ---
 name: 远程环境一键部署
-version: "1.0"
+version: "3.0"
 owner: 金盾
 group: 金
-triggers: [远程部署, 一键部署, 装Clash, 装Cursor, 远程装环境]
-updated: "2026-02-14"
-description: 远程服务器环境一键配置与Clash代理部署
+triggers: [远程部署, 一键部署, 装Clash, 装Cursor, 装飞书, 装龙虾, OpenClaw部署, 飞书机器人部署, 飞书不回复, 龙猫不回复, 远程装环境]
+updated: "2026-03-24"
+description: 跨平台一键部署 Feishu + OpenClaw（龙虾），支持本地与远程；内置飞书不回复故障排查、自动验收与回滚。
 ---
 
 # 远程环境一键部署
 
-> 一句话说明：一键在远程 Windows/Mac 系统上安装 Clash Verge Rev（代理）+ Cursor（编辑器），自动配置订阅和账号。
+> 一句话说明：一键在 macOS / Linux / Windows 安装 Feishu + OpenClaw（龙虾），写入机器人配置并完成健康检查；支持本地部署与 SSH 远程部署。
 
 ---
 
-## 触发条件
+## 能做什么（Capabilities）
 
-用户说以下关键词时自动激活：
-- 远程部署、一键部署
-- 装 Clash、装 Cursor
-- 远程装环境、部署远程机器
+- 跨平台安装：Feishu 客户端 + OpenClaw CLI
+- 一键配置：写入 `~/.openclaw/openclaw.json` 的 Feishu 账号（`longmao`）
+- 两种模式：本地执行 / SSH 远程执行
+- 上线验证：`openclaw channels status --probe --json`
+- 实发验收：向指定 Feishu 群或用户发送上线通知
+- 回滚策略：保留配置备份，失败可恢复上一版
+- 故障闭环：针对“飞书不回复/无会话窗口/机器人在线但无回包”自动定位并给出修复动作
 
 ---
 
-## 部署内容
+## 怎么用（Usage）
 
-| 序号 | 软件 | 用途 | 配置 |
-|:---|:---|:---|:---|
-| 1 | Clash Verge Rev | 代理客户端 | 自动导入订阅 URL，开启系统代理 |
-| 2 | Cursor | AI 编辑器 | 自动保存登录凭据到桌面 |
-| 3 | Docker Desktop | 容器平台 | 自动安装 + 国内镜像加速（腾讯/中科大/网易/官方） |
-| 4 | Ubuntu Linux 容器 | 开发环境 | 预装 git/python3/node/vim，清华 apt 源，持久化 /workspace |
+触发词：远程部署、一键部署、装飞书、装龙虾、OpenClaw部署、飞书机器人部署。
 
 ---
 
 ## 执行步骤
 
-### 1. 准备部署包
+### 1) 准备部署变量（必填）
 
-部署包位置：`package/` 目录（已打包为 `远程环境一键部署.zip`）
+统一使用环境变量，不在脚本里硬编码密钥：
 
-```
-package/
-├── 一键部署.bat           # Windows 入口（双击即可）
-├── setup_mac.command      # Mac 入口（双击即可）
-├── deploy_windows.ps1     # Windows 完整部署脚本
-├── deploy_mac.sh          # Mac 完整部署脚本
-└── README.txt             # 使用说明
-```
+- `FEISHU_APP_ID`
+- `FEISHU_APP_SECRET`
+- `OPENCLAW_MODEL_PROVIDER`（默认 `api123-icu`）
+- `OPENCLAW_MODEL_ID`（默认 `claude-sonnet-4-5-20250929`）
+- `OPENCLAW_BASE_URL`（如 `https://api123.icu`）
+- `OPENCLAW_API_KEY`（模型 key）
+- `OPENCLAW_GATEWAY_PORT`（默认 `18789`）
+- `FEISHU_TARGET_CHAT_ID`（验收发消息目标，群或用户 ID）
 
-### 2. 部署方式
+### 2) 选择部署模式
 
-**Windows：**
-1. 解压 `远程环境一键部署.zip`
-2. 右键 `一键部署.bat` → 以管理员身份运行
-3. 等待自动完成
+- 本地：在目标机器直接执行 `package/deploy_*.sh|ps1`
+- 远程：在控制机通过 SSH/WinRM 调用同一脚本
 
-**Mac：**
-1. 解压 `远程环境一键部署.zip`
-2. 双击 `setup_mac.command`（首次需在安全设置中允许）
-3. 等待自动完成
+### 3) 执行部署脚本
 
-### 3. 一键命令（远程执行）
+- macOS：
+  - `bash package/deploy_mac.sh`
+- Linux：
+  - `bash package/deploy_linux.sh`
+- Windows（管理员 PowerShell）：
+  - `powershell -ExecutionPolicy Bypass -File package/deploy_windows.ps1`
 
-**Windows PowerShell（管理员）：**
-```powershell
-irm https://raw.githubusercontent.com/fnvtk/karuo-deploy/main/deploy_windows.ps1 -OutFile $env:TEMP\deploy.ps1; powershell -ExecutionPolicy Bypass -File $env:TEMP\deploy.ps1
-```
+### 4) 自动验收（脚本内置）
 
-**Mac 终端：**
-```bash
-curl -fsSL https://raw.githubusercontent.com/fnvtk/karuo-deploy/main/deploy_mac.sh | bash
-```
+脚本执行后必须至少通过两项：
 
-**下载完整 zip 包：**
-```bash
-# Windows PowerShell
-Invoke-WebRequest -Uri "https://github.com/fnvtk/karuo-deploy/releases/latest/download/karuo-deploy.zip" -OutFile karuo-deploy.zip
+- `openclaw channels status --probe --json` 中 `feishu.probe.ok=true`
+- `openclaw message send` 实发成功（返回 `messageId`）
 
-# macOS / Linux
-curl -LO https://github.com/fnvtk/karuo-deploy/releases/latest/download/karuo-deploy.zip
-```
+### 5) 不回复问题自动排查（内置 SOP）
 
-**GitHub 仓库：** https://github.com/fnvtk/karuo-deploy
+按以下顺序检查，命中即修复：
+
+1. `channels status --probe --json` 是否 `probe.ok=true`
+2. `directory peers/groups list` 是否为空（为空通常是机器人不在任何会话）
+3. 飞书开放平台是否已“创建版本并发布”
+4. `事件与回调` 是否已订阅消息事件（`im.message.receive_v1`）
+5. `权限管理` 是否具备读/发消息权限（至少 `im:message`, `im:message:send`）
+6. `测试企业和人员` 是否覆盖当前测试人/群
+7. 用 API 实测发消息，若返回 `230002`，说明机器人不在目标会话，需先拉机器人入群
 
 ---
 
-## 部署流程图
+## 标准流程（抽象版）
 
 ```
-开始
-  ├─ [1] 下载 Clash Verge Rev (GitHub Releases)
-  ├─ [2] 静默安装 Clash Verge Rev
-  ├─ [3] 写入代理订阅配置 + 启用系统代理
-  ├─ [4] 启动 Clash，等待代理就绪 (google.com)
-  ├─ [5] 下载并安装 Cursor
-  ├─ [6] 保存 Cursor 登录信息到桌面
-  ├─ [7] 安装 Docker Desktop + 配置国内镜像加速
-  ├─ [8] 拉取 Ubuntu 22.04 + 创建开发容器 (karuo-linux)
-  └─ 完成！
+注册飞书应用
+  ├─ 配置机器人能力 + 事件与回调
+  ├─ 开通权限 (im:message:send 等) 并发布版本
+  ├─ 记录 AppID/AppSecret
+  └─ 导出部署变量(.env)
+
+部署目标机器
+  ├─ 安装 Feishu 客户端
+  ├─ 安装 OpenClaw
+  ├─ 生成/更新 ~/.openclaw/openclaw.json
+  ├─ 启动/重启 gateway
+  ├─ 健康检查 + 实发验收
+  ├─ 不回复排查（事件/权限/发布/可见范围）
+  └─ 失败回滚到上一个备份配置
 ```
 
 ---
@@ -106,13 +106,15 @@ curl -LO https://github.com/fnvtk/karuo-deploy/releases/latest/download/karuo-de
 ## 输出格式
 
 ```
-[远程环境一键部署] 执行完成
-├─ Clash Verge Rev：已安装，订阅已配置，代理已启用
-├─ Cursor：已安装，登录信息已保存到桌面
-├─ Docker Desktop：已安装，国内镜像已配置
-├─ Ubuntu Linux：容器已就绪 (docker exec -it karuo-linux bash)
-├─ 网络验证：通过
-└─ 耗时：约 x 分钟
+[龙虾一键部署] 执行完成
+├─ 平台：macOS / Linux / Windows
+├─ Feishu：已安装（或已存在）
+├─ OpenClaw：已安装（或已存在）
+├─ 机器人：longmao 已写入并启用
+├─ 探针：feishu.probe.ok = true
+├─ 实发：messageId = xxxxx
+├─ 排查：事件/权限/发布/测试范围 = 通过
+└─ 回滚点：~/.openclaw/openclaw.json.bak.YYYYMMDD_HHMMSS
 ```
 
 ---
@@ -121,47 +123,53 @@ curl -LO https://github.com/fnvtk/karuo-deploy/releases/latest/download/karuo-de
 
 | 脚本 | 用途 |
 |:---|:---|
-| package/deploy_windows.ps1 | Windows 完整自动部署脚本 |
-| package/deploy_mac.sh | Mac 完整自动部署脚本 |
+| package/deploy_windows.ps1 | Windows 一键部署（Feishu + OpenClaw） |
+| package/deploy_mac.sh | macOS 一键部署（Feishu + OpenClaw） |
+| package/deploy_linux.sh | Linux 一键部署（Feishu + OpenClaw） |
 | package/一键部署.bat | Windows 一键启动入口 |
 | package/setup_mac.command | Mac 一键启动入口 |
+| package/README.txt | 快速手册与变量说明 |
 
 ---
 
-## 配置信息
+## 相关文件（Files）
 
-### 代理订阅
-- URL: `https://api.v6v.eu/api/v1/client/subscribe?token=371fe0545c77e4d9efdf2906a865e403`
-- 节点：香港/台湾/新加坡/日本/美国/韩国/德国/荷兰/加拿大/英国/澳洲等
-- 协议：Trojan + Hysteria2
-
-### Cursor 账号
-- 邮箱: `WilliamAtkins4153@outlook.com`
-- 密码: `?056uXrtaWKQ`
-
----
-
-### Docker 容器
-- 容器名: `karuo-linux`
-- 系统: Ubuntu 22.04
-- 预装工具: git, curl, python3, node, npm, vim, build-essential
-- apt 源: 清华镜像（国内加速）
-- 持久化卷: `karuo-workspace` → 容器内 `/workspace`
-- 使用: `docker exec -it karuo-linux bash`
-
-### macOS 容器
-- 仅在 Linux 宿主机（需 KVM）上可用
-- 镜像: `sickcodes/docker-osx:auto`
-- Windows 推荐用 VMware/UTM 运行 macOS 虚拟机
-- Mac 上无需 Docker 运行 macOS（已在原生环境）
+- 技能文档：`01_卡资（金）/金盾_数据安全/远程环境一键部署/SKILL.md`
+- 脚本目录：`01_卡资（金）/金盾_数据安全/远程环境一键部署/package/`
+- 工作台记录：`运营中枢/工作台/阿猫Mac_OpenClaw配置情况分析.md`
 
 ---
 
 ## 安全原则
 
-- 登录信息文件使用后立即删除
-- 订阅 token 不在公开仓库中存储
-- 代理配置仅限内部使用
+- 不在脚本中写死任何账号、密码、Token、API Key
+- 所有凭据仅通过环境变量或本机安全存储注入
+- 每次改配置先备份 `openclaw.json`
+- 失败必须可回滚，且保留验证日志
+
+---
+
+## 常见故障一针见血（Troubleshooting）
+
+| 现象 | 直接结论 | 直接处理 |
+|:---|:---|:---|
+| 飞书里能看到机器人，但发消息没回复 | 飞书事件未生效或权限/发布缺失 | 开通消息权限 + 添加 `im.message.receive_v1` + 创建版本并发布 |
+| `probe.ok=true` 但 `directory peers/groups list` 为空 | 机器人未进入任何会话 | 在目标群添加“龙猫”机器人或私聊先发起一次会话 |
+| 发消息报 `230002 Bot/User can NOT be out of the chat` | 机器人不在该群/会话 | 先把机器人拉进群，再复测 |
+| 切换新 AppID 后完全不回 | 新应用未完成测试范围 | 在“测试企业和人员”加入测试人和测试群并发布 |
+| 之前能用，突然不回 | 配置切换后异常或发布失效 | 回滚 `openclaw.json` 备份并重启 gateway |
+| 网关日志 `403` / Cloudflare `1010`，或模型单轮 `output=0` | api123 拦截默认 UA / 上下文顶满 | 在 `models.providers.<id>.headers` 增加 `User-Agent: curl/8.x`；必要时清理飞书会话 jsonl 或调低 `agents.defaults.contextTokens` |
+
+---
+
+## 依赖（Dependencies）
+
+- 前置技能：`02_卡人（水）/水桥_平台对接/飞书管理/SKILL.md`（飞书能力）
+- 外部工具：
+  - macOS：`brew`（可选）
+  - Linux：`curl`、`python3`
+  - Windows：`winget`（优先）
+  - 通用：`openclaw`
 
 ---
 
@@ -169,4 +177,6 @@ curl -LO https://github.com/fnvtk/karuo-deploy/releases/latest/download/karuo-de
 
 | 日期 | 版本 | 变更 |
 |:---|:---|:---|
+| 2026-03-24 | 3.0 | 新增“飞书不回复”闭环排查 SOP、故障矩阵与一针见血修复策略；一键部署升级为部署+排错一体化 |
+| 2026-03-24 | 2.0 | 升级为跨平台 Feishu + OpenClaw 一键部署，支持本地/远程、验收与回滚，移除明文凭据写死方案 |
 | 2026-02-14 | 1.0 | 初始版本：Clash Verge Rev + Cursor 一键部署 |

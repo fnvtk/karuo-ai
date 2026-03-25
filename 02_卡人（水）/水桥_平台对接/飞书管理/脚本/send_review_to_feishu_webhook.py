@@ -42,6 +42,11 @@ DEFAULT_WEBHOOK = os.environ.get(
     ),
 )
 
+# 飞书群发送总开关（默认关闭）：为避免误发群消息，默认直接拦截。
+FEISHU_GROUP_SEND_DISABLED = os.environ.get("FEISHU_GROUP_SEND_DISABLED", "1").strip().lower() in {
+    "1", "true", "yes", "on"
+}
+
 # lark_md 中单元素不宜过长
 _MAX_MD = 2800
 
@@ -188,6 +193,13 @@ def main():
         help="卡片 header 颜色模板：blue / wathet / turquoise / ...",
     )
     args = ap.parse_args()
+
+    if FEISHU_GROUP_SEND_DISABLED:
+        print(
+            "已拦截发送：当前已启用 FEISHU_GROUP_SEND_DISABLED（飞书群禁发）。",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     if args.file:
         path = Path(args.file)

@@ -7,6 +7,19 @@ import asyncio
 from datetime import datetime
 
 
+def _iter_surfaces(page):
+    surfaces = [page]
+    try:
+        for fr in page.frames:
+            u = (fr.url or '').lower()
+            if '/micro/content/post/create' in u or 'finder' in u or 'mmfinder' in u:
+                surfaces.append(fr)
+    except Exception:
+        pass
+    return surfaces
+
+
+
 async def set_scheduled_time(page, scheduled_time: datetime, platform: str = "") -> bool:
     """
     在 Playwright 页面上设置定时发布时间。
@@ -20,25 +33,37 @@ async def set_scheduled_time(page, scheduled_time: datetime, platform: str = "")
     print(f"  [定时] 设置定时发布: {date_str} {time_str}", flush=True)
 
     try:
-        found = await _click_schedule_toggle(page)
-        if not found:
-            # 视频号等页面存在“默认显示时间输入”场景：未找到开关时继续尝试填时间。
-            print(f"  [定时] 未找到定时开关，尝试直接填写日期时间", flush=True)
+        for surface in _iter_surfaces(page):
+            found = await _click_schedule_toggle(surface)
+            if not found:
+                # 视频号等页面存在“默认显示时间输入”场景：未找到开关时继续尝试填时间。
+                pass
 
-        await asyncio.sleep(1)
+            await asyncio.sleep(0.6)
 
-        ok = await _fill_datetime(page, scheduled_time, date_str, time_str)
-        if ok and platform == "视频号":
-            # 视频号页面常出现“控件可点但值未真正落库”的情况，这里做一次显式验收。
-            ok = await _verify_channels_schedule_value(page, date_str, time_str)
-        if ok:
-            print(f"  [定时] 已设置定时: {date_str} {time_str}", flush=True)
+            ok = await _fill_datetime(surface, scheduled_time, date_str, time_str)
+            if platform == "视频号":
+                if not ok:
+                    await _force_channels_schedule_controls(surface, date_str, time_str)
+                    ok = True
+                ok = await _verify_channels_schedule_value(surface, date_str, time_str)
+
+            if ok:
+                print(f"  [定时] 已设置定时: {date_str} {time_str}", flush=True)
+                return True
+
+        # 全部 surface 失败
+        if platform == "视频号":
+            print("  [定时] 页面定时控件未同步成功，后续将以接口注入为准", flush=True)
         else:
             print(f"  [定时] 日期时间填写失败，降级为立即发布", flush=True)
-        return ok
+        return False
 
     except Exception as e:
-        print(f"  [定时] 异常: {str(e)[:60]}，降级为立即发布", flush=True)
+        if platform == "视频号":
+            print(f"  [定时] 页面控件异常: {str(e)[:60]}，后续将以接口注入为准", flush=True)
+        else:
+            print(f"  [定时] 异常: {str(e)[:60]}，降级为立即发布", flush=True)
         return False
 
 
@@ -140,6 +165,60 @@ async def _fill_datetime(page, dt: datetime, date_str: str, time_str: str) -> bo
     return await _try_fill_picker_widgets(page, date_str, time_str)
 
 
+async def _force_channels_schedule_controls(page, date_str: str, time_str: str) -> None:
+    """视频号定时控件强制设置：点“定时”并写入发布时间输入框。"""
+    payload = {"dateStr": date_str, "timeStr": time_str, "combined": f"{date_str} {time_str}"}
+    await page.evaluate("""({ dateStr, timeStr, combined }) => {
+        const vis = (el) => !!el && el.offsetParent !== null;
+        const setVal = (inp, val) => {
+            const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+            if (desc && desc.set) desc.set.call(inp, val); else inp.value = val;
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+            inp.dispatchEvent(new Event('change', { bubbles: true }));
+            inp.dispatchEvent(new Event('blur', { bubbles: true }));
+        };
+
+        // 1) 先确保“定时”被选中
+        const nodes = Array.from(document.querySelectorAll('label,span,div,li,button,input[type="radio"]')).filter(vis);
+        for (const n of nodes) {
+            const t = (n.textContent || '').trim();
+            if (t === '定时' || t.includes('定时发表') || t.includes('定时发布')) {
+                try { n.click(); } catch (e) {}
+            }
+        }
+        // 行级兜底：包含“定时发表”的区域，优先点“定时”文案和第二个 radio
+        const row = nodes.find(n => (n.textContent || '').includes('定时发表'));
+        if (row) {
+            const root = row.closest('div,li,section,form') || row.parentElement || document.body;
+            const radios = Array.from(root.querySelectorAll('input[type="radio"]')).filter(vis);
+            if (radios.length >= 2) {
+                try { radios[1].click(); } catch (e) {}
+            }
+            const timedNode = Array.from(root.querySelectorAll('label,span,div,li,button')).find(n => {
+                const t = (n.textContent || '').trim();
+                return t === '定时' || /定时/.test(t);
+            });
+            if (timedNode && vis(timedNode)) { try { timedNode.click(); } catch (e) {} }
+        }
+
+        // 2) 写发布时间输入框
+        const inputs = Array.from(document.querySelectorAll('input')).filter(vis);
+        const targets = [];
+        for (const i of inputs) {
+            const ph = (i.placeholder || '').toLowerCase();
+            const cls = (i.className || '').toLowerCase();
+            if (ph.includes('发布时间') || ph.includes('日期') || ph.includes('时间') || ph.includes('选择') || cls.includes('date') || cls.includes('time') || cls.includes('picker')) {
+                targets.push(i);
+            }
+        }
+        if (targets.length) {
+            const last = targets[targets.length - 1];
+            try { last.click(); } catch (e) {}
+            setVal(last, combined);
+        }
+    }""", payload)
+
+
 async def _verify_channels_schedule_value(page, date_str: str, time_str: str) -> bool:
     """校验视频号“定时”已选中且发布时间字段包含目标时间。"""
     payload = {"dateStr": date_str, "timeStr": time_str}
@@ -231,24 +310,36 @@ async def _try_fill_time(page, dt: datetime, time_str: str) -> bool:
         'input[class*="time"]:not([class*="timestamp"])',
     ]
 
+    # 视频号的时间选择通常在下方，优先点击最下面那个可见输入框。
     for sel in time_selectors:
-        loc = page.locator(sel).first
+        loc = page.locator(sel)
         try:
-            if await loc.count() > 0:
-                await loc.click(force=True, timeout=1200)
-                await loc.fill(time_str)
-                await asyncio.sleep(0.3)
-                return True
+            cnt = await loc.count()
         except Exception:
+            cnt = 0
+        if cnt <= 0:
             continue
+        for idx in range(cnt - 1, -1, -1):
+            item = loc.nth(idx)
+            try:
+                if await item.is_visible():
+                    await item.click(force=True, timeout=1200)
+                    await item.fill(time_str)
+                    await asyncio.sleep(0.3)
+                    return True
+            except Exception:
+                continue
 
     filled = await page.evaluate("""(timeStr) => {
         const inputs = document.querySelectorAll('input');
-        for (const inp of inputs) {
+        const visibleInputs = [...inputs].filter(inp => inp.offsetParent !== null);
+        visibleInputs.sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top);
+        for (const inp of visibleInputs) {
             const ph = (inp.placeholder || '').toLowerCase();
             const cls = (inp.className || '').toLowerCase();
             if ((ph.includes('时间') || ph.includes('time') || cls.includes('time'))
                 && !cls.includes('timestamp') && inp.offsetParent !== null) {
+                inp.click();
                 const nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
                 nativeSet.call(inp, timeStr);
                 inp.dispatchEvent(new Event('input', {bubbles: true}));
@@ -334,6 +425,7 @@ async def _try_fill_near_publish_time(page, date_str: str, time_str: str) -> boo
 
         let dateDone = false;
         let timeDone = false;
+        visibleInputs.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
         for (const inp of visibleInputs) {
             const ph = (inp.placeholder || '').toLowerCase();
             const cls = (inp.className || '').toLowerCase();
@@ -343,7 +435,14 @@ async def _try_fill_near_publish_time(page, date_str: str, time_str: str) -> boo
                 dateDone = true;
                 continue;
             }
+        }
+        // 时间优先点最下面那个，避免点到上方日期框或假输入框。
+        for (const inp of [...visibleInputs].sort((a, b) => b.getBoundingClientRect().top - a.getBoundingClientRect().top)) {
+            const ph = (inp.placeholder || '').toLowerCase();
+            const cls = (inp.className || '').toLowerCase();
+            const tp = (inp.type || '').toLowerCase();
             if (!timeDone && (tp === 'time' || ph.includes('时间') || ph.includes('time') || ph.includes('时') || cls.includes('time'))) {
+                inp.click();
                 setValue(inp, timeStr);
                 timeDone = true;
             }

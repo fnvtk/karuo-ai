@@ -1,82 +1,89 @@
 ================================================
-  卡若AI · 远程环境一键部署 v1.0
-  日期: 2026-02-14
+卡若AI · Feishu + OpenClaw（龙虾）一键部署包
+版本: 3.0
 ================================================
 
-本工具包自动安装以下软件并完成配置：
-
-  [1] Clash Verge Rev - 代理客户端
-      · 自动导入代理订阅
-      · 自动启用系统代理
-      · 支持 Trojan + Hysteria2 协议
-
-  [2] Cursor - AI 编辑器
-      · 自动下载安装
-      · 登录信息保存到桌面
-
-  [3] Docker Desktop - 容器平台
-      · 自动安装 Docker Desktop
-      · 配置国内镜像加速（腾讯云/中科大/网易/官方）
-      · 国内直接拉镜像无需翻墙
-
-  [4] Ubuntu Linux - 开发容器
-      · 预装 git/python3/node/vim/build-essential
-      · apt 源使用清华镜像（国内极速）
-      · /workspace 目录持久化存储
-      · docker exec -it karuo-linux bash 进入
+[目标]
+在任意新机器（macOS / Linux / Windows）完成：
+1) 安装 OpenClaw
+2) 配置 Feishu 机器人（龙猫）
+3) 启动网关并做健康检查
+4) 可选：发一条上线验证消息
 
 ================================================
-  Windows 使用方法
+[必须先设置的环境变量]
 ================================================
 
-  1. 解压本压缩包到任意位置
-  2. 右键点击「一键部署.bat」→ 以管理员身份运行
-  3. 等待自动完成（约 5-10 分钟）
-  4. 完成后根据提示登录 Cursor
+FEISHU_APP_ID
+FEISHU_APP_SECRET
+OPENCLAW_BASE_URL
+OPENCLAW_API_KEY
 
-  如需单独运行 PowerShell 脚本：
+可选：
+OPENCLAW_MODEL_PROVIDER  (默认 api123-icu)
+OPENCLAW_MODEL_ID        (默认 claude-sonnet-4-5-20250929)
+FEISHU_TARGET_CHAT_ID    (设置后脚本会自动实发一条验证消息)
+
+================================================
+[执行方式]
+================================================
+
+macOS:
+  bash deploy_mac.sh
+
+Linux:
+  bash deploy_linux.sh
+
+Windows (PowerShell 管理员):
   powershell -ExecutionPolicy Bypass -File deploy_windows.ps1
+或双击:
+  一键部署.bat
 
 ================================================
-  macOS 使用方法
+[远程部署]
 ================================================
 
-  1. 解压本压缩包到任意位置
-  2. 双击「setup_mac.command」
-     (首次运行可能需要在 系统设置 → 隐私与安全 中允许)
-  3. 等待自动完成（约 5-10 分钟）
-  4. 完成后根据提示登录 Cursor
+macOS/Linux:
+  ssh <user>@<host> 'export FEISHU_APP_ID=... FEISHU_APP_SECRET=... OPENCLAW_BASE_URL=... OPENCLAW_API_KEY=...; bash -s' < deploy_linux.sh
 
-  如需在终端运行：
-  chmod +x deploy_mac.sh && bash deploy_mac.sh
+Windows:
+  使用 WinRM/远程 PowerShell 调用 deploy_windows.ps1，并传入同名环境变量。
 
 ================================================
-  部署流程
+[验收标准]
 ================================================
 
-  开始
-  ├─ [1] 下载并安装 Clash Verge Rev
-  ├─ [2] 配置代理订阅 + 启用系统代理
-  ├─ [3] 启动 Clash，验证网络就绪
-  ├─ [4] 通过代理下载并安装 Cursor
-  ├─ [5] 保存 Cursor 登录信息到桌面
-  ├─ [6] 安装 Docker Desktop + 国内镜像加速
-  ├─ [7] 拉取 Ubuntu 22.04 + 创建开发容器
-  └─ 完成！
+1) openclaw channels status --probe --json
+   - channels.feishu.probe.ok = true
+2) 若设置 FEISHU_TARGET_CHAT_ID：
+   - message send 返回 messageId
 
 ================================================
-  注意事项
+[飞书不回复排查（必看）]
 ================================================
 
-  · 需要基本的网络连接（能访问 GitHub / Docker Hub）
-  · Windows 建议以管理员身份运行
-  · Windows 安装 Docker 需要 WSL2（脚本自动启用）
-  · macOS 可能需要在安全设置中允许第三方应用
-  · Docker 国内镜像已配置，拉镜像无需翻墙
-  · 登录 Cursor 后请立即删除桌面上的登录信息文件
-  · 进入 Linux 容器: docker exec -it karuo-linux bash
-  · 如遇问题请联系卡若
+1) 开放平台顶部若提示“版本发布后生效”，必须先发布版本
+2) 事件与回调 -> 添加事件：im.message.receive_v1
+3) 权限管理 -> 开通并生效：im:message / im:message:send
+4) 测试企业和人员 -> 加入当前测试人和测试群
+5) 若接口报错 code=230002：
+   - 结论：机器人不在目标会话
+   - 处理：先把机器人拉进群，再重试
 
 ================================================
-  卡若AI · 金盾 出品
+[快速诊断命令]
+================================================
+
+openclaw channels status --probe --json
+openclaw directory peers list --channel feishu --account longmao --limit 20 --json
+openclaw directory groups list --channel feishu --account longmao --limit 20 --json
+
+================================================
+[安全要求]
+================================================
+
+- 不要在脚本中写死密钥
+- 执行完成后清理终端历史中的敏感变量
+- 每次改配置前脚本会备份 ~/.openclaw/openclaw.json
+
 ================================================

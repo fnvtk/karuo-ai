@@ -7,24 +7,25 @@ description: >
 triggers: 多平台分发、一键分发、全平台发布、批量分发、视频分发
 owner: 木叶
 group: 木
-version: "4.5"
-updated: "2026-03-23"
+version: "4.6"
+updated: "2026-03-25"
 ---
 
-# 多平台分发 Skill（v4.5）
+# 多平台分发 Skill（v4.6）
 
-> **核心原则**：API 发布为主，Playwright 为辅。确保确定性地分发到各平台。
-> **v4.5 视频号铁律**：**必须先等微信扫码完成（Cookie 连续校验通过），再上传。** `video_channels_resume.py` **默认弹出 Chromium 窗口**扫码，扫完再自动上传；`--silent-login` 才是无头。  
+> **核心原则**：**统一元数据 + 稳定结果输出 + 可无人值守**。能用 API 就用 API；但**视频号优先用网页态自动化（Playwright）且默认无窗口**，避免“API 口子变/参数边界不一致”导致的不可控。
+> **v4.6 视频号默认策略（本轮验证）**：**发布统一走 `视频号发布/脚本/channels_web_cli.py`，默认 headless。**需要调试才用 `--show` / `CHANNELS_HEADED=1`。终端会输出 **`=== 单条发布结果 ===`** 与 **`[批次发布结果]`**，便于复制复盘。  
 > **v4.4**：默认无窗口、B 站 headless、定时 ≥5min、`--until-success`、二维码路径标记。  
 > **v4.3**：默认不自动弹视频号登录。**v4.2**：智能排期与去重下标对齐。
 
 ## 〇、执行原则（第一性原理）
 
-- **视频号两步（强制）**：① 微信扫码登录助手并落盘 Cookie；② 再跑上传。**禁止**在 Cookie 未确认有效时上传。一键：`video_channels_resume.py`（**默认弹窗** Chromium；`--silent-login` 无头；`--step1-only` 只登录）。
-- **目标优先**：全平台时若含视频号且 Cookie 无效 → 先完成第①步，再 `distribute_all`；或直接跑 `video_channels_resume.py` 仅发视频号。
-- **Cookie 优先**：任何登录成功 → **必须落盘**；视频号同时写入 `视频号发布/脚本/channels_storage_state.json` 与 `多平台分发/cookies/视频号_cookies.json`（脚本已自动同步）。
-- **默认静默**：批量分发**不弹窗**、不自动拉起登录流程，适合 Cursor 内无人值守跑命令。
-- **需要扫码时**：显式 `python3 channels_login.py`，或 `distribute_all.py --auto-channels-login`，或 `CHANNELS_AUTO_LOGIN=1 python3 channels_api_publish.py`。`channels_login.py` 可用 `cursor://…/simple-browser`；完全避免 Chromium 回退见脚本内 CDP 说明。
+- **视频号两步（强制）**：① 先扫码登录并落盘 Cookie；② 再发布。**禁止**在 Cookie 未确认有效时发布。
+- **视频号默认无窗口（强制偏好）**：发布用 `视频号发布/脚本/channels_web_cli.py`（默认 headless）；只在排障时用 `--show`。
+- **Cookie 优先（强制）**：任何登录成功 → **必须落盘**；视频号会写入 `视频号发布/脚本/channels_storage_state.json`，并同步到 `多平台分发/cookies/视频号_cookies.json`（脚本已自动同步）。
+- **默认静默（无人值守）**：批量分发默认不弹窗、不自动拉起登录，适合 Cursor 内后台跑。
+- **需要扫码时**：显式跑 `python3 channels_login.py`（推荐，可配 `CHANNELS_SILENT_QR=1` 打印二维码路径）；或在分发器里用 `--auto-channels-login`（仅当你允许脚本拉起登录流程时才用）。
+- **结果必须可读**：视频号发布后终端必须出现“成功/失败/原因/日志行”，用于你快速判断要不要重试/换头/重新扫码。
 
 ---
 
@@ -32,7 +33,7 @@ updated: "2026-03-23"
 
 | 平台 | 实现方式 | 定时发布 | Cookie 有效期 | 120 场实测 |
 |------|----------|----------|---------------|------------|
-| **视频号** | **纯 API**（DFS 上传 + post_create） | API 原生支持 | ~24-48h | 12/12 成功 |
+| **视频号** | **网页态自动化（Playwright，默认 headless）**：`视频号发布/脚本/channels_web_cli.py` | 平台定时（脚本注入） | ~24-48h | 12/12 成功 |
 | **B站** | **bilibili-api-python** API 优先 → Playwright 兜底 | API `dtime` | ~6 个月 | 12/12 成功 |
 | **小红书** | Playwright headless 自动化 | UI 定时（降级立即） | ~1-3 天 | 12/12 成功 |
 | **快手** | Playwright headless 自动化 | UI 定时 | ~7-30 天 | Cookie 过期 |
@@ -86,10 +87,24 @@ python3 distribute_all.py --video-dir "/path/to/成片" --until-success
 # 仅查看断点：各平台已成功/待传（不执行上传）；加 --resume-report-detail 列出文件名
 python3 distribute_all.py --resume-report --resume-report-detail --video-dir "/path/to/成片"
 
-# 视频号一条龙：后台静默登录 → 终端打印二维码路径 → 你在对话里让助手读图扫码 → Cookie 好后自动仅发视频号（断点+until-success）
-python3 video_channels_resume.py --video-dir "/path/to/成片"
-# 无头（不弹窗）：加 --silent-login
-# 只做扫码不上传：加 --step1-only
+# -----------------------------
+# 视频号（推荐：统一走网页 CLI，默认无窗口）
+cd ../视频号发布/脚本
+
+# 1) 先确认登录态（Cookie + API 预检）
+python3 channels_web_cli.py check
+
+# 2) Cookie 过期就扫码（默认会打印指引；无窗口二维码模式）
+CHANNELS_SILENT_QR=1 python3 channels_login.py
+
+# 3) 单条发布：会输出「=== 单条发布结果 ===」
+python3 channels_web_cli.py publish-one --video "/path/to/成片/xxx.mp4" --immediate
+
+# 4) 目录批量发布：会输出汇总表 +「[批次发布结果]」
+python3 channels_web_cli.py publish-dir --video-dir "/path/to/成片" --min-gap 10 --max-gap 25
+
+# 仅排障时开窗口（有头）
+python3 channels_web_cli.py publish-one --video "/path/to/成片/xxx.mp4" --immediate --show
 ```
 
 ---

@@ -105,6 +105,28 @@ def get_local_storage(state: dict) -> dict:
     return ls
 
 
+def pick_finder_raw_from_ls(ls: dict) -> str:
+    """从 localStorage 字典中提取 rawKeyBuff 源串（兼容微信改版后的键名）。"""
+    for k in ("finder_raw", "rawKeyBuff", "finderRaw", "FINDER_RAW"):
+        v = ls.get(k, "")
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+        if v and str(v).strip():
+            return str(v).strip()
+    best = ""
+    for name, val in ls.items():
+        if not val:
+            continue
+        v = str(val).strip()
+        if len(v) < 80:
+            continue
+        lk = name.lower()
+        if "rawkey" in lk or "keybuff" in lk or lk == "finderraw":
+            if len(v) > len(best):
+                best = v
+    return best
+
+
 # ---------------------------------------------------------------------------
 # Video helpers
 # ---------------------------------------------------------------------------
@@ -706,11 +728,7 @@ async def _ensure_ctx() -> dict:
     if not up_params:
         raise RuntimeError("获取 upload_params 失败")
 
-    finder_raw_val = ls.get("finder_raw") or ""
-    if isinstance(finder_raw_val, str):
-        finder_raw_val = finder_raw_val.strip()
-    else:
-        finder_raw_val = str(finder_raw_val or "").strip()
+    finder_raw_val = pick_finder_raw_from_ls(ls)
 
     if not finder_raw_val:
         raise RuntimeError(

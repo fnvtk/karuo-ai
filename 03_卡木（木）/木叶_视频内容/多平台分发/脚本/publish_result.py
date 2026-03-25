@@ -11,7 +11,36 @@ from pathlib import Path
 from typing import Optional
 
 RESULT_LOG = Path(__file__).parent / "publish_log.json"
+UPLOAD_LIBRARY_LOG = Path(__file__).parent / "upload_library.jsonl"
 
+
+def _video_signature(video_path: str) -> str:
+    p = Path(video_path)
+    try:
+        st = p.stat()
+        return f"{p.name}|{st.st_size}"
+    except Exception:
+        return p.name
+
+
+def _load_library_set() -> set[tuple[str, str]]:
+    out = set()
+    if not UPLOAD_LIBRARY_LOG.exists():
+        return out
+    with open(UPLOAD_LIBRARY_LOG, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                pf = rec.get("platform", "")
+                sig = rec.get("video_signature", "")
+                if pf and sig:
+                    out.add((pf, sig))
+            except json.JSONDecodeError:
+                continue
+    return out
 
 @dataclass
 class PublishResult:
@@ -36,36 +65,59 @@ class PublishResult:
 
 
 def save_results(results: list[PublishResult]):
-    """追加写入 JSON Lines 日志"""
+    """追加写入 JSON Lines 日志，并同步上传库去重记录"""
     with open(RESULT_LOG, "a", encoding="utf-8") as f:
         for r in results:
             f.write(json.dumps(r.to_dict(), ensure_ascii=False) + "\n")
 
+    # 仅成功条目写入上传库（全平台统一去重）
+    with open(UPLOAD_LIBRARY_LOG, "a", encoding="utf-8") as lib:
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        for r in results:
+            if not r.success:
+                continue
+            rec = {
+                "timestamp": now,
+                "platform": r.platform,
+                "video_path": r.video_path,
+                "video_signature": _video_signature(r.video_path),
+                "status": r.status,
+            }
+            lib.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
 
 def load_published_set() -> set[tuple[str, str]]:
-    """加载已成功发布的 (platform, video_filename) 集合，用于去重"""
+    """加载已成功发布集合（兼容旧日志 + 上传库）。"""
     published = set()
-    if not RESULT_LOG.exists():
-        return published
-    with open(RESULT_LOG, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-                if rec.get("success"):
-                    fname = Path(rec.get("video_path", "")).name
-                    published.add((rec["platform"], fname))
-            except json.JSONDecodeError:
-                continue
+    if RESULT_LOG.exists():
+        with open(RESULT_LOG, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                    if rec.get("success"):
+                        fname = Path(rec.get("video_path", "")).name
+                        published.add((rec["platform"], fname))
+                except json.JSONDecodeError:
+                    continue
+
+    # 同步上传库签名映射回文件名集合（保障去重不遗漏）
+    for platform, sig in _load_library_set():
+        fname = sig.split("|", 1)[0]
+        if fname:
+            published.add((platform, fname))
     return published
 
 
 def is_published(platform: str, video_path: str) -> bool:
-    """检查某条视频是否已成功发布到某平台（供各平台脚本直接调用）"""
+    """检查某条视频是否已成功发布到某平台（全平台上传库去重）。"""
     fname = Path(video_path).name
-    return (platform, fname) in load_published_set()
+    if (platform, fname) in load_published_set():
+        return True
+    sig = _video_signature(video_path)
+    return (platform, sig) in _load_library_set()
 
 
 def load_failed_tasks() -> list[dict]:

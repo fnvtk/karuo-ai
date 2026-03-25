@@ -135,4 +135,30 @@
 
 ---
 
+## 十一、2026-03-24 更新：飞书「龙猫」应用新建与阿猫龙虾落地
+
+| 项目 | 说明 |
+|------|------|
+| **新建应用** | 已在飞书开放平台新建企业自建应用 **龙猫**，App ID：`cli_a948fbf8b1b81ceb`。 |
+| **当前阻塞** | 该新应用的 **App Secret** 仍为掩码态，未拿到明文前不能切换到该 App ID（否则龙虾飞书通道会认证失败）。 |
+| **阿猫龙虾现状** | `~/.openclaw/openclaw.json` 已收敛为 `feishu.accounts.longmao` 单账号，默认账号为 `longmao`，`botName=龙猫`，私聊/群聊策略均为 `open`。 |
+| **已验证** | `openclaw channels status --probe --json` 显示 `feishu.running=true`、`probe.ok=true`，当前在用可用应用 `cli_a48818290ef8100d`。 |
+| **兼容策略** | 为保证业务不中断，先维持可用 App 运行；拿到新应用 Secret 后再原子切换到 `cli_a948fbf8b1b81ceb`。 |
+
+---
+
+## 十二、2026-03-25 更新：飞书「能发不收 / 龙虾不回」根因与修复
+
+| 项目 | 说明 |
+|------|------|
+| **现象** | 飞书侧可对龙猫发消息，但龙虾长时间无自动回复；网关日志曾大量出现 `[ws] timeout`、偶发 `getaddrinfo ENOTFOUND open.feishu.cn`；模型侧曾出现 `403 Your request was blocked`（Cloudflare **error code: 1010**）。 |
+| **根因 ①（模型）** | `api123.icu` 对 **Node/OpenClaw 默认 HTTP 指纹** 拦截；对 **curl** 放行。复现：本机 `urllib` 默认 UA → 403；改为 `User-Agent: curl/8.7.1` → 200。 |
+| **修复 ①** | 在 `~/.openclaw/openclaw.json` 的 `models.providers.api123-icu` 增加 `headers.User-Agent`（值为 `curl/8.7.1` 或等价 curl UA），并重启网关。 |
+| **根因 ②（上下文）** | 飞书群会话 `1186cd2b-…` 单轮上报 **~10.7 万 input tokens**，随后多轮 `assistant.content` 为空（output 0），用户侧表现为「完全不回」。 |
+| **修复 ②** | 已备份并删除该群的 `sessions.json` 条目与对应 `*.jsonl`（备份后缀 `20260325_131134`），并设置 `agents.defaults.contextTokens: 120000` 作为窗口上限，迫使后续请求处于可控上下文。 |
+| **根因 ③（链路）** | 飞书 **长连接 WebSocket** 曾长时间无法 `ws client ready`（与网络/DNS/代理切换相关）；修复模型与上下文后需保证网关日志出现 `ws client ready`。 |
+| **验收** | 阿猫在目标群再发一句短消息（如「测回复」）；网关日志应出现 `received message` → `dispatch complete`；飞书侧应收到龙虾回复。 |
+
+---
+
 *文档生成：卡若AI 工作台。*
