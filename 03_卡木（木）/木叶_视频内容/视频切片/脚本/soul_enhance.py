@@ -2490,20 +2490,33 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         vf_out = vf_use
         if horizontal_center_pad:
             vf_out = f"{vf_use},{HORIZONTAL_CENTER_PAD_VF}"
+        out_p = Path(output_path)
+        out_p.parent.mkdir(parents=True, exist_ok=True)
         r = subprocess.run([
             'ffmpeg', '-y', '-i', current_video,
-            '-vf', vf_out, '-c:a', 'copy', output_path
+            '-vf', vf_out, '-c:a', 'copy', str(out_p)
         ], capture_output=True, text=True)
-        if r.returncode == 0 and os.path.exists(output_path):
+        if r.returncode == 0 and out_p.exists():
             if horizontal_center_pad:
                 print(f"  ✓ 横屏单中屏输出完成（整屏仅一条画面）", flush=True)
             else:
                 print(f"  ✓ 竖屏竖条裁剪完成", flush=True)
         else:
             tag = "横屏单中屏" if horizontal_center_pad else "竖屏裁剪"
-            print(f"  ❌ {tag}失败: {(r.stderr or '')[:300]}", file=sys.stderr)
-            shutil.copy(current_video, output_path)
-            print(f"  ⚠ 已回退为未裁剪版本，请检查 FFmpeg", flush=True)
+            print(f"  ❌ {tag}失败(copy音频): {(r.stderr or '')[:400]}", file=sys.stderr)
+            r2 = subprocess.run([
+                'ffmpeg', '-y', '-i', current_video,
+                '-vf', vf_out,
+                '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+                '-c:a', 'aac', '-b:a', '128k',
+                str(out_p),
+            ], capture_output=True, text=True)
+            if r2.returncode == 0 and out_p.exists():
+                print(f"  ✓ {tag}完成（已改用 AAC+H264 重编码）", flush=True)
+            else:
+                print(f"  ❌ {tag}重编码仍失败: {(r2.stderr or '')[:400]}", file=sys.stderr)
+                shutil.copy(current_video, str(out_p))
+                print(f"  ⚠ 已回退为未裁剪横版，请检查 FFmpeg/素材", flush=True)
     else:
         shutil.copy(current_video, output_path)
         print(f"  ✓ 横版输出", flush=True)

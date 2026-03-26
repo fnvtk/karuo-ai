@@ -83,9 +83,9 @@ def update_cell(token, range_str, value, value_input_option='USER_ENTERED'):
 def _col_letter(n):
     s = ''
     while True:
-        s = chr(65 + n % 26) + s
-        n = n // 26
-        if n <= 0:
+        s = chr(65 + (n % 26)) + s
+        n = n // 26 - 1
+        if n < 0:
             break
     return s
 

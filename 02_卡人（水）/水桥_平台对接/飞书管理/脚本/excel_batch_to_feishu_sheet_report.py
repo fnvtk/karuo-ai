@@ -178,12 +178,12 @@ def feishu_read_values(
 
 
 def _col_letter(n: int) -> str:
-    # 0->A, 1->B ... 25->Z, 26->AA
+    # 0->A ... 25->Z, 26->AA（n//26-1 避免 26 误成 BA）
     s = ""
     while True:
-        s = chr(65 + n % 26) + s
-        n = n // 26
-        if n <= 0:
+        s = chr(65 + (n % 26)) + s
+        n = n // 26 - 1
+        if n < 0:
             break
     return s
 
