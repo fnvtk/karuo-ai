@@ -178,7 +178,7 @@
 | **飞书应用** | `~/.openclaw/openclaw.json` 中 **`defaultAccount` / `accountId` = `longmao`**，**`appId` = `cli_a948fbf8b1b81ceb`**，对应飞书自建应用 **龙猫**（`botName`：龙猫）。 |
 | **配置结论** | 龙虾通道**已绑定龙猫应用**；群内收发仍须满足：机器人**已在该群**（避免飞书 230002 等）、模型 API 与网络正常（参见第十二节）。 |
 | **运行态（本次 SSH）** | 抽检时本机 **TCP 18789 无监听**、未见常驻 **`openclaw gateway`** 进程——**不代表配置错误**；要对外提供网关，需在阿猫本机启动网关（或恢复 LaunchAgent）。 |
-| **CLI 探针** | 若执行 `openclaw channels status --probe` 提示 **Node ≥ 22.16.0**，需升级 `~/.local/node22`（或当前使用的 Node）后再探针；**网关进程**可与 CLI 版本要求不同步，以实际监听与日志为准。 |
+| **CLI 探针** | 若直接执行 `openclaw` 提示 **Node ≥ 22.16.0**（因默认落到 `~/.local/node22` 的 v22.14），请用 **Homebrew Node**：`/usr/local/opt/node/bin/node …/openclaw/dist/index.js channels status --probe --json`；或已放置 **`~/.openclaw/start-gateway-node24.sh`** 同逻辑启动网关（`nohup …/start-gateway-node24.sh >> ~/.openclaw/gateway_nohup.log 2>&1 &`）。 |
 
 > 第十一节中「先维持 cli_a488…」为 2026-03-24 记录；**以本节与第十二节现场配置为准**——当前文件内 `longmao` 已指向 **cli_a948fbf8b1b81ceb**。
 
