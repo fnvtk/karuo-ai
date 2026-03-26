@@ -3,6 +3,11 @@
 视频号纯 API 发布 v8 — 零 Playwright，全 httpx
 协议: helper_upload_params → DFS upload → post_clip_video → poll clip_result → post_create
 
+CLI:
+  python3 channels_api_publish.py --video-dir "/path/to/mp4目录"
+  CHANNELS_VIDEO_DIR=/path/to/dir python3 channels_api_publish.py
+  python3 channels_api_publish.py --video-dir ... --limit 3   # 只发前 3 条待发布
+
 v8 修复 (2026-03-13):
 - 添加 post_clip_video 转码步骤（浏览器必需的中间步骤）
 - URL 改写: wxapp.tc.qq.com → finder.video.qq.com（与浏览器一致）
@@ -11,6 +16,7 @@ v8 修复 (2026-03-13):
 - post_create 使用服务端返回的 clipKey/draftId
 - 去除 clientid（UUID4 格式触发设备验证 300001）
 """
+import argparse
 import asyncio
 import hashlib
 import json
@@ -28,7 +34,8 @@ import httpx
 
 SCRIPT_DIR = Path(__file__).parent
 COOKIE_FILE = SCRIPT_DIR / "channels_storage_state.json"
-VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul_派对_121场_20260311_output/成片")
+# 无 --video-dir 且无 CHANNELS_VIDEO_DIR 时的兼容默认（旧脚本直跑）
+_DEFAULT_VIDEO_DIR = Path("/Users/karuo/Movies/soul视频/soul_派对_121场_20260311_output/成片")
 
 sys.path.insert(0, str(SCRIPT_DIR.parent.parent / "多平台分发" / "脚本"))
 from publish_result import PublishResult, is_published, save_results, print_summary
@@ -823,6 +830,42 @@ def _maybe_login_then_retry() -> bool:
     return _run_login_then_retry()
 
 
+def _parse_cli_args():
+    ap = argparse.ArgumentParser(
+        description="视频号纯 API 批量发布（httpx，无浏览器控件；需 channels_storage_state.json 含 finder_raw）",
+    )
+    ap.add_argument(
+        "--video-dir",
+        type=str,
+        default="",
+        help="含 *.mp4 的目录；可改用环境变量 CHANNELS_VIDEO_DIR",
+    )
+    ap.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="最多发布几条待发布条目，0 表示不限制",
+    )
+    return ap.parse_args()
+
+
+def _resolve_video_dir(arg_dir: str) -> Path | None:
+    raw = (arg_dir or "").strip() or os.environ.get("CHANNELS_VIDEO_DIR", "").strip()
+    p = Path(raw).expanduser() if raw else _DEFAULT_VIDEO_DIR
+    p = p.resolve()
+    if not p.is_dir():
+        return None
+    return p
+
+
+def _title_for_video(vp: Path) -> str:
+    if vp.name in TITLES:
+        return TITLES[vp.name]
+    if VideoMeta is not None:
+        return VideoMeta.from_filename(str(vp)).title("视频号")
+    return f"{vp.stem} #Soul派对 #创业日记"
+
+
 def _gen_schedule_unix(count: int) -> list[int]:
     """与 distribute_all 一致：智能错峰 datetime → 视频号定时 Unix；近未来视为立即(0)。"""
     if count <= 0:
@@ -832,7 +875,18 @@ def _gen_schedule_unix(count: int) -> list[int]:
 
 
 async def main():
+    args = _parse_cli_args()
+    video_dir = _resolve_video_dir(args.video_dir)
+    if video_dir is None:
+        print(
+            "[!] 视频目录无效。请传: python3 channels_api_publish.py --video-dir \"/path/to/mp4\""
+            " 或设置 CHANNELS_VIDEO_DIR。",
+            flush=True,
+        )
+        return 1
+
     print("=== 视频号纯 API 发布 v8 (DFS + clip_video + post_create) ===\n", flush=True)
+    print(f"  [CLI] 目录: {video_dir}", flush=True)
 
     state = load_state()
     if not state:
@@ -892,13 +946,27 @@ async def main():
     uin = str(up_params["uin"])
     print(f"  uin: {uin}", flush=True)
 
-    videos = sorted(VIDEO_DIR.glob("*.mp4"))
+    finder_raw_main = pick_finder_raw_from_ls(ls)
+    if not finder_raw_main:
+        print(
+            "[!] 纯 API 发表需要 localStorage 里的 finder_raw（rawKeyBuff），当前缺失 → post_create 会 300002。\n"
+            "    请执行: python3 channels_login.py --playwright-only\n"
+            "    登录后进入一次「创建/发表」页，等终端出现 Cookie 已保存后再跑本脚本。\n",
+            flush=True,
+        )
+        return 1
+    print(f"  finder_raw: OK（{len(finder_raw_main)} 字符）", flush=True)
+
+    videos = sorted(video_dir.glob("*.mp4"))
     if not videos:
         print("[!] 未找到视频", flush=True)
         return 1
 
     need_pub = [v for v in videos if not is_published("视频号", str(v))]
-    print(f"\n共 {len(videos)} 条视频，{len(need_pub)} 条待发布\n", flush=True)
+    if args.limit > 0:
+        need_pub = need_pub[: args.limit]
+    _lim = f"本跑最多 {args.limit} 条" if args.limit > 0 else "条数不限制"
+    print(f"\n共 {len(videos)} 条 mp4，待发布 {len(need_pub)} 条（{_lim}）\n", flush=True)
     if not need_pub:
         print("[OK] 全部已发布", flush=True)
         return 0
@@ -909,11 +977,12 @@ async def main():
     consecutive_fail = 0
 
     for i, vp in enumerate(need_pub):
-        t = TITLES.get(vp.name, f"{vp.stem} #Soul派对 #创业日记")
+        t = _title_for_video(vp)
         r = await publish_one(
             cookie_str, finder_id, uin, finger_print, aid,
             up_params, str(vp), t, i + 1, len(need_pub),
             scheduled_ts=schedule[i],
+            finder_raw=finder_raw_main,
         )
         results.append(r)
         if r.status != "skipped":

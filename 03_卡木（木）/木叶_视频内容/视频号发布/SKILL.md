@@ -90,13 +90,23 @@ updated: "2026-03-24"
 
 ## 三、一键命令
 
+**优先（纯接口、无网页控件）**：`channels_api_publish.py` — 全 **httpx**，走 `helper_upload_params` → DFS 分片 → `post_clip_video` → `post_create`。Cookie 仍须由 `channels_login.py` 写入 `channels_storage_state.json`（**localStorage 须含 `finder_raw`**，否则 `post_create` 会 300002）。
+
 ```bash
 cd /Users/karuo/Documents/个人/卡若AI/03_卡木（木）/木叶_视频内容/视频号发布/脚本
 
-# 1. 首次或 Cookie 过期：微信扫码登录
-python3 channels_login.py
+# 1. 首次或 Cookie 过期：微信扫码登录（建议进一次发表页以注入 rawKeyBuff）
+python3 channels_login.py --playwright-only
 
-# 2. 批量发布（10-25 分钟真实间隔）
+# 2. 纯 API 批量发（推荐）
+python3 channels_api_publish.py --video-dir "/path/to/成片或切片目录"
+# 或环境变量：CHANNELS_VIDEO_DIR=/path/to/dir python3 channels_api_publish.py
+# 试跑前 2 条：python3 channels_api_publish.py --video-dir "..." --limit 2
+```
+
+**备选（Playwright 点页面、F12 注入定时）**：需要页面控件或接口失败再排错时用：
+
+```bash
 python3 channels_web_cli.py publish-dir \
   --video-dir "<视频目录>" \
   --min-gap 10 --max-gap 25 \

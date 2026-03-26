@@ -64,6 +64,82 @@ def load_frame(path: Path, at_ratio: float | None) -> np.ndarray:
     return np.asarray(Image.open(BytesIO(raw)).convert("RGB"), dtype=np.float32)
 
 
+def compute_feishu_band(arr: np.ndarray, strict_core: bool = False) -> dict:
+    """
+    从 RGB float32 帧估计飞书会议深色主内容区包络 [L, L+W_band)。
+    失败时抛出 ValueError（消息给人读）。
+    """
+    h, w, _ = arr.shape
+    gray = 0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]
+    col_mean = gray.mean(axis=0)
+
+    win = 31
+    pad = win // 2
+    kernel = np.ones(win) / win
+    smooth = np.convolve(np.pad(col_mean, (pad, pad), mode="edge"), kernel, mode="valid")
+
+    dark = smooth < 105
+    best = (0, 0)
+    i = 0
+    while i < w:
+        if not dark[i]:
+            i += 1
+            continue
+        j = i
+        while j < w and dark[j]:
+            j += 1
+        if j - i > best[1] - best[0]:
+            best = (i, j)
+        i = j
+    L0, R0 = best
+    if R0 - L0 < 200:
+        raise ValueError("未找到足够宽的深色带，请换一帧或检查分辨率")
+
+    right = R0
+    for x in range(R0, min(R0 + 500, w)):
+        if smooth[x] > 195 and col_mean[x] > 200 and x + 5 < w and smooth[x : x + 5].min() > 185:
+            right = x
+            break
+
+    if strict_core:
+        L = max(0, L0)
+        W_band = R0 - L0
+    else:
+        white_mean = 248.0
+        white_smooth = 228.0
+
+        def col_is_desktop_white(x: int) -> bool:
+            if x < 0 or x >= w:
+                return True
+            return col_mean[x] >= white_mean and smooth[x] >= white_smooth
+
+        L = L0
+        while L > 0 and not col_is_desktop_white(L - 1):
+            L -= 1
+
+        R = R0
+        while R < w and not col_is_desktop_white(R):
+            R += 1
+
+        W_band = R - L
+        if W_band < 200:
+            L, W_band = max(0, L0), R0 - L0
+
+    if W_band < 200:
+        raise ValueError(f"可用宽度 {W_band} 过窄，请换一帧")
+
+    return {
+        "w": w,
+        "h": h,
+        "L0": L0,
+        "R0": R0,
+        "L": L,
+        "W_band": W_band,
+        "right": right,
+        "arr": arr,
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("input", type=Path, help="全画面截图 jpg/png 或视频 mp4")
@@ -92,73 +168,15 @@ def main():
     args = ap.parse_args()
 
     arr = load_frame(args.input, args.at)
-    h, w, _ = arr.shape
-    gray = 0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]
-    col_mean = gray.mean(axis=0)
-
-    win = 31
-    pad = win // 2
-    kernel = np.ones(win) / win
-    smooth = np.convolve(np.pad(col_mean, (pad, pad), mode="edge"), kernel, mode="valid")
-
-    # 第一步：找最深色连续区作为「核心」，避免误选整屏平均
-    dark = smooth < 105
-    best = (0, 0)
-    i = 0
-    while i < w:
-        if not dark[i]:
-            i += 1
-            continue
-        j = i
-        while j < w and dark[j]:
-            j += 1
-        if j - i > best[1] - best[0]:
-            best = (i, j)
-        i = j
-    L0, R0 = best
-    if R0 - L0 < 200:
-        print("未找到足够宽的深色带，请换一帧或检查分辨率", file=sys.stderr)
+    try:
+        geo = compute_feishu_band(arr, strict_core=args.strict_core)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
         sys.exit(1)
 
-    # 右缘参考：深色带之后持续高亮（白底）从哪列起
-    right = R0
-    for x in range(R0, min(R0 + 500, w)):
-        if smooth[x] > 195 and col_mean[x] > 200 and x + 5 < w and smooth[x : x + 5].min() > 185:
-            right = x
-            break
-
-    if args.strict_core:
-        L = max(0, L0)
-        W_band = R0 - L0
-    else:
-        # 第二步：从核心向左右扩到「桌面大白」边界（阈值略放宽，避免把浅灰边栏判成「已到边」而过窄）
-        white_mean = 248.0
-        white_smooth = 228.0
-
-        def col_is_desktop_white(x: int) -> bool:
-            if x < 0 or x >= w:
-                return True
-            return col_mean[x] >= white_mean and smooth[x] >= white_smooth
-
-        L = L0
-        while L > 0 and not col_is_desktop_white(L - 1):
-            L -= 1
-
-        R = R0
-        while R < w and not col_is_desktop_white(R):
-            R += 1
-
-        W_band = R - L
-        if W_band < 200:
-            print(
-                f"扩边后宽度 {W_band} 过窄，回退为深色核心 [{L0},{R0})",
-                file=sys.stderr,
-            )
-            L, W_band = max(0, L0), R0 - L0
-
-    if W_band < 200:
-        print(f"可用宽度 {W_band} 过窄，请换一帧", file=sys.stderr)
-        sys.exit(1)
+    w, h = geo["w"], geo["h"]
+    L0, R0 = geo["L0"], geo["R0"]
+    L, W_band, right = geo["L"], geo["W_band"], geo["right"]
 
     if args.squeeze_498 and args.center_in_band:
         print("同时指定 --squeeze-498 与 --center-in-band 时以 --center-in-band 为准", file=sys.stderr)

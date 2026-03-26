@@ -1930,13 +1930,19 @@ def _parse_clip_index(filename: str) -> int:
     return int(m.group(1)) if m else 0
 
 
+# 横屏单中屏：先按竖条塑形 crop，再左右 pad 到 16:9（整屏仅一条画面，非左右双视频拼屏）
+HORIZONTAL_CENTER_PAD_VF = "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black"
+
+
 def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_path, 
                  force_burn_subs=False, skip_subs=False, vertical=False,
                  crop_vf=None, overlay_x=None, typewriter_subs=False,
                  vertical_fit_full=False, trim_silence=True,
-                 subtitle_extra_delay=0.0, use_stickers=True):
+                 subtitle_extra_delay=0.0, use_stickers=True,
+                 horizontal_center_pad=False):
     """增强单个切片。vertical=True 时输出竖条，宽由 --crop-vf 决定（原生包络常见 560～750×1080；旧 498 为两段裁或 scale）。
     vertical_fit_full：整幅 16:9 缩放入 498×1080 + 上下黑边。
+    horizontal_center_pad：与竖条塑形相同链路（封面/字幕仍按竖条叠在横版上），最后输出 1920×1080，中间为裁切条、左右黑边。
     """
     
     print(f"  输入: {os.path.basename(clip_path)}", flush=True)
@@ -2275,7 +2281,13 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     
     # 5.4 输出：竖条（宽由 vf）或全画面 letterbox
     if vertical and not vertical_fit_full:
-        print(f"  [5/5] 竖屏输出（{out_w}×{out_h}）…", flush=True)
+        if horizontal_center_pad:
+            print(
+                f"  [5/5] 横屏单中屏（竖条 {out_w}×{out_h} → 1920×1080，左右黑边、单画面）…",
+                flush=True,
+            )
+        else:
+            print(f"  [5/5] 竖屏输出（{out_w}×{out_h}）…", flush=True)
     elif vertical and vertical_fit_full:
         print(f"  [5/5] 竖屏输出（全画面 letterbox）…", flush=True)
     else:
@@ -2292,14 +2304,21 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
             shutil.copy(current_video, output_path)
             print(f"  ⚠ 已回退为未缩放版本", flush=True)
     elif vertical:
+        vf_out = vf_use
+        if horizontal_center_pad:
+            vf_out = f"{vf_use},{HORIZONTAL_CENTER_PAD_VF}"
         r = subprocess.run([
             'ffmpeg', '-y', '-i', current_video,
-            '-vf', vf_use, '-c:a', 'copy', output_path
+            '-vf', vf_out, '-c:a', 'copy', output_path
         ], capture_output=True, text=True)
         if r.returncode == 0 and os.path.exists(output_path):
-            print(f"  ✓ 竖屏竖条裁剪完成", flush=True)
+            if horizontal_center_pad:
+                print(f"  ✓ 横屏单中屏输出完成（整屏仅一条画面）", flush=True)
+            else:
+                print(f"  ✓ 竖屏竖条裁剪完成", flush=True)
         else:
-            print(f"  ❌ 竖屏裁剪失败: {(r.stderr or '')[:300]}", file=sys.stderr)
+            tag = "横屏单中屏" if horizontal_center_pad else "竖屏裁剪"
+            print(f"  ❌ {tag}失败: {(r.stderr or '')[:300]}", file=sys.stderr)
             shutil.copy(current_video, output_path)
             print(f"  ⚠ 已回退为未裁剪版本，请检查 FFmpeg", flush=True)
     else:
@@ -2371,6 +2390,16 @@ def main():
         action="store_true",
         help="关闭表情贴片",
     )
+    parser.add_argument(
+        "--horizontal-center-pad",
+        action="store_true",
+        help="横屏单中屏成片：与竖条塑形相同（封面/字幕/贴片），最后输出 1920×1080，中间一条画面、左右黑边；禁止与 --vertical-fit-full 同用",
+    )
+    parser.add_argument(
+        "--horizontal-full",
+        action="store_true",
+        help="横屏全幅成片：整幅 16:9（无左右黑边），高光/字幕/封面与竖屏 Skill 同源；不要与 --vertical / --crop-vf / --horizontal-center-pad 同用",
+    )
     args = parser.parse_args()
     
     clips_dir = Path(args.clips) if args.clips else CLIPS_DIR
@@ -2395,8 +2424,40 @@ def main():
     overlay_x_arg = None if overlay_x_arg < 0 else overlay_x_arg
     typewriter = getattr(args, "typewriter_subs", False)
     vfit = getattr(args, "vertical_fit_full", False)
+    hpad = getattr(args, "horizontal_center_pad", False)
+    hfull = getattr(args, "horizontal_full", False)
+    if hfull and getattr(args, "vertical", False):
+        print("❌ --horizontal-full 与 --vertical 互斥", flush=True)
+        return
+    if hfull and hpad:
+        print("❌ --horizontal-full 与 --horizontal-center-pad 互斥", flush=True)
+        return
+    if hfull and crop_vf_arg:
+        print("⚠️ --horizontal-full 将忽略 --crop-vf（全幅 16:9 不裁竖条）", flush=True)
+        crop_vf_arg = ""
+    if hfull and vfit:
+        print("⚠️ --horizontal-full 与 --vertical-fit-full 互斥，已关闭 letterbox 竖屏模式。", flush=True)
+        vfit = False
+        args.vertical_fit_full = False
+    if hpad and vfit:
+        print("⚠️ --horizontal-center-pad 与 --vertical-fit-full 互斥，已关闭全画面 letterbox。", flush=True)
+        vfit = False
+        args.vertical_fit_full = False
+    # 横屏全幅：整幅叠字幕，成片 1920×1080，无左右黑边
+    if hfull:
+        vertical = False
+        print("ℹ️ 横屏全幅成片：--title-only 仍生效，但不会强制竖屏。", flush=True)
+    # 横屏单中屏必须先走竖条链路（叠字幕/封面），再 pad
+    if hpad:
+        vertical = True
+        if not crop_vf_arg:
+            print(
+                "❌ --horizontal-center-pad 须配合 --crop-vf（或先跑 analyze_feishu_ui_crop 写入塑形参数）",
+                flush=True,
+            )
+            return
     # Soul 成片：--title-only 或塑形相关参数时默认竖屏直出，避免只传 --crop-vf 却漏 --vertical 误出 1920×1080 横版
-    if not vertical and (title_only or crop_vf_arg or vfit):
+    if not vertical and not hfull and (title_only or crop_vf_arg or vfit):
         vertical = True
         print(
             "ℹ️ 已默认启用竖屏直出（因 --title-only 和/或 --crop-vf / --vertical-fit-full）；"
@@ -2404,12 +2465,19 @@ def main():
             flush=True,
         )
     print("="*60)
-    print("🎬 Soul切片增强" + ("（成片竖屏直出）" if vertical else ""))
+    print(
+        "🎬 Soul切片增强"
+        + ("（成片竖屏直出）" if vertical and not hpad else "")
+        + ("（横屏单中屏 1920×1080）" if hpad else "")
+        + ("（横屏全幅 16:9 无黑边）" if hfull else "")
+    )
     print("="*60)
     print(
         f"功能: 封面+字幕+加速10%+去语气词"
         + ("+去长静音" if not getattr(args, "no_trim_silence", False) else "")
-        + ("+竖屏条(高1080宽随vf)" if vertical else "")
+        + ("+竖屏条(高1080宽随vf)" if vertical and not hpad else "")
+        + ("+横屏单中屏(竖条+左右黑边)" if hpad else "")
+        + ("+横屏全幅(整幅叠字幕)" if hfull else "")
         + ("+全画面letterbox(不裁竖条)" if vertical and vfit else "")
         + ("+逐字字幕" if typewriter else "")
     )
@@ -2473,13 +2541,14 @@ def main():
                 force_burn_subs=getattr(args, "force_burn_subs", False),
                 skip_subs=getattr(args, "skip_subs", False),
                 vertical=vertical,
-                crop_vf=crop_vf_arg or None,
+                crop_vf=(None if hfull else (crop_vf_arg or None)),
                 overlay_x=overlay_x_arg,
                 typewriter_subs=typewriter,
                 vertical_fit_full=vfit,
                 trim_silence=not getattr(args, "no_trim_silence", False),
                 subtitle_extra_delay=float(getattr(args, "subtitle_extra_delay", 0.0) or 0.0),
                 use_stickers=getattr(args, "stickers", True) and not getattr(args, "no_stickers", False),
+                horizontal_center_pad=hpad,
             ):
                 success_count += 1
         finally:
