@@ -14,7 +14,7 @@ cd "/Users/karuo/Documents/个人/卡若AI"
 - 卸载：`launchctl unload ~/Library/LaunchAgents/com.karuo.ai.push-github.plist`
 
 ## Token
-上传使用的 GitHub Token 由卡路亚提供；若更换账号或 Token，请更新 remote：
+上传使用的 GitHub Token 由**卡若**提供；若更换账号或 Token，请更新 remote：
 ```bash
 git remote set-url origin https://<新TOKEN>@github.com/fnvtk/karuo-ai.git
 ```

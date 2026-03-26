@@ -67,9 +67,16 @@ FONT_APPLE_SUBTITLE = next(
 
 # 视频增强参数
 SPEED_FACTOR = 1.10  # 加速10%
-SILENCE_THRESHOLD = -38  # 静音阈值(dB)，略放宽以多检出停顿
-SILENCE_MIN_DURATION = 0.32  # 短于此前值，中间「断点」切得更干净
-SILENCE_TRIM_MARGIN = 0.06  # 保留段与静音接缝留白（秒），略小则多剪
+# 默认「剃空白」偏激进：略提高 noise 阈值（更接近 0）+ 更短 min_duration，多剪掉会议留白
+SILENCE_THRESHOLD = -32
+SILENCE_MIN_DURATION = 0.22
+SILENCE_TRIM_MARGIN = 0.04
+# --silence-gentle 时回退旧参数，避免个别素材被切太碎
+SILENCE_GENTLE_THRESHOLD = -38
+SILENCE_GENTLE_MIN_DURATION = 0.32
+SILENCE_GENTLE_TRIM_MARGIN = 0.06
+# 字幕轴上相邻两条间隔 ≥ 此值（秒）也视为可剪「空白」（与 silencedetect 结果并集）
+SILENCE_SUBTITLE_GAP_MIN_SEC = 0.52
 # 片尾若干秒不参与「去静音」切除，避免成片最后几秒被剪成完全无声（需保留收尾人声）
 SILENCE_TAIL_PRESERVE_SEC = 2.85
 
@@ -590,9 +597,12 @@ def _limit_cover_title_cjk(text: str, max_cjk: int = COVER_TITLE_MAX_CJK) -> str
 
 
 def pick_cover_hook_text(highlight_info: dict) -> str:
-    """高光成片封面：优先 3 秒钩子句（抓眼球），其次核心问句，最后才用短标题。全程简体。"""
+    """高光成片封面：优先 viral_hook（热点向刺激标题），再 hook_3sec / 问句 / 标题。全程简体。"""
     if not highlight_info:
         return ""
+    v = _to_simplified((highlight_info.get("viral_hook") or "").strip())
+    if v:
+        return v
     h = _to_simplified((highlight_info.get("hook_3sec") or "").strip())
     if h:
         return h
@@ -608,7 +618,7 @@ def _limit_cover_hook_display(text: str, max_cjk: int = COVER_HOOK_MAX_CJK) -> s
 
 
 # macOS/APFS 文件名允许的中文标点（保留刺激性标题所需的标点）
-_SAFE_CJK_PUNCT = set("，。？！；：·、…（）【】「」《》～—·+")
+_SAFE_CJK_PUNCT = set("，。？！；：·、…（）【】「」《》～—·+｜")
 
 def sanitize_filename(name: str, max_length: int = 50) -> str:
     """成片文件名：先去杠去下划线，再保留中文、ASCII字母数字、安全标点与空格。
@@ -714,11 +724,18 @@ EMOJI_STICKER_MAP = {
     "growth": ["1f680", "1f4c8", "1f3af"],
     "risk": ["26a0", "1f6a8"],
     "happy": ["1f973", "1f44f", "1f60e"],
+    "psych": ["1f9e0", "1f4a1", "1f4af"],
+    "team": ["1f44d", "1f44f", "1f389"],
 }
 
 
 def _detect_sticker_theme(text: str) -> str:
-    t = (text or "").lower()
+    u = text or ""
+    t = u.lower()
+    if any(k in u for k in ["MBTI", "性格", "心理", "咨询", "测试", "测评", "抑郁", "情绪"]):
+        return "psych"
+    if any(k in u for k in ["团队", "合伙", "椅子", "分工", "小林", "陈总", "宋总"]):
+        return "team"
     if any(k in t for k in ["营收", "赚钱", "成交", "变现", "利润", "现金流", "money"]):
         return "money"
     if any(k in t for k in ["风险", "封号", "告警", "风控", "risk"]):
@@ -748,6 +765,8 @@ def _build_sticker_events(highlight_info: dict, duration: float):
     base_count = 2 if duration >= 120 else 1
     if duration >= 180:
         base_count = 3
+    if duration >= 90 and theme in ("psych", "team", "money"):
+        base_count = min(5, base_count + 2)
     events = []
     random.seed(int(duration * 1000) ^ len(source_text))
     for i in range(base_count):
@@ -812,6 +831,105 @@ def apply_sticker_overlays(video_path: str, output_path: str, highlight_info: di
         filter_complex,
         "-map",
         f"[{last_label}]",
+        "-map",
+        "0:a",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "fast",
+        "-crf",
+        "22",
+        "-c:a",
+        "copy",
+        output_path,
+    ]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    return r.returncode == 0 and os.path.exists(output_path)
+
+
+def _audio_enhance_filter_str(strong_clean: bool) -> str:
+    """嘈杂会议室：strong 时抬高高通、加深 FFT 降噪。"""
+    if strong_clean:
+        return (
+            "highpass=f=200,"
+            "lowpass=f=9800,"
+            "afftdn=nf=-38,"
+            "compand=0.02|0.02:0.05|0.05:-60/-60|-32/-16|-22/-11|0/-3:6:0:0:0.02,"
+            "loudnorm=I=-16:LRA=7:TP=-1.5"
+        )
+    return (
+        "highpass=f=120,"
+        "lowpass=f=10000,"
+        "afftdn=nf=-30,"
+        "compand=0.02|0.02:0.05|0.05:-60/-60|-30/-15|-20/-10|0/-3:6:0:0:0.02,"
+        "loudnorm=I=-16:LRA=7:TP=-1.5"
+    )
+
+
+def apply_keyword_pin_overlays(
+    video_path: str,
+    output_path: str,
+    highlight_info: dict,
+    duration: float,
+    overlay_x: int,
+    strip_w: int,
+    temp_dir: str,
+) -> bool:
+    """在竖条主区域内烧录 1～2 条半透明关键词条（与高光文案相关，非外链视频）。"""
+    lines = []
+    for key in ("hook_3sec", "title", "transcript_excerpt"):
+        s = (highlight_info.get(key) or "").strip()
+        s = _to_simplified(s)
+        s = re.sub(r"\s+", " ", s)
+        if len(s) >= 6:
+            lines.append(s[:22] + ("…" if len(s) > 22 else ""))
+        if len(lines) >= 2:
+            break
+    if not lines:
+        return False
+    paths = []
+    for i, line in enumerate(lines[:2]):
+        pin_w = min(680, max(320, strip_w + 80))
+        pin_h = 52
+        img = Image.new("RGBA", (pin_w, pin_h), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        draw.rounded_rectangle([0, 0, pin_w - 1, pin_h - 1], radius=10, fill=(8, 12, 20, 210))
+        fp = FONT_SMILEY if os.path.exists(FONT_SMILEY) else FALLBACK_FONT
+        try:
+            font = ImageFont.truetype(fp, 26)
+        except Exception:
+            font = ImageFont.load_default()
+        draw.text((16, 12), line, fill=(255, 255, 255, 255), font=font)
+        p = os.path.join(temp_dir, f"kw_pin_{i}.png")
+        img.save(p, "PNG")
+        paths.append(p)
+    if not paths:
+        return False
+    t0 = max(4.0, min(18.0, duration * 0.06))
+    t1 = max(t0 + 2.4, min(duration - 4.0, duration * 0.42))
+    pin_x = max(8, int(overlay_x + strip_w // 2 - (min(680, max(320, strip_w + 80)) // 2)))
+    pin_y = max(80, int(220))
+    cmd = ["ffmpeg", "-y", "-i", video_path]
+    for p in paths:
+        cmd += ["-i", p]
+    if len(paths) == 1:
+        fc = (
+            f"[1:v]format=rgba,colorchannelmixer=aa=0.92[p1];"
+            f"[0:v][p1]overlay=x={pin_x}:y={pin_y}:enable='between(t,{t0:.3f},{t0+2.8:.3f})'[v]"
+        )
+    else:
+        # enable= 表达式必须在引号内闭合，输出标签 [v] 在引号外（否则 ffmpeg 会把 [v] 吃进表达式）
+        fc = (
+            f"[1:v]format=rgba,colorchannelmixer=aa=0.92[p1];"
+            f"[2:v]format=rgba,colorchannelmixer=aa=0.92[p2];"
+            f"[0:v][p1]overlay=x={pin_x}:y={pin_y}:enable='between(t,{t0:.3f},{t0+2.8:.3f})'[v1];"
+            f"[v1][p2]overlay=x={pin_x}:y={pin_y+58}:enable='between(t,{t1:.3f},{t1+2.8:.3f})'[v]"
+        )
+    cmd += [
+        "-filter_complex",
+        fc,
+        "-map",
+        "[v]",
         "-map",
         "0:a",
         "-c:v",
@@ -1807,6 +1925,45 @@ def kept_segments_from_silences(silences, duration, margin=0.1):
     return segments
 
 
+def _subtitle_gap_intervals(subtitles, duration, min_gap_sec: float) -> list[tuple[float, float]]:
+    """相邻字幕条之间的「空白段」，用于与 silencedetect 并集后一起剃掉。"""
+    if not subtitles or min_gap_sec <= 0:
+        return []
+    dur = float(duration)
+    subs = sorted(subtitles, key=lambda x: float(x.get("start", 0)))
+    gaps: list[tuple[float, float]] = []
+    head = float(subs[0].get("start", 0))
+    if head >= min_gap_sec:
+        gaps.append((0.0, head))
+    for i in range(len(subs) - 1):
+        a = float(subs[i].get("end", subs[i].get("start", 0)))
+        b = float(subs[i + 1].get("start", 0))
+        if b - a >= min_gap_sec:
+            gaps.append((a, b))
+    tail = float(subs[-1].get("end", 0))
+    if dur - tail >= min_gap_sec:
+        gaps.append((tail, dur))
+    return gaps
+
+
+def _merge_time_intervals(
+    intervals: list[tuple[float, float]],
+    join_eps: float = 0.03,
+) -> list[tuple[float, float]]:
+    """合并重叠或紧挨的时间段（用于音频静音 ∪ 字幕间隙）。"""
+    cleaned = [(float(s), float(e)) for s, e in intervals if e > s + 1e-6]
+    if not cleaned:
+        return []
+    cleaned.sort(key=lambda x: x[0])
+    out: list[list[float]] = [[cleaned[0][0], cleaned[0][1]]]
+    for s, e in cleaned[1:]:
+        if s <= out[-1][1] + join_eps:
+            out[-1][1] = max(out[-1][1], e)
+        else:
+            out.append([s, e])
+    return [(a, b) for a, b in out]
+
+
 def map_time_remove_silences(t, kept_segments):
     """原片时间 t（秒）→ 去掉静音后的新时间。"""
     t = float(t)
@@ -1939,7 +2096,10 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                  crop_vf=None, overlay_x=None, typewriter_subs=False,
                  vertical_fit_full=False, trim_silence=True,
                  subtitle_extra_delay=0.0, use_stickers=True,
-                 horizontal_center_pad=False):
+                 horizontal_center_pad=False,
+                 strong_audio_clean=False, keyword_pins=False,
+                 silence_noise_db=None, silence_min_duration=None, silence_trim_margin=None,
+                 merge_subtitle_gap_silences=True):
     """增强单个切片。vertical=True 时输出竖条，宽由 --crop-vf 决定（原生包络常见 560～750×1080；旧 498 为两段裁或 scale）。
     vertical_fit_full：整幅 16:9 缩放入 498×1080 + 上下黑边。
     horizontal_center_pad：与竖条塑形相同链路（封面/字幕仍按竖条叠在横版上），最后输出 1920×1080，中间为裁切条、左右黑边。
@@ -1972,6 +2132,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         out_w, out_h = width, height
         vf_use = ""
         overlay_pos = "0:0"
+        strip_overlay_x, strip_overlay_w = 0, width
     elif vertical:
         vf_use = (crop_vf or CROP_VF).strip()
         out_w, out_h = vertical_out_dimensions_from_vf(vf_use)
@@ -1983,10 +2144,12 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         if ox is None:
             ox = OVERLAY_X
         overlay_pos = f"{int(ox)}:0"
+        strip_overlay_x, strip_overlay_w = int(ox), int(out_w)
     else:
         out_w, out_h = width, height
         vf_use = CROP_VF
         overlay_pos = "0:0"
+        strip_overlay_x, strip_overlay_w = 0, width
     
     # 1. 字幕解析（相对原切片时间轴；去静音后会整体平移时间）
     sub_images = []
@@ -2063,10 +2226,17 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
             mode = "逐字渐显" if typewriter_subs else "随语音走动"
             print(f"  ✓ 字幕解析 ({len(subtitles)}条)，将烧录为{mode}字幕", flush=True)
 
-    # 2. 去静音：trim+concat 重编码，并 remap 字幕时间轴（此前仅检测未切除，成片仍带长停顿）
-    silences = detect_silence(clip_path, SILENCE_THRESHOLD, SILENCE_MIN_DURATION)
+    # 2. 去静音：silencedetect ∪ 字幕条间长间隙，trim+concat 重编码，并 remap 字幕时间轴
+    thr = float(silence_noise_db) if silence_noise_db is not None else float(SILENCE_THRESHOLD)
+    mind = float(silence_min_duration) if silence_min_duration is not None else float(SILENCE_MIN_DURATION)
+    marg = float(silence_trim_margin) if silence_trim_margin is not None else float(SILENCE_TRIM_MARGIN)
+    silences = detect_silence(clip_path, thr, mind)
+    if merge_subtitle_gap_silences and subtitles:
+        gaps = _subtitle_gap_intervals(subtitles, original_duration, SILENCE_SUBTITLE_GAP_MIN_SEC)
+        if gaps:
+            silences = _merge_time_intervals(list(silences) + gaps)
     silences = filter_silences_keep_tail_audio(silences, original_duration)
-    kept = kept_segments_from_silences(silences, original_duration, margin=SILENCE_TRIM_MARGIN)
+    kept = kept_segments_from_silences(silences, original_duration, margin=marg)
     removed_total = original_duration - sum(e - s for s, e in kept)
     if trim_silence and removed_total >= MIN_SILENCE_TRIM_TOTAL_SEC:
         trim_out = os.path.join(temp_dir, "trim_silence.mp4")
@@ -2230,19 +2400,32 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         print(f"  ✓ 表情贴片已叠加（自动主题匹配）", flush=True)
     else:
         print(f"  ⊘ 表情贴片跳过", flush=True)
+
+    # 5.26 关键词条（PIL PNG，与高光文案一致；非外链视频）
+    kw_out = os.path.join(temp_dir, "with_kw_pins.mp4")
+    if (
+        keyword_pins
+        and vertical
+        and not vertical_fit_full
+        and apply_keyword_pin_overlays(
+            current_video,
+            kw_out,
+            highlight_info,
+            duration,
+            strip_overlay_x,
+            strip_overlay_w,
+            temp_dir,
+        )
+    ):
+        current_video = kw_out
+        print(f"  ✓ 关键词条已烧录（竖条主区内）", flush=True)
     
     # 5.3 加速10% + 音频增强 + 同步（成片必做）
-    print(f"  [4/5] 加速 10% + 音频清晰化…", flush=True)
+    mode_audio = "强降噪会议室" if strong_audio_clean else "标准"
+    print(f"  [4/5] 加速 10% + 音频清晰化（{mode_audio}）…", flush=True)
     speed_output = os.path.join(temp_dir, 'speed.mp4')
 
-    # 音频处理链：高通去低频噪声 → 动态降噪 → 人声压缩增益 → 音量归一化
-    audio_enhance = (
-        "highpass=f=120,"             # 去掉 120Hz 以下的低频噪声/嗡嗡声
-        "lowpass=f=10000,"            # 去掉 10kHz 以上的高频噪声
-        "afftdn=nf=-30,"              # FFT 降噪（-30dBFS 噪底）
-        "compand=0.02|0.02:0.05|0.05:-60/-60|-30/-15|-20/-10|0/-3:6:0:0:0.02,"  # 动态压缩：抬升安静部分
-        "loudnorm=I=-16:LRA=7:TP=-1.5"  # EBU R128 响度归一化
-    )
+    audio_enhance = _audio_enhance_filter_str(bool(strong_audio_clean))
     # 加速 + 音频增强 合并成一次 ffmpeg
     cmd = [
         'ffmpeg', '-y', '-i', current_video,
@@ -2374,6 +2557,16 @@ def main():
         help="不去除静音长停顿（默认会切除 silencedetect 检出的静音并同步平移字幕时间轴）",
     )
     parser.add_argument(
+        "--silence-gentle",
+        action="store_true",
+        help="去静音参数改温和（少剃），成片仍留白较多时用默认即可，被切太碎时再开",
+    )
+    parser.add_argument(
+        "--no-subtitle-gap-merge",
+        action="store_true",
+        help="不把「字幕条之间长间隙」并入剃除，仅用音频 silencedetect",
+    )
+    parser.add_argument(
         "--subtitle-extra-delay",
         type=float,
         default=0.0,
@@ -2399,6 +2592,16 @@ def main():
         "--horizontal-full",
         action="store_true",
         help="横屏全幅成片：整幅 16:9（无左右黑边），高光/字幕/封面与竖屏 Skill 同源；不要与 --vertical / --crop-vf / --horizontal-center-pad 同用",
+    )
+    parser.add_argument(
+        "--strong-audio-clean",
+        action="store_true",
+        help="嘈杂会议室：加强高通与 FFT 降噪（仍保留片尾人声保护窗）",
+    )
+    parser.add_argument(
+        "--keyword-pins",
+        action="store_true",
+        help="竖条成片时在主画面内烧录 1～2 条半透明关键词条（来自 hook/摘要，非外链视频）",
     )
     args = parser.parse_args()
     
@@ -2474,12 +2677,23 @@ def main():
     print("="*60)
     print(
         f"功能: 封面+字幕+加速10%+去语气词"
-        + ("+去长静音" if not getattr(args, "no_trim_silence", False) else "")
+        + (
+            "+去长静音"
+            + (
+                "(温和)"
+                if getattr(args, "silence_gentle", False)
+                else "(剃空白+字幕间隙)"
+            )
+            if not getattr(args, "no_trim_silence", False)
+            else ""
+        )
         + ("+竖屏条(高1080宽随vf)" if vertical and not hpad else "")
         + ("+横屏单中屏(竖条+左右黑边)" if hpad else "")
         + ("+横屏全幅(整幅叠字幕)" if hfull else "")
         + ("+全画面letterbox(不裁竖条)" if vertical and vfit else "")
         + ("+逐字字幕" if typewriter else "")
+        + ("+强降噪" if getattr(args, "strong_audio_clean", False) else "")
+        + ("+关键词条" if getattr(args, "keyword_pins", False) else "")
     )
     if vertical and crop_vf_arg and not vfit:
         print(f"取景: --crop-vf {crop_vf_arg}")
@@ -2503,6 +2717,15 @@ def main():
     total = len(clips)
     print(f"\n找到 {total} 个 mp4，highlights {len(highlights)} 条；仅处理序号 1～{len(highlights)} 的切片\n", flush=True)
 
+    if getattr(args, "silence_gentle", False):
+        snd, smin, smar = (
+            SILENCE_GENTLE_THRESHOLD,
+            SILENCE_GENTLE_MIN_DURATION,
+            SILENCE_GENTLE_TRIM_MARGIN,
+        )
+    else:
+        snd = smin = smar = None
+
     success_count = 0
     for i, clip_path in enumerate(clips):
         clip_num = _parse_clip_index(clip_path.name) or (i + 1)
@@ -2513,19 +2736,30 @@ def main():
             )
             continue
         highlight_info = highlights[clip_num - 1]
-        title_display = (highlight_info.get("hook_3sec") or highlight_info.get("title") or clip_path.stem)[
-            :36
-        ]
+        title_display = (
+            highlight_info.get("viral_hook")
+            or highlight_info.get("hook_3sec")
+            or highlight_info.get("title")
+            or clip_path.stem
+        )[:36]
         print("=" * 60, flush=True)
         print(f"【成片进度】 {i+1}/{total}  {title_display}", flush=True)
         print("=" * 60, flush=True)
         
         if getattr(args, "title_only", False):
-            display = pick_cover_hook_text(highlight_info) or highlight_info.get("title") or clip_path.stem
-            title = _limit_cover_hook_display(
-                _normalize_title_for_display(str(display)) or str(display),
-            ) or str(display)
-            name = sanitize_filename(title) + ".mp4"
+            # 文件名：优先 highlights「title」完整抖音向长标题（sanitize 72 字内）；封面仍由 enhance_clip 内 pick_cover_hook（viral_hook 短句）
+            long_t = (highlight_info.get("title") or "").strip()
+            short_fallback = pick_cover_hook_text(highlight_info) or long_t or clip_path.stem
+            fn_src = long_t if long_t else short_fallback
+            fn_norm = _normalize_title_for_display(str(fn_src)) or str(fn_src)
+            stem = sanitize_filename(fn_norm, max_length=72)
+            if not stem or stem == "片段":
+                stem = sanitize_filename(
+                    _normalize_title_for_display(str(short_fallback)) or str(short_fallback),
+                    max_length=50,
+                )
+            # 同场多条高光标题可能相同，必须带切片序号防覆盖
+            name = f"{stem}_{clip_num:02d}.mp4"
             output_path = output_dir / name
         else:
             output_path = output_dir / clip_path.name.replace('.mp4', '_enhanced.mp4')
@@ -2549,6 +2783,12 @@ def main():
                 subtitle_extra_delay=float(getattr(args, "subtitle_extra_delay", 0.0) or 0.0),
                 use_stickers=getattr(args, "stickers", True) and not getattr(args, "no_stickers", False),
                 horizontal_center_pad=hpad,
+                strong_audio_clean=getattr(args, "strong_audio_clean", False),
+                keyword_pins=getattr(args, "keyword_pins", False),
+                silence_noise_db=snd,
+                silence_min_duration=smin,
+                silence_trim_margin=smar,
+                merge_subtitle_gap_silences=not getattr(args, "no_subtitle_gap_merge", False),
             ):
                 success_count += 1
         finally:
@@ -2559,28 +2799,125 @@ def main():
     print(f"📁 输出目录: {output_dir}")
     print("="*60)
     
-    generate_index(highlights, output_dir)
+    generate_index(
+        highlights,
+        output_dir,
+        title_only=getattr(args, "title_only", False),
+    )
 
-def generate_index(highlights, output_dir):
-    """生成目录索引（标题/Hook/CTA 统一简体中文），索引写在输出目录内"""
+
+def generate_index(highlights, output_dir, title_only: bool = False):
+    """生成目录索引：源时段、源窗/成片时长、标题、Hook、成片文件名。"""
+    generate_index_v2(highlights, Path(output_dir), title_only=title_only)
+
+
+def _parse_hhmmss_to_sec(t: str) -> float | None:
+    t = str(t).strip()
+    if not t:
+        return None
+    parts = t.split(":")
+    try:
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + float(parts[2])
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + float(parts[1])
+        return float(parts[0])
+    except (TypeError, ValueError):
+        return None
+
+
+def _ffprobe_duration_sec(path: Path) -> float | None:
+    if not path.exists():
+        return None
+    try:
+        r = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        if r.returncode != 0:
+            return None
+        return float(r.stdout.strip())
+    except (ValueError, subprocess.TimeoutExpired, OSError):
+        return None
+
+
+def _find_title_only_output(output_dir: Path, clip_index: int) -> Path | None:
+    """title-only 成片：*_{idx:02d}.mp4（取字典序最后一条，兼容重跑残留）。"""
+    pat = re.compile(r"_(\d{2})\.mp4$")
+    hits: list[Path] = []
+    for p in output_dir.glob("*.mp4"):
+        m = pat.search(p.name)
+        if m and int(m.group(1)) == clip_index:
+            hits.append(p)
+    if not hits:
+        return None
+    return sorted(hits)[-1]
+
+
+def generate_index_v2(highlights, output_dir: Path, title_only: bool = False):
+    """生成目录索引：含源时段、源窗时长(秒)、成片时长(ffprobe，title-only 时尽力匹配文件)。"""
     index_path = output_dir / "目录索引.md"
-    
-    with open(index_path, 'w', encoding='utf-8') as f:
+
+    with open(index_path, "w", encoding="utf-8") as f:
         f.write("# Soul派对 - 成片目录\n\n")
         f.write(
-            "**优化**: 高光 Hook 封面（轻模糊底+冷色渐变+底渐隐+顶栏品牌色）+逐字字幕+去长静音+片尾 CTA+加速10%（竖屏宽随 crop-vf）\n\n"
+            "**优化**: 高光 Hook 封面 + 逐字字幕 + 去长静音 + 片尾 CTA；"
+            "源窗时长为 highlights 起止差，成片时长为 ffprobe（trim 后与源窗可能不同）。\n\n"
         )
-        f.write("## 切片列表\n\n")
-        f.write("| 序号 | 标题 | Hook | CTA |\n")
-        f.write("|------|------|------|-----|\n")
-        
+        f.write(
+            "| 序号 | 源时段 | 源窗秒 | 成片秒 | 标题 | Hook | 成片文件 |\n"
+            "|------|--------|--------|--------|------|------|----------|\n"
+        )
+
         for i, clip in enumerate(highlights, 1):
             title = _to_simplified(clip.get("title", f"clip_{i}"))
             hook = _to_simplified(clip.get("hook_3sec", ""))
-            cta = _to_simplified(clip.get("cta_ending", ""))
-            f.write(f"| {i} | {title} | {hook} | {cta} |\n")
-    
+            st = clip.get("start_time") or clip.get("start") or ""
+            et = clip.get("end_time") or clip.get("end") or ""
+            span = None
+            ss = _parse_hhmmss_to_sec(st) if st else None
+            es = _parse_hhmmss_to_sec(et) if et else None
+            if ss is not None and es is not None:
+                span = max(0.0, es - ss)
+            span_s = f"{span:.0f}" if span is not None else "—"
+
+            out_name = "—"
+            final_d = "—"
+            if title_only:
+                outp = _find_title_only_output(output_dir, i)
+                if outp:
+                    out_name = outp.name
+                    fd = _ffprobe_duration_sec(outp)
+                    if fd is not None:
+                        final_d = f"{fd:.1f}"
+            else:
+                # 非 title-only：沿用原名 _enhanced
+                stem_guess = sorted(output_dir.glob(f"*{i:02d}*.mp4"))
+                for p in stem_guess:
+                    if "_enhanced" in p.name or p.suffix == ".mp4":
+                        fd = _ffprobe_duration_sec(p)
+                        if fd is not None:
+                            out_name = p.name
+                            final_d = f"{fd:.1f}"
+                            break
+
+            f.write(
+                f"| {i} | {st}→{et} | {span_s} | {final_d} | {title} | {hook} | {out_name} |\n"
+            )
+
     print(f"\n📋 目录索引: {index_path}")
+
 
 if __name__ == "__main__":
     main()

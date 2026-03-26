@@ -98,6 +98,7 @@ updated: "2026-03-24"
 
 - **语言**：从 `transcript.srt` 解析、逐词路径、标点补强、封面 `hook_3sec` / `question` / 主标题引用、片尾 `cta_ending` 等，**一律经 `_to_simplified`（OpenCC t2s + 兜底映射）**，成片与收录进烧录层的文案**不出现繁体残留**（`highlights.json` 里仍可手写繁体，渲染时转简）。
 - **片尾完整性**：`soul_enhance.py` 在去静音前对 `silencedetect` 结果做 **`filter_silences_keep_tail_audio`**：最后 **`SILENCE_TAIL_PRESERVE_SEC`（默认约 2.85s）** 内的静音**不参与切除**，避免「最后几秒被剪成完全无声」。若原片结尾本身无对白，仍可能偏静，需在剪辑/高光时段上保证收尾句落在片尾窗内。
+- **剃空白（默认更狠，v2.13）**：默认 **`silencedetect` 阈值 -32dB、最短 0.22s**，并与 **字幕条之间 ≥0.52s 的间隙** 做并集后一起切除（会议留白、有底噪但无对白更易剃掉）。仍嫌碎或误剪：加 **`--silence-gentle`** 回退旧参数；只要音频不要字幕间隙：加 **`--no-subtitle-gap-merge`**。
 
 ### 贴片库与表情库（v2.6→v2.10 默认开启）
 
@@ -126,7 +127,7 @@ updated: "2026-03-24"
 ```
 
 - **batch_clip**：输出到 `clips/`
-- **soul_enhance -o 成片/ --title-only**（**推荐仍写 `--vertical`**）：自 v2.3 起，只要带了 **`--title-only` 和/或 `--crop-vf` / `--vertical-fit-full`**，脚本会**默认启用竖屏直出**，避免漏写 `--vertical` 误出 1920×1080 横版。**文件名 = 封面标题 = highlights 的 title**（去杠：`：｜、—、/` 等替换为空格）；字幕烧录；去语助词；竖条裁剪直出到 `成片/`
+- **soul_enhance -o 成片/ --title-only**（**推荐仍写 `--vertical`**）：自 v2.3 起，只要带了 **`--title-only` 和/或 `--crop-vf` / `--vertical-fit-full`**，脚本会**默认启用竖屏直出**，避免漏写 `--vertical` 误出 1920×1080 横版。**抖音向标题（v2.14）**：`highlights_keyword_focus.py` 默认把 **`title` 写成「完整热点长标题」**（悬念/反问 +｜+ 锚点原句，约 30 汉字内，不编故事）；**`viral_hook` 为左半句短 punch** 供封面大字；**成片文件名**优先用 **`title` 整句**（sanitize 约 72 字内 + `_01` 防覆盖），**封面烧录**仍走 `pick_cover_hook`（`viral_hook` 优先）。**时长与片尾人声（v2.15）**：无 API 关键词高光默认 **`--min-duration 60`～`--max-duration 300`（1～5 分钟）**；粗窗生成后再按字幕**收束到首条人声起、最后一条人声止**（去掉片尾长静音），**相邻字幕间隔 > `--topic-break-gap`（默认 12s）** 视为换话题时优先在上一句收束，尽量一条=一段完整表述；可调 **`--tail-pad`**。无 API：`python3 highlights_keyword_focus.py transcript.srt -o highlights.json`；可调 **`--title-max-cjk 34`**；要贴首句、不要抖音长标题： **`--plain-hooks`**。
 
 ### 3.1 全画面参数（必做约定）
 

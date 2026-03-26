@@ -6,7 +6,7 @@
 - 并行分发：5 平台同时上传（asyncio.gather）
 - 去重：每条视频按其在目录中的序号对齐排期（不因前面跳过而错位）
 - 失败重试：--retry；Cookie 预警；结果写入 publish_log.json
-- 视频号登录：默认静默（仅同步 Cookie 路径，不弹窗）；需要自动扫码时加 --auto-channels-login；NO_AUTO_CHANNELS_LOGIN=1 强制静默
+- 视频号：发稿走 channels_api_publish（与「视频号发布/SKILL.md · 〇」一致）；登录推荐本机 CHANNELS_SILENT_QR=1 channels_login.py --silent-qr。需要自动调起登录进程时加 --auto-channels-login；NO_AUTO_CHANNELS_LOGIN=1 强制静默
 
 用法:
   python3 distribute_all.py                        # 智能错峰定时排期
@@ -59,7 +59,7 @@ CHANNELS_LOGIN_SCRIPT = BASE_DIR / "视频号发布" / "脚本" / "channels_logi
 LOGIN_COMMANDS = {
     "抖音": f'python3 "{BASE_DIR / "抖音发布" / "脚本" / "douyin_login.py"}"',
     "B站": f'python3 "{BASE_DIR / "B站发布" / "脚本" / "bilibili_login.py"}"',
-    "视频号": f'python3 "{BASE_DIR / "视频号发布" / "脚本" / "channels_login.py"} --playwright-only"',
+    "视频号": f'CHANNELS_SILENT_QR=1 python3 "{CHANNELS_LOGIN_SCRIPT}" --silent-qr',
     "小红书": f'python3 "{BASE_DIR / "小红书发布" / "脚本" / "xiaohongshu_login.py"}"',
     "快手": f'python3 "{BASE_DIR / "快手发布" / "脚本" / "kuaishou_login.py"}"',
 }

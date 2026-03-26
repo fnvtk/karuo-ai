@@ -12,6 +12,8 @@ from typing import Optional
 
 RESULT_LOG = Path(__file__).parent / "publish_log.json"
 UPLOAD_LIBRARY_LOG = Path(__file__).parent / "upload_library.jsonl"
+# 平台侧已删除/作废发布时追加一行，从去重集合中排除（避免仅删 upload_library 仍被 publish_log 卡住）
+DEDUP_REVOKE_LOG = Path(__file__).parent / "publish_dedup_revoke.jsonl"
 
 
 def _video_signature(video_path: str) -> str:
@@ -23,8 +25,30 @@ def _video_signature(video_path: str) -> str:
         return p.name
 
 
+def _load_dedup_revoke_names() -> set[tuple[str, str]]:
+    """(platform, video basename) 不再视为已发布去重。"""
+    out: set[tuple[str, str]] = set()
+    if not DEDUP_REVOKE_LOG.exists():
+        return out
+    with open(DEDUP_REVOKE_LOG, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+                pf = (rec.get("platform") or "").strip()
+                name = (rec.get("video_name") or "").strip()
+                if pf and name:
+                    out.add((pf, name))
+            except json.JSONDecodeError:
+                continue
+    return out
+
+
 def _load_library_set() -> set[tuple[str, str]]:
     out = set()
+    revoked_names = _load_dedup_revoke_names()
     if not UPLOAD_LIBRARY_LOG.exists():
         return out
     with open(UPLOAD_LIBRARY_LOG, "r", encoding="utf-8") as f:
@@ -37,6 +61,9 @@ def _load_library_set() -> set[tuple[str, str]]:
                 pf = rec.get("platform", "")
                 sig = rec.get("video_signature", "")
                 if pf and sig:
+                    fname = sig.split("|", 1)[0]
+                    if (pf, fname) in revoked_names:
+                        continue
                     out.add((pf, sig))
             except json.JSONDecodeError:
                 continue
@@ -89,6 +116,7 @@ def save_results(results: list[PublishResult]):
 def load_published_set() -> set[tuple[str, str]]:
     """加载已成功发布集合（兼容旧日志 + 上传库）。"""
     published = set()
+    revoked_names = _load_dedup_revoke_names()
     if RESULT_LOG.exists():
         with open(RESULT_LOG, "r", encoding="utf-8") as f:
             for line in f:
@@ -99,14 +127,17 @@ def load_published_set() -> set[tuple[str, str]]:
                     rec = json.loads(line)
                     if rec.get("success"):
                         fname = Path(rec.get("video_path", "")).name
-                        published.add((rec["platform"], fname))
+                        plat = rec.get("platform", "")
+                        if fname and (plat, fname) in revoked_names:
+                            continue
+                        published.add((plat, fname))
                 except json.JSONDecodeError:
                     continue
 
     # 同步上传库签名映射回文件名集合（保障去重不遗漏）
     for platform, sig in _load_library_set():
         fname = sig.split("|", 1)[0]
-        if fname:
+        if fname and (platform, fname) not in revoked_names:
             published.add((platform, fname))
     return published
 
@@ -114,6 +145,8 @@ def load_published_set() -> set[tuple[str, str]]:
 def is_published(platform: str, video_path: str) -> bool:
     """检查某条视频是否已成功发布到某平台（全平台上传库去重）。"""
     fname = Path(video_path).name
+    if (platform, fname) in _load_dedup_revoke_names():
+        return False
     if (platform, fname) in load_published_set():
         return True
     sig = _video_signature(video_path)

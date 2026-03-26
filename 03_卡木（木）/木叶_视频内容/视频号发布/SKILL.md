@@ -6,17 +6,28 @@ description: >
 triggers: 视频号发布、发布到视频号、视频号登录、视频号上传、微信视频号
 owner: 木叶
 group: 木
-version: "3.2"
-updated: "2026-03-24"
+version: "3.3"
+updated: "2026-03-26"
 ---
 
-# 视频号发布 Skill（v3.2）
+# 视频号发布 Skill（v3.3）
 
 > **核心能力**：发布链路纯 **httpx**；**登录**阶段用 Playwright（默认持久化 Chromium，减少重复扫码）。
 > **实测**：120 场 12 条切片全部 API 直发成功，单条 5~9 秒。
 > **去重**：基于 publish_log.jsonl，同一视频不重复发。
 > **Cookie 有效期**：~24-48h，过期需刷新。`channels_login.py` 默认 **持久化 Chromium 用户目录**（`~/.soul-channels-playwright-profile`），同机同账号在腾讯会话未失效时**通常不必每次扫码**；`CHANNELS_PERSISTENT_LOGIN=0` 或 `--no-persistent` 可关。  
 > **开放平台 access_token**：**不能**替代助手 Cookie 发短视频（官方助手 API 列表无上传发表接口），见 `REFERENCE_开放能力_数据与集成.md` 与 `脚本/channels_open_platform_publish.py`。
+
+---
+
+## 〇、卡若默认分发范式（以后统一按此执行）
+
+1. **登录（默认无界面）**：`CHANNELS_SILENT_QR=1 python3 channels_login.py --silent-qr`，用微信扫 **`/tmp/channels_qr.png`**。若需补全 **`finder_raw`**（纯 API 必用），登录成功后进助手 **「创建/发表」** 页一次即可。调试或静默失败时才用 `python3 channels_login.py --playwright-only`。
+2. **发稿主路径（API + CLI）**：`python3 channels_api_publish.py --video-dir "<含 mp4 的目录>"`（全 **httpx**，无网页控件）。
+3. **回补路径（仍是无头 CLI）**：当 localStorage **缺 `finder_raw`** 等导致 API 无法前置时，`channels_api_publish.py` 以 **exit 2** 退出；此时用 `python3 channels_web_cli.py publish-dir …`（Playwright 无头 + `post_create` 注入定时）。日常不必手抄：见下条。
+4. **一键编排（推荐入口）**：`脚本/publish_auto.sh` = **先 API**，若 **exit 2** 则自动执行 **`publish-dir`**（默认间隔写在脚本内）。仅想跑 API、不要回补：`CHANNELS_NO_WEB_FALLBACK=1 ./publish_auto.sh --video-dir "…"`。
+5. **静默等登录再发**：`脚本/login_wait_and_publish.sh` = 轮询 `channels_web_cli check` 通过后执行 **`publish_auto.sh`**（同上 API→CLI）。
+6. **多平台整表**：`多平台分发/脚本/distribute_all.py` 含「视频号」时仍调用 **`channels_api_publish`** 的逐条接口；**单刷视频号目录**优先用本目录 `publish_auto.sh`，与 distribute 互补。
 
 ---
 
@@ -88,30 +99,38 @@ updated: "2026-03-24"
 
 ---
 
-## 三、一键命令
+## 三、一键命令（与「〇」一致；此处为可复制命令）
 
-**优先（纯接口、无网页控件）**：`channels_api_publish.py` — 全 **httpx**，走 `helper_upload_params` → DFS 分片 → `post_clip_video` → `post_create`。Cookie 仍须由 `channels_login.py` 写入 `channels_storage_state.json`（**localStorage 须含 `finder_raw`**，否则 `post_create` 会 300002）。
+**日常一条（API → 必要时自动 web_cli）**：
 
 ```bash
 cd /Users/karuo/Documents/个人/卡若AI/03_卡木（木）/木叶_视频内容/视频号发布/脚本
 
-# 1. 首次或 Cookie 过期：微信扫码登录（建议进一次发表页以注入 rawKeyBuff）
-python3 channels_login.py --playwright-only
+# 0. 过期时：默认无界面登录（扫 /tmp/channels_qr.png）
+CHANNELS_SILENT_QR=1 python3 channels_login.py --silent-qr
 
-# 2. 纯 API 批量发（推荐）
-python3 channels_api_publish.py --video-dir "/path/to/成片或切片目录"
-# 或环境变量：CHANNELS_VIDEO_DIR=/path/to/dir python3 channels_api_publish.py
-# 试跑前 2 条：python3 channels_api_publish.py --video-dir "..." --limit 2
+# 1. 编排发布（先 channels_api_publish.py；若 exit 2 缺 finder_raw 则自动 publish-dir）
+bash publish_auto.sh --video-dir "/path/to/成片或切片目录"
+# 仅 API：CHANNELS_NO_WEB_FALLBACK=1 bash publish_auto.sh --video-dir "..."
+# 试跑：bash publish_auto.sh --video-dir "..." --limit 2
 ```
 
-**备选（Playwright 点页面、F12 注入定时）**：需要页面控件或接口失败再排错时用：
+**只跑纯 API（排错/CI）**：须 **localStorage 含 `finder_raw`**，否则 **exit 2**（见脚本头注释）。
+
+```bash
+python3 channels_api_publish.py --video-dir "/path/to/成片或切片目录"
+# CHANNELS_VIDEO_DIR=/path/to/dir python3 channels_api_publish.py
+```
+
+**只跑 web CLI（回补或强制页面链路）**：
 
 ```bash
 python3 channels_web_cli.py publish-dir \
   --video-dir "<视频目录>" \
   --min-gap 10 --max-gap 25 \
   --start-after-min 5 --interval-min 15 \
-  --skip-list-verify --max-attempts 5
+  --max-attempts 5
+# 列表核验易误判时可加：--skip-list-verify
 ```
 
 ---
@@ -134,9 +153,11 @@ python3 channels_web_cli.py publish-dir \
 | `credentials/README.md` | **开放平台 AppID/AppSecret** 存放约定（`.env.open_platform`，勿提交） |
 | `credentials/open_platform.env.example` | 环境变量模板 |
 | `脚本/channels_open_fetch.py` | **开放平台**：拉账号/直播记录/预约/罗盘 GMV（无单条短视频播放接口） |
-| `脚本/channels_api_publish.py` | **主脚本**：纯 API 视频上传+发布 (v5) |
+| `脚本/channels_api_publish.py` | **主脚本**：纯 API 视频上传+发布；缺 `finder_raw` 时 **exit 2** |
+| `脚本/publish_auto.sh` | **默认编排**：API 优先，`exit 2` 自动 `publish-dir` |
+| `脚本/login_wait_and_publish.sh` | 静默扫码 → check 通过 → `publish_auto.sh` |
 | `脚本/channels_publish.py` | 旧版 Playwright 发布（备用） |
-| `脚本/channels_login.py` | Playwright 微信扫码登录 |
+| `脚本/channels_login.py` | Playwright 微信扫码登录（默认推荐 `--silent-qr`） |
 | `脚本/channels_storage_state.json` | Cookie + localStorage 存储 |
 | `脚本/channels_task_id.txt` | videoClipTaskId 存储 |
 
@@ -167,13 +188,14 @@ python3 channels_web_cli.py publish-dir \
 
 ---
 
-## 七、当前默认执行规范（2026-03-24 更新）
+## 七、当前默认执行规范（2026-03-26 更新）
 
-- **强制无界面**：`channels_web_cli.py` 默认强制 `headless=True`，即使传 `--show` 也忽略（仅打印提示）。
-- **定时来源唯一**：计划发布时间只走「计划发布控件 + post_create 注入」，**不再写入描述文本**。
-- **间隔策略**：默认 `--min-gap 10 --max-gap 25`，即每条发布定时间隔在 **10~25 分钟**。
-- **真实提交间隔**：每条视频在排期时间前 2 分钟才开始上传提交（`cmd_publish_dir` 内 `asyncio.sleep` 等到目标时刻），避免密集提交触发平台"同质化内容"检测。
-- **发布判定**：`post_create/post_publish` 命中 + `errCode=0` 作为成功主判据（可选列表核验）。
+- **总默认**：见 **「〇、卡若默认分发范式」** — 静默登录 → **`channels_api_publish`（CLI）** → 仅当 **exit 2** 时用 **`channels_web_cli publish-dir`（CLI）**；`publish_auto.sh` 已封装。
+- **web_cli 子规范（回补路径）**：`channels_web_cli.py` 默认强制 `headless=True`，即使传 `--show` 也忽略（仅打印提示）。
+- **定时来源唯一（web 路径）**：计划发布时间只走「计划发布控件 + post_create 注入」，**不再写入描述文本**。
+- **间隔策略（publish_auto 回补段）**：`--min-gap 10 --max-gap 25`，即每条定时间隔在 **10~25 分钟**；`--start-after-min 5 --interval-min 15` 与脚本内排期一致。
+- **真实提交间隔**：`cmd_publish_dir` 内可在排期前再上传（见脚本注释），避免密集触发同质化检测。
+- **发布判定**：`post_create` 命中 + `errCode=0` 为主；可选 `post_list` 核验。
 
 ---
 

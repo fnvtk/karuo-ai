@@ -8,6 +8,11 @@ CLI:
   CHANNELS_VIDEO_DIR=/path/to/dir python3 channels_api_publish.py
   python3 channels_api_publish.py --video-dir ... --limit 3   # 只发前 3 条待发布
 
+退出码（供 publish_auto.sh 编排）:
+  0 — 全部成功或「待发布为 0 / 全部已发布」
+  1 — 目录无效、会话无效、或发布过程中失败（含部分失败）
+  2 — 纯 API 前置不满足（典型：localStorage 缺 finder_raw），可回退 channels_web_cli publish-dir
+
 v8 修复 (2026-03-13):
 - 添加 post_clip_video 转码步骤（浏览器必需的中间步骤）
 - URL 改写: wxapp.tc.qq.com → finder.video.qq.com（与浏览器一致）
@@ -950,11 +955,14 @@ async def main():
     if not finder_raw_main:
         print(
             "[!] 纯 API 发表需要 localStorage 里的 finder_raw（rawKeyBuff），当前缺失 → post_create 会 300002。\n"
-            "    请执行: python3 channels_login.py --playwright-only\n"
-            "    登录后进入一次「创建/发表」页，等终端出现 Cookie 已保存后再跑本脚本。\n",
+            "    可任选其一：\n"
+            "    A) 无界面补登：CHANNELS_SILENT_QR=1 python3 channels_login.py --silent-qr（扫 /tmp/channels_qr.png），"
+            "再进助手「创建/发表」页一次写入 raw。\n"
+            "    B) 编排回补：同目录 ./publish_auto.sh --video-dir \"…\"（先 API，本情况 exit 2 后自动 channels_web_cli publish-dir）。\n"
+            "    C) 调试有头：python3 channels_login.py --playwright-only 并进发表页。\n",
             flush=True,
         )
-        return 1
+        return 2
     print(f"  finder_raw: OK（{len(finder_raw_main)} 字符）", flush=True)
 
     videos = sorted(video_dir.glob("*.mp4"))
