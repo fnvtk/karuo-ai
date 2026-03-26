@@ -56,3 +56,19 @@ python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储
 
 - **Mongo 同步** → **飞书复盘 webhook**（**仅当**用户**当轮口述**要发，见 `karuo-ai.mdc`；**默认跳过**）→ **Gitea 自动同步**（若本轮改仓库文件）→ **复盘块收尾**。  
 具体以 `.cursor/rules/karuo-ai.mdc` 为准。
+
+---
+
+## 六、每日全库整理（低频 · 同一天只跑一次）
+
+对 **`karuo_site`** 做键去重、对话/消息文本空白与空行规范化、**记忆条目**同质化合并，并子进程执行 **记忆.md → `记忆条目`**（`sync_memory_to_mongo.py`），最后刷新 **`项目分类`**。日期戳文件：`02_卡人（水）/水溪_整理归档/记忆系统/structured/last_mongo_consolidate_date.txt`（与 `collect_chat_daily` 同目录）。
+
+```bash
+python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/聊天记录管理/脚本/mongo_daily_consolidate.py"
+```
+
+- 当日已跑过会跳过；需要再跑：`--force`  
+- 只看统计不写库：`--dry-run`  
+- 不跑记忆.md 同步：`--skip-memory-sync`  
+- 需物理删除「规范化后无正文」的占位消息时（量大、慎用）：`--purge-empty-messages`；默认**不删**，只做空白/空行规范化  
+- 连接串：`MONGO_URI` / `MONGO_DB`（与 `ensure_mongo_chat_indexes.py` 一致）
