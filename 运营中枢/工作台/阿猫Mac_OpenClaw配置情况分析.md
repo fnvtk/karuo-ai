@@ -193,6 +193,7 @@
 | **进程** | **`/usr/local/opt/node/bin/node`** + `…/openclaw/dist/index.js gateway --port 18789`（**禁止**用 `~/.local/node22` 的 22.14，否则不满足 OpenClaw ≥22.16）。 |
 | **日志** | `~/.openclaw/launchd-gateway-longmao.out.log` / `launchd-gateway-longmao.err.log`。 |
 | **重装/修复** | 在能 SSH 的机器上执行：`bash 运营中枢/工作台/脚本/amiao_install_openclaw_launchagent.sh`（可用环境变量 `AMIAO_SSH` 覆盖 SSH 命令）。 |
+| **配置升级后起不来** | 若 `launchd-gateway-longmao.err.log` 出现 **`Config invalid`**（例如 `tools.media.audio.models.0: Unrecognized key: "apiKey"`），在阿猫上用 **Homebrew Node** 执行：`PATH="/usr/local/opt/node/bin:/Users/kr/.local/share/npm-global/bin:$PATH" openclaw doctor --fix`，再 `launchctl kickstart -k "gui/$(id -u)/com.openclaw.gateway.longmao"`。 |
 | **旧任务** | 曾存在的 **`ai.openclaw.gateway`** 已 **unload** 且 plist 改名为 `ai.openclaw.gateway.plist.off_20260327`，避免与龙虾 **双实例抢端口** 或用错 Node。 |
 | **范围说明** | 本 plist 在 **`~/Library/LaunchAgents`**，属 **用户级**：**开机后需用户 kr 登录 macOS 一次** 才会加载；未登录桌面会话前不会启动（与系统级 LaunchDaemon 不同）。 |
 
