@@ -11,13 +11,13 @@ if [ -f "/Users/karuo/Documents/开发/4、小工具/服务器管理/Steam/id_ed
   echo ">>> 尝试密钥登录 (port 22022)..."
   if ssh -p 22022 -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
      -i "/Users/karuo/Documents/开发/4、小工具/服务器管理/Steam/id_ed25519" \
-     root@"$HOST" $CMD 2>/dev/null; then
+     root@"$HOST" "bash -lc $(printf '%q' "$CMD")" 2>/dev/null; then
     exit 0
   fi
   echo ">>> 尝试密钥登录 (port 22)..."
   if ssh -p 22 -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
      -i "/Users/karuo/Documents/开发/4、小工具/服务器管理/Steam/id_ed25519" \
-     root@"$HOST" $CMD 2>/dev/null; then
+     root@"$HOST" "bash -lc $(printf '%q' "$CMD")" 2>/dev/null; then
     exit 0
   fi
 fi
@@ -27,12 +27,12 @@ echo ">>> 尝试密码登录 root@$HOST (port 22022)..."
 if command -v sshpass >/dev/null 2>&1; then
   if sshpass -p 'Zhiqun1984' ssh -p 22022 -o StrictHostKeyChecking=no \
      -o PubkeyAuthentication=no -o PreferredAuthentications=password \
-     root@"$HOST" $CMD 2>/dev/null; then
+     root@"$HOST" "bash -lc $(printf '%q' "$CMD")" 2>/dev/null; then
     exit 0
   fi
   echo ">>> 尝试密码登录 (port 22)..."
   if sshpass -p 'Zhiqun1984' ssh -p 22 -o StrictHostKeyChecking=no \
-     -o PubkeyAuthentication=no root@"$HOST" $CMD 2>/dev/null; then
+     -o PubkeyAuthentication=no root@"$HOST" "bash -lc $(printf '%q' "$CMD")" 2>/dev/null; then
     exit 0
   fi
 fi
