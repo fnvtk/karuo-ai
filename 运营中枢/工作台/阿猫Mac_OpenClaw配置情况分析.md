@@ -199,4 +199,16 @@
 
 ---
 
+## 十六、龙虾守护 com.openclaw.lobster.guard（自动检测 + 自动修复）
+
+| 项目 | 说明 |
+|------|------|
+| **目的** | **一旦检出不可用**（18789 未监听 **或** 飞书通道 `probe` 非 ok），在阿猫本机 **自动**：必要时 **`openclaw doctor --fix`**（仅当网关 err 日志含 `Config invalid`，且 **最多每 3600 秒一次**，避免反复改写配置）→ **`launchctl kickstart`** 龙虾网关 → 仍失败则 **pkill 网关进程后再 kickstart**。 |
+| **脚本** | `~/.openclaw/lobster_guard.sh`（仓库真源：`运营中枢/工作台/脚本/amiao_lobster_guard.sh`）。 |
+| **定时** | `~/Library/LaunchAgents/com.openclaw.lobster.guard.plist`：**登录后加载**，之后 **每 180 秒** 执行一轮（`StartInterval`）。 |
+| **日志** | 修复动作与结果：`~/.openclaw/lobster_guard.log`；launchd 包裹输出：`lobster_guard_launchd.out.log` / `lobster_guard_launchd.err.log`。 |
+| **与 Cursor 协作** | 卡若侧对话中若发现龙虾异常：能 SSH 则跑 **`amiao_install_openclaw_launchagent.sh`**（会同步最新守护脚本与 plist），或单次 `ssh … 'bash ~/.openclaw/lobster_guard.sh'`。 |
+
+---
+
 *文档生成：卡若AI 工作台。*

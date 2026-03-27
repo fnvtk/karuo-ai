@@ -3,12 +3,17 @@
 # 默认：ssh -p 22203 kr@macbook.quwanzhi.com
 set -euo pipefail
 AMIAO_SSH="${AMIAO_SSH:-ssh -p 22203 kr@macbook.quwanzhi.com}"
-REPO_PLIST="$(cd "$(dirname "$0")" && pwd)/com.openclaw.gateway.longmao.plist"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_PLIST="$SCRIPT_DIR/com.openclaw.gateway.longmao.plist"
+REPO_GUARD_PLIST="$SCRIPT_DIR/com.openclaw.lobster.guard.plist"
+REPO_GUARD_SH="$SCRIPT_DIR/amiao_lobster_guard.sh"
 
-if [[ ! -f "$REPO_PLIST" ]]; then
-  echo "缺少 $REPO_PLIST" >&2
-  exit 1
-fi
+for f in "$REPO_PLIST" "$REPO_GUARD_PLIST" "$REPO_GUARD_SH"; do
+  if [[ ! -f "$f" ]]; then
+    echo "缺少 $f" >&2
+    exit 1
+  fi
+done
 
 echo ">>> 推 plist 并加载 LaunchAgent（用户 kr）…"
 $AMIAO_SSH bash -s <<'ENDREMOTE'
@@ -50,4 +55,25 @@ echo "=== stderr 末 20 行 ==="
 tail -20 "$HOME/.openclaw/launchd-gateway-longmao.err.log" 2>/dev/null || true
 ENDREMOTE
 
+echo ">>> 安装龙虾守护（每 3 分钟自检 + 自动修复）…"
+$AMIAO_SSH 'mkdir -p ~/.openclaw'
+$AMIAO_SSH "cat > /Users/kr/.openclaw/lobster_guard.sh" < "$REPO_GUARD_SH"
+$AMIAO_SSH "chmod +x /Users/kr/.openclaw/lobster_guard.sh"
+$AMIAO_SSH "cat > /Users/kr/Library/LaunchAgents/com.openclaw.lobster.guard.plist" < "$REPO_GUARD_PLIST"
+
+$AMIAO_SSH bash -s <<'ENDREMOTE'
+set -euo pipefail
+UID_NUM="$(id -u)"
+GPLIST="$HOME/Library/LaunchAgents/com.openclaw.lobster.guard.plist"
+chmod 644 "$GPLIST"
+launchctl bootout "gui/$UID_NUM/com.openclaw.lobster.guard" 2>/dev/null || launchctl unload "$GPLIST" 2>/dev/null || true
+launchctl bootstrap "gui/$UID_NUM" "$GPLIST" 2>/dev/null || launchctl load -w "$GPLIST"
+launchctl enable "gui/$UID_NUM/com.openclaw.lobster.guard" 2>/dev/null || true
+echo "=== launchctl | guard ==="
+launchctl list | grep lobster || true
+echo "=== 立即跑一轮守护脚本 ==="
+/bin/bash "$HOME/.openclaw/lobster_guard.sh" || true
+ENDREMOTE
+
 echo ">>> 完成。阿猫重启或注销后需用户 kr 登录一次，LaunchAgent 才会再次加载（用户级规则）。"
+echo ">>> 守护日志：~/.openclaw/lobster_guard.log"
