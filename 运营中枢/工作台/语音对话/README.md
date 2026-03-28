@@ -17,6 +17,16 @@
    若路径不同：`export VOICE_RUNTIME_SRC=/你的路径`  
 3. 在该目录内**首次**已执行 `bash scripts/setup.sh`（生成 `.venv`、安装依赖；需 Python 3.9+，完整前端构建需 Node 20+）。
 
+## 一键写入网关 Token（推荐）
+
+本机已有 `~/.openclaw/openclaw.json` 时**勿手抄 Token**，执行（不写回聊天、`.env` 已 gitignore）：
+
+```bash
+node "/Users/karuo/Documents/个人/卡若AI/运营中枢/工作台/脚本/apply_openclaw_to_tryvoice_env.js"
+```
+
+可选远程网关：`OPENCLAW_GATEWAY_URL_OVERRIDE=http://IP:18789 node .../apply_openclaw_to_tryvoice_env.js`
+
 ## 官网控制台 · 语音全链路测试
 
 在 **`卡若ai网站/site`** 目录（需已 `pnpm install`、可选 `.env.local`）：
@@ -29,14 +39,14 @@ VOICE_TEST_BASE=http://127.0.0.1:3102 pnpm run test:voice
 VOICE_TEST_SKIP_LLM=1 pnpm run test:voice
 ```
 
-覆盖：**前端纠错 JSON**、**Mongo `settings` 语音键**、**HTTP 语音 API**、**POST /api/gateway/chat 契约**；脚本结束会打印 **浏览器人工验收** 步骤。TryVoice 7860 不在此脚本范围内。
+覆盖：**前端纠错 JSON**、**Mongo `settings` 语音键**、**HTTP 语音 API**、**POST /api/gateway/chat 契约**；可选 `TRYVOICE_BASE=http://127.0.0.1:7860` 探测 TryVoice `/health`。脚本结束会打印 **浏览器人工验收** 步骤。
 
 `next dev` 下偶发 `GET /api/chat/voice/status` 返回 404 时，脚本会自动短暂重试；生产 `next start` 一般无此现象。
 
 ## 启动
 
-1. `cp env.example .env`
-2. 编辑 `.env`：填写 `OPENCLAW_GATEWAY_TOKEN`（与网关 `gateway.auth.token` 一致），按需修改 `OPENCLAW_GATEWAY_URL`。
+1. `cp env.example .env`（若还没有）
+2. 优先执行上一节 **一键写入网关 Token**；否则手动编辑 `.env` 填写 `OPENCLAW_GATEWAY_TOKEN` / URL。
 3. 执行：  
    `bash "/Users/karuo/Documents/个人/卡若AI/运营中枢/工作台/脚本/start_voice_runtime.sh"`  
 
