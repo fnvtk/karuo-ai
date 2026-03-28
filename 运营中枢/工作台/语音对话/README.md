@@ -17,6 +17,22 @@
    若路径不同：`export VOICE_RUNTIME_SRC=/你的路径`  
 3. 在该目录内**首次**已执行 `bash scripts/setup.sh`（生成 `.venv`、安装依赖；需 Python 3.9+，完整前端构建需 Node 20+）。
 
+## 官网控制台 · 语音全链路测试
+
+在 **`卡若ai网站/site`** 目录（需已 `pnpm install`、可选 `.env.local`）：
+
+```bash
+pnpm run test:voice
+# 非 3000 端口时：
+VOICE_TEST_BASE=http://127.0.0.1:3102 pnpm run test:voice
+# 跳过真实 LLM 调用（仅校验网关 400）：
+VOICE_TEST_SKIP_LLM=1 pnpm run test:voice
+```
+
+覆盖：**前端纠错 JSON**、**Mongo `settings` 语音键**、**HTTP 语音 API**、**POST /api/gateway/chat 契约**；脚本结束会打印 **浏览器人工验收** 步骤。TryVoice 7860 不在此脚本范围内。
+
+`next dev` 下偶发 `GET /api/chat/voice/status` 返回 404 时，脚本会自动短暂重试；生产 `next start` 一般无此现象。
+
 ## 启动
 
 1. `cp env.example .env`
