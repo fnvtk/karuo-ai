@@ -27,7 +27,7 @@ node "/Users/karuo/Documents/个人/卡若AI/运营中枢/工作台/脚本/sync_
 
 随后（Next 已启动）在 `site` 目录：`pnpm run push:voice-from-env`，把密钥写入 Mongo `settings`。
 
-> 若 TTS 返回「service is not open」，须在 [语音合成控制台](https://console.cloud.tencent.com/tts) 与 [语音识别](https://console.cloud.tencent.com/asr) **开通/计费**，非密钥问题。
+> 若 TTS 返回「service is not open」，须在 [语音合成控制台](https://console.cloud.tencent.com/tts) **开通产品**。若已开通仍 502 且含 **resource pack … exhausted**，需**购资源包**或保证按量计费有余额。Docker 部署若 `/api/chat/tts` 404，说明镜像过旧，须 **`docker compose up -d --build`**。
 
 ## 一键写入网关 Token（推荐）
 
