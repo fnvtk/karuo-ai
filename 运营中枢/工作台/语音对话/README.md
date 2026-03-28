@@ -34,9 +34,9 @@
 
 ## 回廊洗字
 
-- 词库：`/Users/karuo/Documents/个人/卡若AI/运营中枢/参考资料/卡若闽南口音_ASR纠错库.json`
+- 词库真源：`/Users/karuo/Documents/个人/卡若AI/运营中枢/参考资料/卡若闽南口音_ASR纠错库.json`
+- 官网控制台：`卡若ai网站/site` 内 `pnpm run sync:karuo-asr` → 写入 `src/data/karuo-asr-corrections.json`（`VoiceButton` 打包引用）
 - 脚本：`/Users/karuo/Documents/个人/卡若AI/运营中枢/工作台/脚本/apply_karuo_voice_corrections.py`
-- 转写后自动纠错：见验收矩阵「卡若增强」行（实施时在 transcript 出口挂钩）。
 
 ## 许可说明
 
