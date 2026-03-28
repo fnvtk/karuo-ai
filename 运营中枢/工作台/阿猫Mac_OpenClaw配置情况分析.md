@@ -211,20 +211,33 @@
 
 ---
 
-## 十七、2026-03-28：飞书与 Control UI 对齐本机能力（coding / exec / fs）
+## 十七、2026-03-28：飞书与 Control UI 对齐本机能力（coding / exec / fs / elevated）
 
 > 适用于：**龙虾网关与飞书插件在同一台 Mac 上**、希望**飞书里说的话也能触发本机 `exec` / 读写文件**（与浏览器 Control UI 同一套 agent 能力）。**密钥与 token 仍只放在本机 `openclaw.json`，勿写入本文。**
 
 | 项目 | 说明 |
 |------|------|
-| **常见误判** | 不是「飞书渠道天生不能 exec」，而是 **`tools.profile` 用了 `messaging`** 时，核心目录里 **`exec` / `read` / `write` 仅挂在 `coding` profile**，模型侧根本拿不到这些工具。 |
-| **工具集** | 顶层 `tools.profile` 与 `agents.list[].tools.profile`（`main`）均设为 **`coding`**；与 api123 冲突时曾用 `byProvider.api123-icu.profile: minimal` 减负，**放开控机后应去掉该覆盖**，否则上游仍可能只暴露极少工具。 |
-| **api123 与 session_status** | 若出现 **`session_status` schema 400**，保留全局 + main 的 **`tools.deny: ["session_status"]`**（见历史排查）。 |
-| **exec 策略（高危）** | 可选：`tools.exec.security: "full"`、`ask: "off"`、`host: "gateway"`，减少飞书侧无 UI 审批时的阻塞；**等同本机任意命令面，仅单人可信环境使用**，并保证 **网关不暴露公网、token 不外泄**。 |
-| **读写路径** | 若需写 **`~/.openclaw/workspace` 以外**（如 `~/Documents/开发/...`），设 **`tools.fs.workspaceOnly: false`**，否则 `read`/`write` 可能被 workspace 策略限制。 |
-| **提升权限（elevated）** | `tools.elevated.enabled: true`，并在 **`tools.elevated.allowFrom.feishu`** 中列出发令飞书用户的 **`ou_...` open_id**；**换账号或仅群身份不同时需追加**，否则 `exec` 带 `elevated: true` 会拒。 |
-| **生效** | 修改 `~/.openclaw/openclaw.json` 后 **`openclaw config validate`**，并 **重启网关**（LaunchAgent 见第十五节，或本机等价方式）。 |
-| **若 api123 再 403** | 工具变多可能触发上游拦截；可折中：**保留 `coding`**，仅对 `api123-icu` 设 **`byProvider` + `alsoAllow`** 限定少数工具，或联系 api123 / 换线路。 |
+| **常见误判** | 不是「飞书渠道天生不能 exec」，而是 **`tools.profile` 用了 `messaging`** 时，**`coding` profile** 才带齐 **`exec` / `read` / `write`** 等；profile 过窄则模型侧拿不到工具。 |
+| **工具集** | 顶层 **`tools.profile: "coding"`**；若存在 **`agents.list`** 且某 agent 单独写了 **`tools.profile`**，会覆盖全局。与 api123 冲突时若曾设 **`agents.defaults.model.byProvider.*.profile: minimal`**，**控机前应去掉**，否则上游仍可能只暴露极少工具。 |
+| **api123 与 session_status** | 若出现 **`session_status` schema 400**，可保留 **`tools.deny: ["session_status"]`**（见历史排查）。 |
+| **exec 策略（高危）** | 飞书无 Control UI 审批时，常用：**`tools.exec.host: "gateway"`**、**`security: "full"`**、**`ask: "off"`**。**等同本机 shell 面**，仅 **单人可信环境**；**网关勿裸奔公网**，**`gateway.auth.token` 勿泄露**。 |
+| **读写路径** | 要写 **`~/.openclaw/workspace` 以外** 时设 **`tools.fs.workspaceOnly: false`**。 |
+| **elevated（官方 schema）** | ① **`tools.elevated.enabled: true`**。② **`tools.elevated.allowFrom.feishu`** 必须是 **字符串数组**（OpenClaw 源码 `resolveElevatedAllowList`）；填 **`["*"]` 表示不校验发令身份（极高风险）**；生产建议改为 **`["ou_xxxxxxxx"]`** 等飞书 open_id。③ **没有** `tools.elevated.defaultLevel` 键；会话默认级别用 **`agents.defaults.elevatedDefault`**，取值见官方文档（如 **`"full"`** = 网关执行且跳过 exec 审批流程）。④ 飞书里也可用指令 **`/elevated on|full|off`** 覆盖当次/会话。⑤ **`agents.list[].tools.elevated`** 可进一步收紧；**不要**在 **`agents.defaults`** 下写 **`tools`**（当前版本校验会报 **Unrecognized key**）。 |
+| **斜杠与 `!` 命令** | 需要 **`! cmd`** / **`/bash`** 时设 **`commands.bash: true`**（仍受 elevated allowlist 约束）。 |
+| **生效** | 修改后 **`openclaw config validate`**，再 **`launchctl kickstart -k "gui/$(id -u)/com.openclaw.gateway.longmao"`**（第十五节）。 |
+| **若 api123 再 403** | 保持 **`headers.User-Agent: curl/8.x`**；可折中缩小工具集或换线路。 |
+
+---
+
+## 十八、完全控制阿猫笔记本：推荐形态（SSH + 龙虾 + 可选 GUI）
+
+| 方式 | 能力 | 配置要点 |
+|------|------|----------|
+| **SSH（主控台）** | 任意 shell、改配置、看日志、跑脚本 | 本机 **`~/.ssh/config`** 配 **Host + HostName + Port + User**；密钥登录；命令示例：`ssh -p 22203 kr@macbook.quwanzhi.com`。 |
+| **飞书龙猫 → 龙虾** | 自然语言驱动 agent；在第十七节打开 **coding + exec + elevated** 后可让模型调本机工具（仍受模型与 API 限制） | 飞书应用 **长连接**、机器人入群；阿猫 **网关常开**（第十五～十六节）。 |
+| **屏幕共享 / VNC（可选）** | 图形界面操作 | macOS **系统设置 → 通用 → 共享**：按需开 **屏幕共享**；仅内网/VPN，强密码。 |
+
+> **原则**：能 SSH 解决的运维优先 SSH；飞书侧适合对话式任务；高危 exec/elevated 与 **`allowFrom: ["*"]`** 仅在你 **明确接受风险** 时使用，后续建议改为 **按 `ou_` 白名单** 收敛。
 
 ---
 
