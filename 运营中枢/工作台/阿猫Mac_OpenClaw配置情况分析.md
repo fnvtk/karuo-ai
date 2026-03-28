@@ -211,4 +211,21 @@
 
 ---
 
+## 十七、2026-03-28：飞书与 Control UI 对齐本机能力（coding / exec / fs）
+
+> 适用于：**龙虾网关与飞书插件在同一台 Mac 上**、希望**飞书里说的话也能触发本机 `exec` / 读写文件**（与浏览器 Control UI 同一套 agent 能力）。**密钥与 token 仍只放在本机 `openclaw.json`，勿写入本文。**
+
+| 项目 | 说明 |
+|------|------|
+| **常见误判** | 不是「飞书渠道天生不能 exec」，而是 **`tools.profile` 用了 `messaging`** 时，核心目录里 **`exec` / `read` / `write` 仅挂在 `coding` profile**，模型侧根本拿不到这些工具。 |
+| **工具集** | 顶层 `tools.profile` 与 `agents.list[].tools.profile`（`main`）均设为 **`coding`**；与 api123 冲突时曾用 `byProvider.api123-icu.profile: minimal` 减负，**放开控机后应去掉该覆盖**，否则上游仍可能只暴露极少工具。 |
+| **api123 与 session_status** | 若出现 **`session_status` schema 400**，保留全局 + main 的 **`tools.deny: ["session_status"]`**（见历史排查）。 |
+| **exec 策略（高危）** | 可选：`tools.exec.security: "full"`、`ask: "off"`、`host: "gateway"`，减少飞书侧无 UI 审批时的阻塞；**等同本机任意命令面，仅单人可信环境使用**，并保证 **网关不暴露公网、token 不外泄**。 |
+| **读写路径** | 若需写 **`~/.openclaw/workspace` 以外**（如 `~/Documents/开发/...`），设 **`tools.fs.workspaceOnly: false`**，否则 `read`/`write` 可能被 workspace 策略限制。 |
+| **提升权限（elevated）** | `tools.elevated.enabled: true`，并在 **`tools.elevated.allowFrom.feishu`** 中列出发令飞书用户的 **`ou_...` open_id**；**换账号或仅群身份不同时需追加**，否则 `exec` 带 `elevated: true` 会拒。 |
+| **生效** | 修改 `~/.openclaw/openclaw.json` 后 **`openclaw config validate`**，并 **重启网关**（LaunchAgent 见第十五节，或本机等价方式）。 |
+| **若 api123 再 403** | 工具变多可能触发上游拦截；可折中：**保留 `coding`**，仅对 `api123-icu` 设 **`byProvider` + `alsoAllow`** 限定少数工具，或联系 api123 / 换线路。 |
+
+---
+
 *文档生成：卡若AI 工作台。*
