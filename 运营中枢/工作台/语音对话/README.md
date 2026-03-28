@@ -17,6 +17,18 @@
    若路径不同：`export VOICE_RUNTIME_SRC=/你的路径`  
 3. 在该目录内**首次**已执行 `bash scripts/setup.sh`（生成 `.venv`、安装依赖；需 Python 3.9+，完整前端构建需 Node 20+）。
 
+## 从「账号与 API 索引」同步腾讯云（语音）
+
+已将 `运营中枢/工作台/00_账号与API索引.md` 中 **腾讯云** 表格的 SecretId/SecretKey 合并写入 **`卡若ai网站/site/.env.local`**，并可用脚本重复执行：
+
+```bash
+node "/Users/karuo/Documents/个人/卡若AI/运营中枢/工作台/脚本/sync_tencent_voice_from_account_index.js"
+```
+
+随后（Next 已启动）在 `site` 目录：`pnpm run push:voice-from-env`，把密钥写入 Mongo `settings`。
+
+> 若 TTS 返回「service is not open」，须在 [语音合成控制台](https://console.cloud.tencent.com/tts) 与 [语音识别](https://console.cloud.tencent.com/asr) **开通/计费**，非密钥问题。
+
 ## 一键写入网关 Token（推荐）
 
 本机已有 `~/.openclaw/openclaw.json` 时**勿手抄 Token**，执行（不写回聊天、`.env` 已 gitignore）：
