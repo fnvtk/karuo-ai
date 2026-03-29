@@ -5,7 +5,9 @@ triggers: 木识、软件识形、CLI万能化、cli-anything、让软件被Agen
 owner: 木识
 group: 木（卡木）
 version: "1.0"
-updated: "2026-03-12"
+updated: "2026-03-29"
+memory_palace_path: 卡若记忆宫殿/木殿/木识厢/识形门
+memory_palace_slot: 木识总入口，具体执行见子技能 CLI万能化
 ---
 
 # 木识 · 软件识形
