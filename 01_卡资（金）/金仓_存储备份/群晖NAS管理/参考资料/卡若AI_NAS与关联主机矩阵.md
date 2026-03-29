@@ -9,7 +9,7 @@
 
 | 名称 | 内网 IP | 外网域名 | SSH / 入口 | frpc 真源 | 本机可执行脚本 / 说明 |
 |:-----|:--------|:---------|:-----------|:----------|:---------------------|
-| **公司 CKB** | `192.168.1.201` | `open.quwanzhi.com` | `fnvtk@open.quwanzhi.com -p 22201` | **kr** `43.139.27.93:7000`；进程多为 **`fnvtk` + `~/frp-standalone/frpc` + `/volume1/docker/frpc/frpc.toml`** | FRP 收尾见 `服务器管理/references/FRP与阿里云DNS统一至kr宝塔_迁移与验收.md` §10.6 |
+| **公司 CKB** | `192.168.1.201` | `open.quwanzhi.com` | `fnvtk@open.quwanzhi.com -p 22201` | **kr** `43.139.27.93:7000`；**唯一**主进程：**`fnvtk` + `~/frp-standalone/frpc` + `/volume1/docker/frpc/frpc.toml`** | **`/volume1/docker/frpc-karuo-ai/start_frpc.sh`** 已改为 **仅 `pkill`、不再拉起** 独立 frpc（避免与主配置双连接；原 DSM root 计划任务仍可保留）。FRP 总述见 `服务器管理/references/FRP与阿里云DNS统一至kr宝塔_迁移与验收.md` §10.6 |
 | **家里 Station** | `192.168.110.29` | `opennas2.quwanzhi.com` | 外网：`admin@opennas2.quwanzhi.com -p 22202`；内网：`ssh diskstation-home`（`~/.ssh/config`） | 须 **`server_addr = 43.139.27.93`** | **`群晖NAS管理/scripts/家里Station_frpc切kr_内网执行.sh`**（仅内网或配公钥/密码后） |
 | **Host `nas`（文档矩阵机）** | `192.168.2.200` | — | `ssh nas` → `admin@192.168.2.200` | 以现场为准 | 不在家庭/公司常见网段时 **ping 失败属正常**；技能里另有 **CKBNAS `192.168.110.101`**（存客宝 AI 同步用） |
 

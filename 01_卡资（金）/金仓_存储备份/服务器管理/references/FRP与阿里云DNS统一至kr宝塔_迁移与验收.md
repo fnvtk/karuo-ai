@@ -149,7 +149,7 @@
 - [x] **存客宝**：**`frps`** 已 **stop + disable**（勿再双真源）。  
 - [ ] **家里 NAS（Station）**：存客宝 frps 已停后，若外网 **opennas2:22202/5002** 拒绝连接，须在**家庭内网**对 **192.168.110.29** 执行 **`群晖NAS管理/scripts/家里Station_frpc切kr_内网执行.sh`**（或 §10.4 手工改 `frpc.ini` 的 `server_addr`）。公司 CKB 已由 Agent 侧完成；家里无公钥 SSH 时脚本支持 **`STATION_ADMIN_PASS` + sshpass**。  
 - [ ] DSM：**计划任务** 建议增加 **开机** 以用户 **fnvtk** 执行一次 **`/volume1/homes/fnvtk/frp-standalone/start-frpc-main.sh`**（群晖无常规用户 crontab）。  
-- [ ] DSM：若仍有 **root** 旧进程 **`frpc-karuo-ai`**，可在资源监视器中结束（**`karuo-ai-gateway` 已并入主 `frpc.toml`**，`frpc-karuo-ai/frpc.toml` 已改为仅占位说明）。  
+- [x] DSM：**`frpc-karuo-ai/start_frpc.sh`** 已改为由计划任务执行时 **只结束** 该目录独立 frpc、**不再启动**；`frpc-karuo-ai/frpc.toml` 为占位（**`karuo-ai-gateway` 已在主 `frpc.toml`**）。  
 - [ ] Gitea：**ROOT_URL** 若仍写 `:3000`，建议在 NAS Gitea 配置中改为 **`http://open.quwanzhi.com:13000/`**，避免页面内链错误。
 
 ### 10.4 家里 NAS（Station）
