@@ -58,9 +58,9 @@ export OLLAMA_BASE_URL="http://192.168.1.201:11434"
 | **内网** | `http://192.168.1.201:11434` | 与 NAS 同网（如公司 WiFi） |
 | **外网** | `http://open.quwanzhi.com:11401` | 任意网络，经 frp 转发 |
 
-外网需确保 **frp 服务端（42.194.245.239）已开放 11401 端口**；若无法访问，请在宝塔/安全组中放行 `11401/TCP`。
+外网需确保 **frp 服务端（kr 宝塔 43.139.27.93）已开放 11401 端口**；若无法访问，请在 **kr 宝塔** 与 **腾讯云 kr 实例安全组**放行 `11401/TCP`。全站解析与迁机顺序见 `服务器管理/references/FRP与阿里云DNS统一至kr宝塔_迁移与验收.md`。
 
-**OpenClaw（如阿猫 Mac）使用千问**：已配置主模型为 `nas-qwen/qwen2.5:3b`，备选 `qwen2.5:1.5b` → `v0/v0-1.5-lg`。若该终端 **DNS 解析超时**（访问 `open.quwanzhi.com` 报 Resolving timed out），可改为 **IP 直连**：在 OpenClaw 的 nas-qwen 里将 `baseUrl` 设为 `http://42.194.245.239:11401/v1`（frp 同机 IP），改完后重启网关即可连通千问。
+**OpenClaw（如阿猫 Mac）使用千问**：已配置主模型为 `nas-qwen/qwen2.5:3b`，备选 `qwen2.5:1.5b` → `v0/v0-1.5-lg`。若该终端 **DNS 解析超时**（访问 `open.quwanzhi.com` 报 Resolving timed out），可改为 **IP 直连**：在 OpenClaw 的 nas-qwen 里将 `baseUrl` 设为 `http://43.139.27.93:11401/v1`（与当前 frps 所在公网 IP 一致），改完后重启网关即可连通千问。
 
 ---
 
@@ -175,7 +175,7 @@ print(r.choices[0].message.content)
   - 拉取其他模型：`sudo docker exec ollama-nas ollama pull qwen2.5:3b`  
   - 查看日志：`sudo docker logs -f ollama-nas`
 
-- **外网端口**：frp 将 **11401** → NAS **11434**，代理名 `nas-ollama`。若未生效，检查 frpc 配置并重启 `nas-frpc`，以及 frps 是否开放 11401。
+- **外网端口**：frp 将 **11401** → NAS **11434**，代理名 `nas-ollama`。若未生效，检查 frpc 的 `server_addr` 是否指向 **43.139.27.93**、重启 `nas-frpc`，以及 **kr 上 frps** 与安全组是否开放 11401。
 
 ---
 

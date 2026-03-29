@@ -5,8 +5,8 @@
 | 项目 | 说明 |
 |------|------|
 | 站点 | www.lytiao.com，根目录 `/www/wwwroot/www.lytiao.com` |
-| 端口 | **8090**（8080 被 frps 占用） |
-| 冲突 | 存客宝 8080 已被 frps 占用，需用 8090 |
+| 端口 | **8090**（历史：存客宝 **8080 曾被 frps 占用**；**frps 迁至 kr 宝塔后**，若仅在存客宝跑 Docker 可评估改回 **8080**，以 `ss -tlnp` 为准） |
+| 冲突 | 与 frp **remote_port**、本机其它监听冲突时用 8090；**全站 FRP/DNS 统一 kr** 见 `references/FRP与阿里云DNS统一至kr宝塔_迁移与验收.md` |
 | 拉取失败 | TAT 远程执行时 Docker 拉取 php 镜像常遇「connection reset by peer」，为国内网络访问 Docker Hub 不稳定所致 |
 
 ## 二、推荐方式：宝塔终端手动执行
