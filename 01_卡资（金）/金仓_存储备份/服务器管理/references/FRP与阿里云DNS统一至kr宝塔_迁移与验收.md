@@ -152,3 +152,22 @@
 ### 10.4 家里 NAS（Station）
 
 `opennas2.quwanzhi.com` 等解析已指向 kr；**家里 frpc** 须同样把 `server_addr` / `serverAddr` 改为 **`43.139.27.93`**，并在切流前协调 **先停 kr 上 `frp-legacy-bridge`** 再重启 frpc，避免端口占用冲突。详见 §二 顺序。
+
+### 10.5 2026-03-30 续查结论（阻塞点：主 frpc 未跑起来）
+
+| 现象 | 说明 |
+|:---|:---|
+| **`open.quwanzhi.com:13000` 连不上** | kr 上 **无** frps 对 13000 的监听；主配置里 **ckb-gitea 已写 `remotePort = 13000`**，但 **未向 kr frps 注册**。 |
+| **NAS 进程** | `fnvtk` SSH 下 `ps` **仅有** `/volume1/docker/frpc-karuo-ai/frpc`（仅 **karuo-ai-gateway 18080**）；**不含** 挂载 `/volume1/docker/frpc/frpc.toml` 的主 frpc。 |
+| **推断** | **Docker 容器 `nas-frpc` 已停或未随 DSM 拉起**；磁盘上的 `frpc.toml` 已改对，但 **进程未加载**。 |
+| **11401 仍 200** | 当前多经 **kr `frp-legacy-bridge`（socat）→ 存客宝 frps**，非「已完全切到 kr frps」的最终态。 |
+
+**你在 DSM 上必做（root 或管理员）**
+
+1. **套件中心 / Container Manager**：找到容器 **`nas-frpc`** → **启动**；若已在跑则 **重启**。  
+2. 若习惯命令行，用 **以 root 登录的 SSH** 或 **控制面板 → 任务计划 → 以 root 执行一次**：  
+   `/usr/local/bin/docker start nas-frpc 2>/dev/null || /usr/local/bin/docker restart nas-frpc`  
+3. 启动后在本机或外网再验：`curl -sS -m 8 http://open.quwanzhi.com:13000/` 应能连上（非 `Connection refused`）；kr 上 `ss -tlnp | grep 13000` 应出现 **frps** 相关监听（非仅 socat）。  
+4. 再按 **§10.3** 停桥接、改 Nginx `127.0.0.1:8088`、停存客宝 frps。
+
+**说明**：用户 **`fnvtk` 无 `docker.sock` 权限**，Agent 无法代你执行 `docker restart`，必须在 DSM 或 root 下操作。

@@ -2099,7 +2099,8 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                  horizontal_center_pad=False,
                  strong_audio_clean=False, keyword_pins=False,
                  silence_noise_db=None, silence_min_duration=None, silence_trim_margin=None,
-                 merge_subtitle_gap_silences=True):
+                 merge_subtitle_gap_silences=True,
+                 no_speedup=False):
     """增强单个切片。vertical=True 时输出竖条，宽由 --crop-vf 决定（原生包络常见 560～750×1080；旧 498 为两段裁或 scale）。
     vertical_fit_full：整幅 16:9 缩放入 498×1080 + 上下黑边。
     horizontal_center_pad：与竖条塑形相同链路（封面/字幕仍按竖条叠在横版上），最后输出 1920×1080，中间为裁切条、左右黑边。
@@ -2420,47 +2421,56 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         current_video = kw_out
         print(f"  ✓ 关键词条已烧录（竖条主区内）", flush=True)
     
-    # 5.3 加速10% + 音频增强 + 同步（成片必做）
-    mode_audio = "强降噪会议室" if strong_audio_clean else "标准"
-    print(f"  [4/5] 加速 10% + 音频清晰化（{mode_audio}）…", flush=True)
+    # 5.3 加速 + 音频增强（可关：不加速、不重编码音轨，避免中间叠音/变调）
     speed_output = os.path.join(temp_dir, 'speed.mp4')
-
-    audio_enhance = _audio_enhance_filter_str(bool(strong_audio_clean))
-    # 加速 + 音频增强 合并成一次 ffmpeg
-    cmd = [
-        'ffmpeg', '-y', '-i', current_video,
-        '-filter_complex',
-        f"[0:v]setpts={1/SPEED_FACTOR}*PTS[v];"
-        f"[0:a]atempo={SPEED_FACTOR},{audio_enhance}[a]",
-        '-map', '[v]', '-map', '[a]',
-        '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
-        '-c:a', 'aac', '-b:a', '192k',
-        speed_output
-    ]
-    
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode == 0 and os.path.exists(speed_output):
-        current_video = speed_output
-        print(f"  ✓ 加速 10% + 音频增强完成", flush=True)
+    if no_speedup:
+        print(f"  [4/5] 跳过加速与音频滤镜（原速、音轨不重编码）…", flush=True)
+        try:
+            shutil.copy2(current_video, speed_output)
+            current_video = speed_output
+            print(f"  ✓ 已直通至下一段（无 atempo / loudnorm）", flush=True)
+        except OSError as e:
+            print(f"  ⚠ 复制中间成片失败: {e}，沿用当前文件", file=sys.stderr)
     else:
-        print(f"  ⚠ 加速步骤失败，尝试仅加速（跳过音频增强）", file=sys.stderr)
-        # 降级：只做加速，不做音频增强
-        cmd_fallback = [
+        mode_audio = "强降噪会议室" if strong_audio_clean else "标准"
+        print(f"  [4/5] 加速 10% + 音频清晰化（{mode_audio}）…", flush=True)
+
+        audio_enhance = _audio_enhance_filter_str(bool(strong_audio_clean))
+        # 加速 + 音频增强 合并成一次 ffmpeg
+        cmd = [
             'ffmpeg', '-y', '-i', current_video,
-            '-filter_complex', f"[0:v]setpts={1/SPEED_FACTOR}*PTS[v];[0:a]atempo={SPEED_FACTOR}[a]",
+            '-filter_complex',
+            f"[0:v]setpts={1/SPEED_FACTOR}*PTS[v];"
+            f"[0:a]atempo={SPEED_FACTOR},{audio_enhance}[a]",
             '-map', '[v]', '-map', '[a]',
             '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
-            '-c:a', 'aac', '-b:a', '128k',
+            '-c:a', 'aac', '-b:a', '192k',
             speed_output
         ]
-        result2 = subprocess.run(cmd_fallback, capture_output=True, text=True)
-        if result2.returncode == 0 and os.path.exists(speed_output):
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode == 0 and os.path.exists(speed_output):
             current_video = speed_output
-            print(f"  ✓ 加速完成（降级版，无音频增强）", flush=True)
+            print(f"  ✓ 加速 10% + 音频增强完成", flush=True)
         else:
-            print(f"  ⚠ 加速步骤失败，沿用当前视频继续", file=sys.stderr)
-            if result2.stderr:
-                print(f"     {str(result2.stderr)[:300]}", file=sys.stderr)
+            print(f"  ⚠ 加速步骤失败，尝试仅加速（跳过音频增强）", file=sys.stderr)
+            # 降级：只做加速，不做音频增强
+            cmd_fallback = [
+                'ffmpeg', '-y', '-i', current_video,
+                '-filter_complex', f"[0:v]setpts={1/SPEED_FACTOR}*PTS[v];[0:a]atempo={SPEED_FACTOR}[a]",
+                '-map', '[v]', '-map', '[a]',
+                '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+                '-c:a', 'aac', '-b:a', '128k',
+                speed_output
+            ]
+            result2 = subprocess.run(cmd_fallback, capture_output=True, text=True)
+            if result2.returncode == 0 and os.path.exists(speed_output):
+                current_video = speed_output
+                print(f"  ✓ 加速完成（降级版，无音频增强）", flush=True)
+            else:
+                print(f"  ⚠ 加速步骤失败，沿用当前视频继续", file=sys.stderr)
+                if result2.stderr:
+                    print(f"     {str(result2.stderr)[:300]}", file=sys.stderr)
     
     # 5.4 输出：竖条（宽由 vf）或全画面 letterbox
     if vertical and not vertical_fit_full:
@@ -2616,6 +2626,11 @@ def main():
         action="store_true",
         help="竖条成片时在主画面内烧录 1～2 条半透明关键词条（来自 hook/摘要，非外链视频）",
     )
+    parser.add_argument(
+        "--no-speedup",
+        action="store_true",
+        help="不加速、不对音轨做 loudnorm/atempo 等滤镜（原速成片，减轻叠音/变调感；尾帧拼接前推荐）",
+    )
     args = parser.parse_args()
     
     clips_dir = Path(args.clips) if args.clips else CLIPS_DIR
@@ -2689,7 +2704,9 @@ def main():
     )
     print("="*60)
     print(
-        f"功能: 封面+字幕+加速10%+去语气词"
+        f"功能: 封面+字幕+"
+        + ("原速无加速 " if getattr(args, "no_speedup", False) else "加速10%+")
+        + "去语气词"
         + (
             "+去长静音"
             + (
@@ -2802,6 +2819,7 @@ def main():
                 silence_min_duration=smin,
                 silence_trim_margin=smar,
                 merge_subtitle_gap_silences=not getattr(args, "no_subtitle_gap_merge", False),
+                no_speedup=getattr(args, "no_speedup", False),
             ):
                 success_count += 1
         finally:
