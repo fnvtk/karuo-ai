@@ -35,10 +35,17 @@ fi
 ORIG_URL=$(git remote get-url "$REMOTE" 2>/dev/null)
 [ -z "$ORIG_URL" ] && { echo "[gitea_push_smart] 错误：remote $REMOTE 不存在"; exit 1; }
 
-# 从 URL 提取：http://user:token@host:3000/fnvtk/karuo-ai.git
+# 从 URL 提取：http://user:token@host:端口/fnvtk/karuo-ai.git（端口随 frp，当前 13000）
 AUTH_PREFIX="${ORIG_URL%%@*}@"
 PATH_PART="${ORIG_URL#*@}"
-REPO_PATH="${PATH_PART#*:3000/}"
+HOST_AND_PORT="${PATH_PART%%/*}"
+REPO_PATH="${PATH_PART#*/}"
+GITEA_HOST="${HOST_AND_PORT%:*}"
+GITEA_PORT="${HOST_AND_PORT##*:}"
+if ! [[ "$GITEA_PORT" =~ ^[0-9]+$ ]]; then
+    GITEA_PORT="13000"
+    REPO_PATH="${PATH_PART#*/}"
+fi
 [ -z "$REPO_PATH" ] && REPO_PATH="fnvtk/karuo-ai.git"
 
 do_push() {
@@ -56,12 +63,12 @@ do_push() {
 MAX_TRY=3
 # 1) 若配置了 LAN IP 且能连通 3000，则用 LAN 推送
 if [ -n "$GITEA_LAN_IP" ]; then
-    CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 "http://${GITEA_LAN_IP}:3000/" 2>/dev/null)
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 "http://${GITEA_LAN_IP}:${GITEA_PORT}/" 2>/dev/null)
     if [ "$CODE" = "200" ]; then
-        LAN_URL="http://${AUTH_PREFIX}${GITEA_LAN_IP}:3000/${REPO_PATH}"
+        LAN_URL="http://${AUTH_PREFIX}${GITEA_LAN_IP}:${GITEA_PORT}/${REPO_PATH}"
         git remote set-url "$REMOTE" "$LAN_URL"
         for i in $(seq 1 $MAX_TRY); do
-            echo "[gitea_push_smart] 第 $i/$MAX_TRY 次尝试（局域网 $GITEA_LAN_IP:3000）..."
+            echo "[gitea_push_smart] 第 $i/$MAX_TRY 次尝试（局域网 $GITEA_LAN_IP:${GITEA_PORT}）..."
             if do_push ""; then
                 git remote set-url "$REMOTE" "$ORIG_URL"
                 echo "[gitea_push_smart] 推送成功（局域网）"

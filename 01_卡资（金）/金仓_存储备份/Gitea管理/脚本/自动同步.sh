@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================
-# 卡若AI → Gitea 实时同步（open.quwanzhi.com:3000/fnvtk/karuo-ai）
+# 卡若AI → Gitea 实时同步（open.quwanzhi.com:13000/fnvtk/karuo-ai，frp 避开 kr 宝塔 3000 端口）
 # 规则：超过 20MB 的文件不上传（与 Skill 目录规则一致）
 # 推送成功后：1) 同步百科  2) 写入 gitea_push_log.md  3) 写入 代码管理.md
 # ============================================
@@ -12,7 +12,7 @@ MAX_SIZE_MB=20
 LOG_FILE="$REPO_DIR/01_卡资（金）/金仓_存储备份/Gitea管理/sync.log"
 PUSH_LOG="$REPO_DIR/运营中枢/工作台/gitea_push_log.md"
 CODE_MGMT="$REPO_DIR/运营中枢/工作台/代码管理.md"
-GITEA_URL="http://open.quwanzhi.com:3000/fnvtk/karuo-ai"
+GITEA_URL="http://open.quwanzhi.com:13000/fnvtk/karuo-ai"
 GITIGNORE="$REPO_DIR/.gitignore"
 WIKI_SCRIPT="$REPO_DIR/01_卡资（金）/金仓_存储备份/Gitea管理/脚本/sync_wiki_to_gitea.sh"
 
@@ -118,7 +118,7 @@ if [ $PUSH_RESULT -eq 0 ]; then
     # 建立推送记录
     mkdir -p "$(dirname "$PUSH_LOG")"
     if [ ! -f "$PUSH_LOG" ]; then
-        echo -e "# Gitea 推送记录\n\n> 卡若AI 有更新即同步到 open.quwanzhi.com:3000/fnvtk/karuo-ai\n\n| 时间 | 提交说明 |\n|:---|:---|" > "$PUSH_LOG"
+        echo -e "# Gitea 推送记录\n\n> 卡若AI 有更新即同步到 open.quwanzhi.com:13000/fnvtk/karuo-ai\n\n| 时间 | 提交说明 |\n|:---|:---|" > "$PUSH_LOG"
     fi
     echo "| $(date '+%Y-%m-%d %H:%M:%S') | $COMMIT_MSG |" >> "$PUSH_LOG"
     # 代码管理：写入本次上传（代码+百科+链接）
