@@ -130,8 +130,8 @@
 | **腾讯云安全组** | 脚本 `scripts/腾讯云_kr宝塔安全组放行FRP全套端口.py` 已放行 7000、8088、11401、13000 及原 frp remote 端口列表 |
 | **firewalld** | 同上端口已在 kr 本机放行（否则公网仅 SG 仍会被 firewalld 挡） |
 | **阿里云 DNS** | 脚本 `scripts/阿里云DNS_A记录_存客宝改kr宝塔.py --apply` 已将 **quwanzhi.com** 下 **25 条** A 记录从 `42.194.245.239` 改为 `43.139.27.93` |
-| **临时 TCP 桥** | `frp-legacy-bridge.service`：`socat` 将 kr 公网端口转发到 **存客宝** 同端口，保障 **DNS 已改但各 NAS frpc 尚未重启** 期间的 TCP 业务（**不含 3000/8080/7000**；**3000** 与 kr 上 cunkebao 冲突） |
-| **Nginx** | `/www/server/panel/vhost/nginx/open.quwanzhi.com-frphttp.conf`：`open.quwanzhi.com:80` → `http://42.194.245.239:8080`（frpc 仍挂在存客宝 frps 时）；**全部 frpc 指向 kr 后**应改为 `http://127.0.0.1:8088` 并 **停用桥接服务** |
+| **临时 TCP 桥** | **已停用**：`frp-legacy-bridge` 曾用 `socat` 转发至存客宝；收尾后 `systemctl disable` 已执行 |
+| **Nginx** | `open.quwanzhi.com-frphttp.conf`：`open.quwanzhi.com:80` → **`http://127.0.0.1:8088`**（本机 frps vhostHTTP） |
 
 ### 10.2 与存客宝 frps 的配置差异（必读本节）
 
@@ -140,14 +140,17 @@
 | `vhostHTTPPort = 8080` | **8088** | kr **8080** 已被 soul-api 占用 |
 | Gitea `remotePort = 3000` | **13000**（frpc 内已改） | kr **3000** 已被 Next/cunkebao 占用；外网请用 **`http://open.quwanzhi.com:13000`** |
 
-### 10.3 你必须完成的两步（否则请勿停存客宝 frps）
+### 10.3 切流检查清单（收尾后应全部打勾）
 
-1. **DSM → 容器**：重启 **`nas-frpc`**（挂载 `/volume1/docker/frpc/frpc.toml`），使 **serverAddr=43.139.27.93** 与 **Gitea remotePort=13000** 生效。  
-2. **验证** `curl -s http://open.quwanzhi.com:11401/api/tags` 与 `http://open.quwanzhi.com:13000` 正常后，在 **kr 宝塔 SSH** 执行：  
-   `systemctl stop frp-legacy-bridge && systemctl disable frp-legacy-bridge`  
-   再将 Nginx 中 `open.quwanzhi.com` 反代改为 **`127.0.0.1:8088`**，`nginx -s reload`。  
-
-最后在**存客宝**停止旧 frps：`systemctl stop frps && systemctl disable frps`（或等价进程），避免双 frps 与端口混淆。
+- [x] 公司 NAS 主业务 **frpc** 向 **kr frps** 注册（见 **§10.6**：`fnvtk` 下 **standalone frpc 0.66** + 主 `frpc.toml`）。  
+- [x] `curl` 抽测 **11401 / 13000 / 18080** 经域名可达。  
+- [x] kr：**`frp-legacy-bridge`** 已 **stop + disable**。  
+- [x] kr：**Nginx** `open.quwanzhi.com:80` → **`127.0.0.1:8088`** 并已 **reload**。  
+- [x] **存客宝**：**`frps`** 已 **stop + disable**（勿再双真源）。  
+- [ ] **家里 NAS**：若仍曾连 **存客宝 7000**，存客宝 frps 停后须改 **`serverAddr=43.139.27.93`** 并重启 frpc（见 §10.4）。  
+- [ ] DSM：**计划任务** 建议增加 **开机** 以用户 **fnvtk** 执行一次 **`/volume1/homes/fnvtk/frp-standalone/start-frpc-main.sh`**（群晖无常规用户 crontab）。  
+- [ ] DSM：若仍有 **root** 旧进程 **`frpc-karuo-ai`**，可在资源监视器中结束（**`karuo-ai-gateway` 已并入主 `frpc.toml`**，`frpc-karuo-ai/frpc.toml` 已改为仅占位说明）。  
+- [ ] Gitea：**ROOT_URL** 若仍写 `:3000`，建议在 NAS Gitea 配置中改为 **`http://open.quwanzhi.com:13000/`**，避免页面内链错误。
 
 ### 10.4 家里 NAS（Station）
 
@@ -171,3 +174,13 @@
 4. 再按 **§10.3** 停桥接、改 Nginx `127.0.0.1:8088`、停存客宝 frps。
 
 **说明**：用户 **`fnvtk` 无 `docker.sock` 权限**，Agent 无法代你执行 `docker restart`，必须在 DSM 或 root 下操作。
+
+### 10.6 2026-03-30 收尾落地（公司 CKB · 全自动路径摘要）
+
+| 项 | 做法 |
+|:---|:---|
+| **主 frpc 未跑 Docker** | 在 NAS 上使用已有 **`/volume1/homes/fnvtk/frp-standalone/frp_0.66.0_linux_amd64/frpc`**，`nohup` 加载 **`/volume1/docker/frpc/frpc.toml`**，与 **kr frps 0.66** 对齐。 |
+| **karuo-ai-gateway 18080** | 将原 **`frpc-karuo-ai`** 中 TCP 段 **并入** 主 `frpc.toml`，避免旧版独立 frpc 占名失败。 |
+| **桥与 Nginx** | kr 上停 **legacy bridge** 释放 **11401** 等与 **frps** 冲突的端口；**Nginx** 改指 **127.0.0.1:8088**。 |
+| **存客宝 frps** | 已 **disable**，外网 **frp 控制面** 仅 **kr `43.139.27.93:7000`**。 |
+| **SSH 入口** | 直连 **`42.194.245.239:22201` 已失效**（该机不再跑 frps）；请用 **`fnvtk@open.quwanzhi.com -p 22201`**（经 kr frps）。 |

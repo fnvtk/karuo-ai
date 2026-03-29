@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import tempfile
@@ -43,6 +44,11 @@ def clip_index_from_name(name: str) -> int:
     if nums:
         return min(int(x) for x in nums)
     return 1
+
+
+def sort_mp4_by_clip_index(paths: list[Path]) -> list[Path]:
+    """按文件名末尾 _01._02 排序，避免中文 locale 下漏处理第一条。"""
+    return sorted(paths, key=lambda p: clip_index_from_name(p.name))
 
 
 def pick_block(words: list[str], clip_idx: int, per_clip: int) -> list[str]:
@@ -165,11 +171,13 @@ def make_tail_clip(
 
 def concat_videos(main: Path, tail: Path, final_out: Path) -> None:
     lst = final_out.parent / "_concat_tail_list.txt"
+    tmp = Path(
+        tempfile.mkstemp(suffix="_tailconcat.mp4", dir=str(final_out.parent))[1]
+    )
     try:
         with open(lst, "w", encoding="utf-8") as f:
             f.write(f"file '{main.resolve()}'\n")
             f.write(f"file '{tail.resolve()}'\n")
-        tmp = final_out.with_suffix(".tailconcat.mp4")
         r = subprocess.run(
             [
                 "ffmpeg",
@@ -189,10 +197,12 @@ def concat_videos(main: Path, tail: Path, final_out: Path) -> None:
         )
         if r.returncode != 0 or not tmp.exists():
             raise RuntimeError((r.stderr or "")[-600:])
-        tmp.replace(final_out)
+        os.replace(str(tmp), str(final_out))
     finally:
         if lst.exists():
             lst.unlink(missing_ok=True)
+        if tmp.exists():
+            tmp.unlink(missing_ok=True)
 
 
 def main() -> None:
@@ -218,23 +228,26 @@ def main() -> None:
                 break
 
     d = args.dir.resolve()
-    mp4s = sorted(d.glob("*.mp4"))
+    mp4s = sort_mp4_by_clip_index(list(d.glob("*.mp4")))
     if not mp4s:
         print(f"❌ 目录无 mp4: {d}")
         return
 
     for main in mp4s:
         idx = clip_index_from_name(main.name)
-        block = pick_block(words, idx, args.per_clip)
-        w, h, sr = probe_size_rate(main)
-        with tempfile.TemporaryDirectory(prefix="seo_tail_") as td:
-            tdir = Path(td)
-            png = tdir / "kw.png"
-            tail = tdir / "tail.mp4"
-            render_keyword_page(w, h, block, png, font_try)
-            make_tail_clip(png, tail, args.duration, w, h, sr)
-            concat_videos(main, tail, main)
-        print(f"✅ 已加关键字尾帧: {main.name}（序号 {idx}，{len(block)} 词）")
+        try:
+            block = pick_block(words, idx, args.per_clip)
+            w, h, sr = probe_size_rate(main)
+            with tempfile.TemporaryDirectory(prefix="seo_tail_") as td:
+                tdir = Path(td)
+                png = tdir / "kw.png"
+                tail = tdir / "tail.mp4"
+                render_keyword_page(w, h, block, png, font_try)
+                make_tail_clip(png, tail, args.duration, w, h, sr)
+                concat_videos(main, tail, main)
+            print(f"✅ 已加关键字尾帧: {main.name}（序号 {idx}，{len(block)} 词）")
+        except Exception as e:
+            print(f"❌ 跳过 {main.name}: {e}")
 
 
 if __name__ == "__main__":
