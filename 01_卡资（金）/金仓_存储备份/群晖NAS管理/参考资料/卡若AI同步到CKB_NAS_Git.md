@@ -26,9 +26,9 @@
 |:-----|:-----|
 | **内网** | **http://192.168.1.201:3000** |
 | **外网（frp；kr 上 3000 与 Node 冲突）** | **`http://open.quwanzhi.com:13000`**（NAS `frpc` 中 Gitea `remotePort=13000`；旧 `:3000` 已弃用） |
-| **工单管理** | http://192.168.1.201:3000/issues · http://open.quwanzhi.com:3000/issues |
-| **合并请求** | http://192.168.1.201:3000/pulls · http://open.quwanzhi.com:3000/pulls |
-| **卡若AI 仓库** | http://192.168.1.201:3000/fnvtk/karuo-ai · http://open.quwanzhi.com:3000/fnvtk/karuo-ai |
+| **工单管理** | http://192.168.1.201:3000/issues · **http://open.quwanzhi.com:13000/issues** |
+| **合并请求** | http://192.168.1.201:3000/pulls · **http://open.quwanzhi.com:13000/pulls** |
+| **卡若AI 仓库** | http://192.168.1.201:3000/fnvtk/karuo-ai · **http://open.quwanzhi.com:13000/fnvtk/karuo-ai** |
 
 **部署 Gitea（一次性）**：执行 `scripts/deploy-gitea-on-nas.sh`，或按 `references/CKB_NAS_Gitea_类GitHub访问.md` 在 NAS 上创建目录、写入 docker-compose、执行 `docker compose up -d`。首次打开 3000 端口按向导创建管理员、新建仓库 **karuo-ai**，再把本机 `origin` 改为 Gitea 的 HTTP 地址即可。
 
