@@ -437,6 +437,8 @@ tar -czf /tmp/discuz_files_backup.tar.gz /www/wwwroot/论坛路径/
 | `一键部署.py` | 根据配置文件部署项目 | `./脚本/` |
 | `ssl证书检查.py` | 检查/修复SSL证书 | `./脚本/` |
 | `腾讯云_TAT_存客宝_Nginx443强制修复.py` | **宝塔 443 不监听**：切回宝塔 Nginx | `./scripts/` |
+| `腾讯云_kr宝塔安全组放行FRP全套端口.py` | kr 安全组放行 FRP 全套 TCP（7000/8088/11401/13000…） | `./scripts/` |
+| `阿里云DNS_A记录_存客宝改kr宝塔.py` | 阿里云批量 A：`42.194.245.239`→`43.139.27.93`（`--apply` 执行） | `./scripts/` |
 | `tencent_image_snapshot_backup_to_nas.py` | 腾讯云镜像/快照备份到 CKB NAS | `./scripts/腾讯云镜像快照备份到CKB_NAS/` |
 
 ---

@@ -25,7 +25,7 @@
 | 场景 | 地址 |
 |:-----|:-----|
 | **内网** | **http://192.168.1.201:3000** |
-| **外网（需 frp 映射 3000）** | **http://open.quwanzhi.com:3000** |
+| **外网（frp；kr 上 3000 与 Node 冲突）** | **`http://open.quwanzhi.com:13000`**（NAS `frpc` 中 Gitea `remotePort=13000`；旧 `:3000` 已弃用） |
 | **工单管理** | http://192.168.1.201:3000/issues · http://open.quwanzhi.com:3000/issues |
 | **合并请求** | http://192.168.1.201:3000/pulls · http://open.quwanzhi.com:3000/pulls |
 | **卡若AI 仓库** | http://192.168.1.201:3000/fnvtk/karuo-ai · http://open.quwanzhi.com:3000/fnvtk/karuo-ai |

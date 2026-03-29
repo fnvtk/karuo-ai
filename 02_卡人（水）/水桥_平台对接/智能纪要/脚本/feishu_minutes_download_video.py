@@ -10,6 +10,8 @@
 用法：
   python3 feishu_minutes_download_video.py "https://cunkebao.feishu.cn/minutes/obcnzs51k1j754643vx138sx" -o ~/Downloads/
   python3 feishu_minutes_download_video.py obcnzs51k1j754643vx138sx --output /path/to/dir
+  # status 接口未带 topic 时，可强制与妙记列表标题一致：
+  python3 feishu_minutes_download_video.py <URL> --title "soul 派对 98场 20260212"
 """
 
 import os
@@ -190,10 +192,15 @@ def main() -> int:
 
     url_or_token = None
     output_dir = Path("/Users/karuo/Movies/soul视频/原视频")
+    title_override = ""
     i = 1
     while i < len(sys.argv):
         if sys.argv[i] in ("-o", "--output") and i + 1 < len(sys.argv):
             output_dir = Path(sys.argv[i + 1]).resolve()
+            i += 2
+            continue
+        if sys.argv[i] in ("--title", "-T") and i + 1 < len(sys.argv):
+            title_override = sys.argv[i + 1].strip()
             i += 2
             continue
         if not sys.argv[i].startswith("-"):
@@ -201,19 +208,20 @@ def main() -> int:
         i += 1
 
     if not url_or_token:
-        print("用法: python3 feishu_minutes_download_video.py <妙记URL或object_token> [-o 输出目录]", file=sys.stderr)
+        print("用法: python3 feishu_minutes_download_video.py <妙记URL或object_token> [-o 输出目录] [--title 妙记标题]", file=sys.stderr)
         return 1
 
     match = re.search(r"/minutes/([a-zA-Z0-9]+)", str(url_or_token))
     object_token = match.group(1) if match else url_or_token
 
     print(f"📥 获取视频链接 object_token={object_token}")
-    video_url, title = get_video_url(cookie, object_token)
+    video_url, api_title = get_video_url(cookie, object_token)
     if not video_url:
         print("❌ 无法获取视频下载链接（Cookie 可能失效或该妙记无视频）", file=sys.stderr)
         return 1
 
-    safe_title = re.sub(r'[\\/*?:"<>|]', "_", (title or object_token))[:80]
+    title = title_override or api_title or object_token
+    safe_title = re.sub(r'[\\/*?:"<>|]', "_", title)[:80]
     output_path = output_dir / f"{safe_title}.mp4"
 
     headers = make_headers(cookie, REFERERS[1])

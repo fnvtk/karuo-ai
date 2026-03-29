@@ -116,3 +116,39 @@
 | 主 Skill | `服务器管理/SKILL.md` |
 
 触发词：**frp 迁移、阿里云解析、open.quwanzhi.com、opennas2、frps 换机** → 先读本文件，再按第二节顺序执行。
+
+---
+
+## 十、2026-03-30 实施记录（kr 宝塔 · 与存客宝差异）
+
+### 10.1 已在 kr 宝塔完成
+
+| 项 | 说明 |
+|:---|:---|
+| **frps 0.66.0** | `/opt/frp/frps` + `/opt/frp/frps.toml`：`bindPort=7000`，`vhostHTTPPort=8088`（**非 8080**：kr 上 8080 为 soul-api 占用） |
+| **systemd** | `frps.service` 已 enable + running |
+| **腾讯云安全组** | 脚本 `scripts/腾讯云_kr宝塔安全组放行FRP全套端口.py` 已放行 7000、8088、11401、13000 及原 frp remote 端口列表 |
+| **firewalld** | 同上端口已在 kr 本机放行（否则公网仅 SG 仍会被 firewalld 挡） |
+| **阿里云 DNS** | 脚本 `scripts/阿里云DNS_A记录_存客宝改kr宝塔.py --apply` 已将 **quwanzhi.com** 下 **25 条** A 记录从 `42.194.245.239` 改为 `43.139.27.93` |
+| **临时 TCP 桥** | `frp-legacy-bridge.service`：`socat` 将 kr 公网端口转发到 **存客宝** 同端口，保障 **DNS 已改但各 NAS frpc 尚未重启** 期间的 TCP 业务（**不含 3000/8080/7000**；**3000** 与 kr 上 cunkebao 冲突） |
+| **Nginx** | `/www/server/panel/vhost/nginx/open.quwanzhi.com-frphttp.conf`：`open.quwanzhi.com:80` → `http://42.194.245.239:8080`（frpc 仍挂在存客宝 frps 时）；**全部 frpc 指向 kr 后**应改为 `http://127.0.0.1:8088` 并 **停用桥接服务** |
+
+### 10.2 与存客宝 frps 的配置差异（必读本节）
+
+| 原（存客宝） | 现（kr） | 原因 |
+|:---|:---|:---|
+| `vhostHTTPPort = 8080` | **8088** | kr **8080** 已被 soul-api 占用 |
+| Gitea `remotePort = 3000` | **13000**（frpc 内已改） | kr **3000** 已被 Next/cunkebao 占用；外网请用 **`http://open.quwanzhi.com:13000`** |
+
+### 10.3 你必须完成的两步（否则请勿停存客宝 frps）
+
+1. **DSM → 容器**：重启 **`nas-frpc`**（挂载 `/volume1/docker/frpc/frpc.toml`），使 **serverAddr=43.139.27.93** 与 **Gitea remotePort=13000** 生效。  
+2. **验证** `curl -s http://open.quwanzhi.com:11401/api/tags` 与 `http://open.quwanzhi.com:13000` 正常后，在 **kr 宝塔 SSH** 执行：  
+   `systemctl stop frp-legacy-bridge && systemctl disable frp-legacy-bridge`  
+   再将 Nginx 中 `open.quwanzhi.com` 反代改为 **`127.0.0.1:8088`**，`nginx -s reload`。  
+
+最后在**存客宝**停止旧 frps：`systemctl stop frps && systemctl disable frps`（或等价进程），避免双 frps 与端口混淆。
+
+### 10.4 家里 NAS（Station）
+
+`opennas2.quwanzhi.com` 等解析已指向 kr；**家里 frpc** 须同样把 `server_addr` / `serverAddr` 改为 **`43.139.27.93`**，并在切流前协调 **先停 kr 上 `frp-legacy-bridge`** 再重启 frpc，避免端口占用冲突。详见 §二 顺序。
