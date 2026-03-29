@@ -58,6 +58,7 @@
 | **frpc 路径** | `/volume1/homes/admin/frpc/` |
 | **配置文件** | `/volume1/homes/admin/frpc/frpc.ini` |
 | **自启方式** | crontab 每 5 分钟检活 |
+| **切到 kr frps（存客宝 frps 已停后必做）** | 外网 **22202/5002** 会全断，须在**家庭内网**执行仓库脚本 **`群晖NAS管理/scripts/家里Station_frpc切kr_内网执行.sh`**（或手工改 `frpc.ini` 中 `server_addr = 43.139.27.93` 后跑 `start_frpc.sh`）。本机 SSH 可先用 **`ssh diskstation-home`**（`~/.ssh/config` 已配兼容算法）。 |
 
 **端口映射表：**
 

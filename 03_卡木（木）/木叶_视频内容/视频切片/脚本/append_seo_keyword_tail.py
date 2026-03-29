@@ -171,9 +171,11 @@ def make_tail_clip(
 
 def concat_videos(main: Path, tail: Path, final_out: Path) -> None:
     lst = final_out.parent / "_concat_tail_list.txt"
-    tmp = Path(
-        tempfile.mkstemp(suffix="_tailconcat.mp4", dir=str(final_out.parent))[1]
+    fd, tmp_path = tempfile.mkstemp(
+        suffix="_tailconcat.mp4", dir=str(final_out.parent)
     )
+    os.close(fd)
+    tmp = Path(tmp_path)
     try:
         with open(lst, "w", encoding="utf-8") as f:
             f.write(f"file '{main.resolve()}'\n")
@@ -217,6 +219,11 @@ def main() -> None:
         default=None,
         help="可选 TTF/TTC，默认尝试 fonts/SmileySans 或系统苹方",
     )
+    ap.add_argument(
+        "files",
+        nargs="*",
+        help="可选：只处理这些文件名（相对于 --dir），不填则处理目录下全部 .mp4",
+    )
     args = ap.parse_args()
     words = load_keywords(args.keywords)
     font_try = args.font
@@ -228,7 +235,15 @@ def main() -> None:
                 break
 
     d = args.dir.resolve()
-    mp4s = sort_mp4_by_clip_index(list(d.glob("*.mp4")))
+    if args.files:
+        mp4s = []
+        for f in args.files:
+            p = Path(f) if Path(f).is_absolute() else d / f
+            if p.suffix.lower() == ".mp4" and p.is_file():
+                mp4s.append(p)
+        mp4s = sort_mp4_by_clip_index(mp4s)
+    else:
+        mp4s = sort_mp4_by_clip_index(list(d.glob("*.mp4")))
     if not mp4s:
         print(f"❌ 目录无 mp4: {d}")
         return
