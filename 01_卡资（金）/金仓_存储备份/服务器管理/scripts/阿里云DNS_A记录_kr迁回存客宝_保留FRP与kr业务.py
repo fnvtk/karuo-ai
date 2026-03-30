@@ -98,6 +98,41 @@ def get_aliyun_creds():
     return id_val or None, secret_val or None
 
 
+def _ensure_frp_entry_a_on_kr(client) -> None:
+    """存客宝不再跑 frps 时，open/opennas2 若指错 IP 会导致全端口 connection refused。"""
+    from aliyunsdkalidns.request.v20150109.DescribeDomainRecordsRequest import (
+        DescribeDomainRecordsRequest,
+    )
+    from aliyunsdkalidns.request.v20150109.UpdateDomainRecordRequest import (
+        UpdateDomainRecordRequest,
+    )
+
+    for rr in ("open", "opennas2"):
+        req = DescribeDomainRecordsRequest()
+        req.set_accept_format("json")
+        req.set_DomainName(DOMAIN)
+        req.set_RRKeyWord(rr)
+        req.set_TypeKeyWord("A")
+        raw = client.do_action_with_exception(req)
+        data = json.loads(raw)
+        for r in data.get("DomainRecords", {}).get("Record", []):
+            if (r.get("RR") or "").strip() != rr:
+                continue
+            if (r.get("Type") or "").upper() != "A":
+                continue
+            val = (r.get("Value") or "").strip()
+            if val == KR_IP:
+                continue
+            u = UpdateDomainRecordRequest()
+            u.set_accept_format("json")
+            u.set_RecordId(r["RecordId"])
+            u.set_RR(rr)
+            u.set_Type("A")
+            u.set_Value(KR_IP)
+            client.do_action_with_exception(u)
+            print("  🔧 FRP 入口修正 %s.%s：%s -> %s" % (rr, DOMAIN, val, KR_IP))
+
+
 def main():
     apply_run = "--apply" in sys.argv
     skip_apex = "--include-apex" not in sys.argv
@@ -158,6 +193,11 @@ def main():
 
     if not to_update:
         print("无需要迁回的 A 记录（或全部在白名单 / 非 %s）。" % KR_IP)
+        if apply_run:
+            print("仍执行 FRP 入口校验（open / opennas2 -> %s）…" % KR_IP)
+            _ensure_frp_entry_a_on_kr(client)
+        else:
+            print("\n未加 --apply，以上为 dry-run。若需同时处理根域名 @，加 --include-apex（慎用）。")
         return 0
 
     print(
@@ -183,6 +223,9 @@ def main():
         req.set_Value(CKB_IP)
         client.do_action_with_exception(req)
         print("  ✅ 已更新 %s.%s -> %s" % (item["RR"] or "@", DOMAIN, CKB_IP))
+
+    # 硬防护：迁回批量后仍强制 FRP 入口落在 kr
+    _ensure_frp_entry_a_on_kr(client)
 
     print("\n完成。请 dig 验证；若某子域实际已在 kr 部署，请将其 RR 加入 STAY_ON_KR_RR 后勿迁回。")
     return 0

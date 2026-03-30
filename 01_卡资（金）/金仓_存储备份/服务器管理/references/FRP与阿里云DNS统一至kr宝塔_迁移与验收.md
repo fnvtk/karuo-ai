@@ -126,6 +126,8 @@
 > **白名单** `STAY_ON_KR_RR`：含 **`open`、`opennas2`、`kr-ai`** 及 `服务器管理/SKILL.md` 端口表上实际跑在 kr 的子域；其余 **A@43.139** 会迁回 **42.194.245.239**。  
 > **注意**：迁回后务必确认 **`open.quwanzhi.com`** 的 A 为 **`43.139.27.93`**（公司 CKB frp 入口）；若仍为存客宝，需手工改回 kr（存客宝已不再跑 frps 时否则全断）。
 
+**故障现象（浏览器）**：`open.quwanzhi.com:5200` 等提示 **ERR_CONNECTION_REFUSED**，多为 **`open` 的 A 仍指向 `42.194.245.239`**（流量打到已停 frps 的存客宝）。阿里云控制台或脚本 **`_ensure_frp_entry_a_on_kr`** 已强制 **`open` / `opennas2` → `43.139.27.93`**。改完后本机可 **`chrome://net-internals/#dns` → Clear host cache** 或等待 TTL；抽验：`curl -I http://43.139.27.93:5200 -H 'Host: open.quwanzhi.com'` 应非拒绝连接。
+
 ---
 
 ## 十、2026-03-30 实施记录（kr 宝塔 · 与存客宝差异）
