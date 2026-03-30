@@ -55,6 +55,17 @@ curl -sS -m 8 -o /dev/null -w "opennas2:5002 %{http_code}\n" http://opennas2.quw
 
 ---
 
-## 五、触发词
+## 五、阿里云 DNS 与 FRP（2026-03-30）
 
-**NAS 矩阵、两台 NAS、opennas2、22202、diskstation-home、frpc 切 kr、关联电脑端口** → 先读本文件，再打开 §一表格与 `双NAS区分_公司CKB与家里Station.md`。
+- **分流脚本**：`服务器管理/scripts/阿里云DNS_A记录_kr迁回存客宝_保留FRP与kr业务.py` —— 将 **非** FRP、**非** kr 端口表站点的 A 记录从 **`43.139.27.93` 迁回 `42.194.245.239`**；**保留** `open`、`opennas2`、`kr-ai` 及 SKILL 端口表子域。  
+- **硬条件**：**`open.quwanzhi.com` 的 A 必须为 `43.139.27.93`**（公司 frp 入口）。若公共 DNS 仍短暂显示旧 IP，属 TTL，以阿里云控制台为准。  
+- **执行环境**：`服务器管理/scripts/.venv_aliyun_dns`（`pip install aliyun-python-sdk-core aliyun-python-sdk-alidns`）。
+
+## 六、家里 MacBook（局域网）
+
+- 文档快照曾记 **192.168.110.14**；以 **系统设置 → 通用 → 共享 → 远程登录** 开启后，本机可 `ssh <用户名>@<当前 IP>`。  
+- 当前网段可用 **`arp -a`** 看活跃 IP；**Connection refused** 表示未开 22 端口，需在 Mac 上开启远程登录，Agent 无法代开。
+
+## 七、触发词
+
+**NAS 矩阵、两台 NAS、opennas2、22202、diskstation-home、frpc 切 kr、关联电脑端口、DNS 迁回存客宝** → 先读本文件，再打开 §一表格与 `双NAS区分_公司CKB与家里Station.md`。
