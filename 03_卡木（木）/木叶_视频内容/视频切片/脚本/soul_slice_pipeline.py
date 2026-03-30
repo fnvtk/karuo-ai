@@ -248,7 +248,7 @@ def main():
             hl_cmd.extend(["--prompt-min-sec", str(args.prompt_min_sec)])
         run(
             hl_cmd,
-            "高光识别（API→Ollama→规则）",
+            "高光识别（已配置的 API 优先 → 否则 Ollama → 规则）",
             timeout=600,
         )
     if not highlights_path.exists():

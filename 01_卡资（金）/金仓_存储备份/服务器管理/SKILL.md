@@ -190,7 +190,8 @@ bash scripts/存客宝_lytiao_Docker部署.sh
 - **SSH**：`ssh -p 22022 -i "服务器管理项目/Steam/id_ed25519" root@43.139.27.93`（私钥须 `chmod 600`）
 - 本机快速检查：`ping 43.139.27.93`、`nc -zv 43.139.27.93 22022`
 - 服务器内诊断与限流：在 **宝塔面板终端** 执行文档「六」中 6.1～6.3 命令（连接数、按 IP 统计、Nginx 限速）。
-- **502 修复（如 soul.quwanzhi.com/admin）**：API 方式运行 `scripts/kr宝塔_宝塔API_修复502.py`（需 API 白名单）；或到 kr宝塔 **宝塔面板 → 终端** 执行 `nginx -t && nginx -s reload` 后，在「Node 项目」中重启 soul 相关项目。详见文档 6.6。
+- **502 修复（如 soul / yzg.quwanzhi.com）**（需 kr 面板 **API 白名单**）：① **推荐（按 vhost 反查上游）**：`python3 scripts/kr宝塔_宝塔API_域名502读vhost重启上游.py yzg.quwanzhi.com`（读 Nginx 配置 → 打印 **root** 与 **/admin** 风险提示 → 重启对应 **Node 端口** 或尝试 **PHP-FPM** → 再启 Nginx）。② **按项目名关键词**：`python3 scripts/kr宝塔_宝塔API_修复502.py --only yzg`。③ **面板/SSH**：`nginx -t && /www/server/nginx/sbin/nginx -s reload`（路径以机内为准）后，在「Node 项目」或 **PHP 服务**中手动重启上游。详见各脚本头注释与文档 6.6。
+- **yzg.quwanzhi.com（银掌柜）**：Nginx **`/` → 127.0.0.1:3081**（Next standalone，`/www/wwwroot/self/yzg/yinzhangui/admin/start.sh` 内 **`PORT=3081`**）；**`/api/` → 127.0.0.1:8100**（`yinzhangui/api` FastAPI）。**502 典型根因**：3081/8100 **无监听**（日志 `Connection refused`）。**2026-03-30 已恢复**：PM2 托管 `start.sh`（`yzg-yinzhangui-admin`）+ `pm2 save`；API 曾用 **www** `nohup`。**后续**：按本 SKILL **禁止长期 PM2** 的约定，优先迁 **宝塔 Node 项目 + Python 守护进程**。面板「运行中」仍可能 502 → 以 **端口监听 + error.log** 为准。**「无备份」**：开站点备份或计划任务即可（与 502 无关）。
 
 ### 6. 常用诊断命令（kr宝塔等）
 
@@ -239,6 +240,8 @@ dig soul.quwanzhi.com +short @8.8.8.8
 | 3055 | wzdj | Next.js | wzdj.quwanzhi.com | ✅ |
 | 3305 | AITOUFA | Next.js | ai-tf.quwanzhi.com | ✅ |
 | 9528 | mbti | Vue | mbtiadmin.quwanzhi.com | ✅ |
+| **3081** | 银掌柜管理端（Next standalone） | Node | **yzg.quwanzhi.com**（`/`） | ✅（2026-03-30 修复：须监听 3081，与 `admin/start.sh` 一致） |
+| **8100** | 银掌柜 API（FastAPI） | Python | **yzg.quwanzhi.com**（`/api/`） | ✅（建议改 systemd/宝塔守护，避免仅 nohup） |
 
 ### 端口分配原则
 

@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 高光识别 - AI 分析视频文字稿，输出高光片段 JSON
-级联：API 优先（当前可用最佳模型）→ Ollama 本地 → 规则备用
-API 使用 OPENAI_API_BASE/KEY/MODEL 或 OPENAI_API_BASES/KEYS/MODELS（逗号分隔）故障切换。
+级联：环境已配置的 API 队列优先（OPENAI_API_*）→ Ollama → 规则备用。
+--api-only：仅 API，禁止 Ollama/规则；未配置任何 API 时直接退出（可选）。
 """
 import argparse
 import json
@@ -351,20 +351,28 @@ def _translate_to_chinese(text: str) -> str:
     return text
 
 
-def _ensure_chinese_highlights(data: list) -> list:
-    """确保 title、hook_3sec、transcript_excerpt 全为中文，无英文"""
+def _ensure_chinese_highlights(data: list, api_only: bool = False) -> list:
+    """确保 title、hook_3sec、transcript_excerpt 全为中文，无英文。
+    api_only=True 时禁止调用本地 Ollama 翻译，非中文字段改为简体占位文案。"""
     for i, item in enumerate(data):
         if not isinstance(item, dict):
             continue
         for key in ["title", "hook_3sec", "question", "transcript_excerpt"]:
             val = item.get(key)
             if val and not _is_mostly_chinese(str(val)):
-                translated = _translate_to_chinese(str(val))
-                item[key] = (translated if translated else f"片段{i+1}")[:20 if key != "transcript_excerpt" else 50]
+                if api_only:
+                    lim = 20 if key != "transcript_excerpt" else 50
+                    item[key] = (f"干货片段{i + 1}" if key != "transcript_excerpt" else f"精彩片段{i + 1}摘要")[:lim]
+                else:
+                    translated = _translate_to_chinese(str(val))
+                    item[key] = (translated if translated else f"片段{i+1}")[:20 if key != "transcript_excerpt" else 50]
         if item.get("cta_ending") and not _is_mostly_chinese(str(item["cta_ending"])):
             item["cta_ending"] = DEFAULT_CTA
         if item.get("reason") and not _is_mostly_chinese(str(item.get("reason", ""))):
-            item["reason"] = _translate_to_chinese(str(item["reason"]))[:80] or "干货观点"
+            if api_only:
+                item["reason"] = "核心观点"
+            else:
+                item["reason"] = _translate_to_chinese(str(item["reason"]))[:80] or "干货观点"
     return data
 
 
@@ -516,6 +524,11 @@ def main():
         help="送模型的 SRT 从该秒之后截取；ops-short 默认 450（约7:30），long 默认 0",
     )
     parser.add_argument("--require-ai", action="store_true", help="必须用 AI 识别，失败则退出不兜底")
+    parser.add_argument(
+        "--api-only",
+        action="store_true",
+        help="仅使用 OpenAI 兼容 API 队列（OPENAI_API_*），禁止 Ollama、禁止规则均匀切分兜底；未配置 API 时直接退出",
+    )
     args = parser.parse_args()
 
     if args.preset == "ops-short":
@@ -562,7 +575,14 @@ def main():
     if len(text) < 100:
         print("❌ 文字稿过短，请检查 SRT 格式", file=sys.stderr)
         sys.exit(1)
-    # 级联：API 优先（当前可用最佳模型）→ Ollama → 规则备用（--require-ai 时不用规则）
+    api_only = bool(getattr(args, "api_only", False))
+    if api_only and not _build_api_provider_queue():
+        print(
+            "❌ --api-only 已开启但未配置 API：请设置 OPENAI_API_KEY，或 OPENAI_API_BASES + OPENAI_API_KEYS（及可选 OPENAI_MODELS）",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    # 级联：API 优先（当前可用最佳模型）→ Ollama → 规则备用（--api-only 或 --require-ai 时不用后两者）
     data = None
     raw = ""
     api_queue = _build_api_provider_queue()
@@ -603,7 +623,7 @@ def main():
         pass  # API 已成功，保持 data
     else:
         data = None
-    if not data or not isinstance(data, list):
+    if (not data or not isinstance(data, list)) and not api_only:
         for model in OLLAMA_MODELS:
             try:
                 print(f"正在调用 Ollama {model} 分析高光片段...")
@@ -636,14 +656,17 @@ def main():
                     print(f"  返回预览: {str(raw)[:400]}...", file=sys.stderr)
                 data = None
     if not data or not isinstance(data, list):
-        if getattr(args, "require_ai", False):
-            print("❌ 必须用 AI 识别，当前无可用模型或解析失败", file=sys.stderr)
+        if getattr(args, "require_ai", False) or api_only:
+            print(
+                "❌ 高光识别失败：API 无可用结果（--api-only / --require-ai 下不使用 Ollama 与规则切分）",
+                file=sys.stderr,
+            )
             sys.exit(1)
         print("使用规则备用切分", file=sys.stderr)
         data = fallback_highlights(
             str(transcript_path), clip_n, min_dur, max_dur, start_from_sec=fb_start
         )
-    if not data:
+    if not api_only and not data:
         data = fallback_highlights(
             str(transcript_path), clip_n, min_dur, max_dur, start_from_sec=fb_start
         )
@@ -664,13 +687,16 @@ def main():
     data = _filter_clips_by_duration(data, min_dur, filter_max_sec)
     # 若 AI 返回的片段全被过滤，用规则备用
     if not data and transcript_path.exists():
+        if api_only:
+            print("❌ API 返回的片段经时长过滤后为空（--api-only 下不启用规则切分）", file=sys.stderr)
+            sys.exit(1)
         print("  AI 片段时长无效，改用规则切分", file=sys.stderr)
         data = fallback_highlights(
             str(transcript_path), clip_n, min_dur, max_dur, start_from_sec=fb_start
         )
     # 强制中文
     print("  确保导出名与封面为简体中文...")
-    data = _ensure_chinese_highlights(data)
+    data = _ensure_chinese_highlights(data, api_only=api_only)
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
