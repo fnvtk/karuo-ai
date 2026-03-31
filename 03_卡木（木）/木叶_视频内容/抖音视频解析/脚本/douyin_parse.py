@@ -26,7 +26,8 @@ MOBILE_UA = (
 )
 
 # 从「复制打开抖音…」整段粘贴里抽出第一条抖音链接（GitHub 常见分享格式）
-DOUYIN_SHORT_RE = re.compile(r"https?://v\.douyin\.com/[A-Za-z0-9]+/?", re.I)
+# 短链 path 可含连字符，如 K8Iq-S7hGCE
+DOUYIN_SHORT_RE = re.compile(r"https?://v\.douyin\.com/[^/\s]+/?", re.I)
 DOUYIN_VIDEO_PAGE_RE = re.compile(
     r"https?://(?:www\.)?douyin\.com/video/\d+[^?\s]*", re.I
 )
