@@ -379,8 +379,8 @@ def main():
         enhance_cmd.extend(["--speed-factor", str(float(args.speed_factor))])
     if getattr(args, "silence_gentle", False):
         enhance_cmd.append("--silence-gentle")
-    # 竖条+逐字字幕较慢，按约 180 秒/片估上限，避免 12 条长片中途被 run() 超时打断
-    enhance_timeout = max(2400, 900 + len(clips_list) * 180)
+    # 竖条+逐字字幕较慢，按约 240 秒/片估上限（长 5min 档易顶满 50min），避免整段增强被 run() 掐断
+    enhance_timeout = max(3600, 1200 + len(clips_list) * 240)
     ok = run(enhance_cmd, "增强处理（封面+字幕+加速）", timeout=enhance_timeout, check=False)
     import shutil
     enhanced_count = len(list(enhanced_dir.glob("*.mp4")))
