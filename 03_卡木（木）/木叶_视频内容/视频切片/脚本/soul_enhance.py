@@ -3,10 +3,10 @@
 Soul切片增强脚本 v2.0
 功能：
 1. 封面贴片：高光 hook_3sec 优先（吸睛），竖屏底图为**清晰帧 + 约 10% 轻模糊混入**（非全糊）+ 冷色渐变；**顶栏单条 Soul 绿 + 底部电影感渐隐 + 细内框 + 柔阴影标题**（避免粗描边与多条绿边廉价感）。**竖条成片**：封面取帧须与最终成片同一 `-vf`（如 `crop=598:1080:493:0`），禁止用整幅 1920 横版再压成竖条（会与正片取景不一致）。
-2. 烧录字幕（关键词高亮、可选逐字）
+2. 烧录字幕（关键词高亮、可选逐字；逐字轨与词级时间轴对齐，关键词字位略拉长停留以配合视觉重点）
 3. 切除检出的长静音并重映射字幕时间轴
 4. 片尾 CTA（cta_ending）字幕条
-5. 视频加速约 10%（字幕在加速前已烧进中间成片，再与音轨同倍率 setpts/atempo，相对口播不因此漂移）
+5. 视频与对白同倍率加速（默认约 10%，可用 --speed-factor 调低更丝滑；--no-speedup 原速）
 6. 转录纠错 / 语气词过滤（见 CORRECTIONS、FILLER 等）
 """
 
@@ -146,6 +146,7 @@ def build_typewriter_subtitle_images(
     逐字渐显（跟语速）：
     - 若字幕带 word_times：每个 ASR 词的时间段内再按字权重切分，一字一帧，整体对齐口播；
     - 否则整句时长按字权重逐字切分（兜底）。
+    - 与 KEYWORDS 金黄高亮同源的区间，单字时间权重略加大，重点字略「拖一拍」、跟读更丝滑。
     subtitle_overlay_start：最早显示字幕的时间轴（秒），须 ≥ 封面结束。
     """
     sub_images = []
@@ -161,6 +162,10 @@ def build_typewriter_subtitle_images(
 
         # ── 路径 A：word-level：词边界内再按字拆时间 ─────────────────────────
         if word_times and len(word_times) >= 1:
+            full_line_a = _normalize_subtitle_text_strict(
+                improve_subtitle_punctuation(_improve_subtitle_text(sub.get("text") or ""))
+            )
+            kw_spans_a = _keyword_highlight_spans(full_line_a)
             accumulated = ""
             for wi, wt in enumerate(word_times):
                 raw_w = _to_simplified((wt.get("word") or "").strip())
@@ -182,7 +187,12 @@ def build_typewriter_subtitle_images(
                 chars_w = list(raw_w)
                 if not chars_w:
                     continue
-                weights = [_subtitle_char_weight(c) for c in chars_w]
+                weights = [
+                    _subtitle_char_weight_keyword_aware(
+                        chars_w[ci], len(accumulated) + ci, full_line_a, kw_spans_a
+                    )
+                    for ci in range(len(chars_w))
+                ]
                 total_ww = sum(max(w, 0.01) for w in weights)
                 prev_tw = word_t0
                 for ci, ch in enumerate(chars_w):
@@ -225,7 +235,11 @@ def build_typewriter_subtitle_images(
             sub_images.append({"path": img_path, "start": s, "end": e})
             img_idx += 1
             continue
-        weights = [_subtitle_char_weight(ch) for ch in chars]
+        kw_spans_b = _keyword_highlight_spans(safe_text)
+        weights = [
+            _subtitle_char_weight_keyword_aware(chars[ci], ci, safe_text, kw_spans_b)
+            for ci in range(n)
+        ]
         total_w = sum(max(w, 0.01) for w in weights)
         prev_t = s
         for ci in range(n):
@@ -715,6 +729,40 @@ def _subtitle_char_weight(ch: str) -> float:
     if re.match(r"[A-Za-z0-9]", ch):
         return 0.9
     return 1.0
+
+
+def _keyword_highlight_spans(text: str) -> list[tuple[int, int]]:
+    """与 create_subtitle_image 一致：KEYWORDS 命中区间（左闭右开），长词优先、去重叠。"""
+    if not text:
+        return []
+    highlights: list[tuple[int, int]] = []
+    for keyword in sorted(KEYWORDS, key=len, reverse=True):
+        start = 0
+        while True:
+            pos = text.find(keyword, start)
+            if pos == -1:
+                break
+            overlap = any(s <= pos < e or s < pos + len(keyword) <= e for s, e in highlights)
+            if not overlap:
+                highlights.append((pos, pos + len(keyword)))
+            start = pos + 1
+    return sorted(highlights, key=lambda x: x[0])
+
+
+def _subtitle_char_weight_keyword_aware(
+    ch: str, char_index_in_line: int, full_line: str, kw_spans: list[tuple[int, int]]
+) -> float:
+    """在标点缓急基础上，关键词内单字略增权 → 逐字显现时「重点字」多占一点时间，跟读更顺。"""
+    w = _subtitle_char_weight(ch)
+    if w <= 0 or not full_line or not kw_spans:
+        return w
+    if char_index_in_line < 0 or char_index_in_line >= len(full_line):
+        return w
+    if full_line[char_index_in_line] != ch:
+        return w
+    if any(s <= char_index_in_line < e for s, e in kw_spans):
+        return w * 1.42
+    return w
 
 
 EMOJI_STICKER_MAP = {
@@ -1283,28 +1331,8 @@ def _is_mostly_chinese(text):
 
 
 def _translate_to_chinese(text):
-    """Ollama 翻译英文为中文"""
-    if not text or _is_mostly_chinese(text):
-        return text
-    try:
-        import requests
-        r = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "qwen2.5:1.5b",
-                "prompt": f"将以下翻译成简体中文，只输出中文：\n{text[:150]}",
-                "stream": False,
-                "options": {"temperature": 0.1, "num_predict": 80},
-            },
-            timeout=15,
-        )
-        if r.status_code == 200:
-            out = r.json().get("response", "").strip().split("\n")[0][:80]
-            if out:
-                return out
-    except Exception:
-        pass
-    return text
+    """不再调用 Ollama；非中文条保留原文（请用中文转录或在 Cursor 中改 transcript.srt）。"""
+    return text if text else ""
 
 
 def detect_burned_subs(video_path, num_samples=2):
@@ -2100,7 +2128,9 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                  strong_audio_clean=False, keyword_pins=False,
                  silence_noise_db=None, silence_min_duration=None, silence_trim_margin=None,
                  merge_subtitle_gap_silences=True,
-                 no_speedup=False):
+                 no_speedup=False,
+                 skip_ollama_translate=False,
+                 speed_factor=None):
     """增强单个切片。vertical=True 时输出竖条，宽由 --crop-vf 决定（原生包络常见 560～750×1080；旧 498 为两段裁或 scale）。
     vertical_fit_full：整幅 16:9 缩放入 498×1080 + 上下黑边。
     horizontal_center_pad：与竖条塑形相同链路（封面/字幕仍按竖条叠在横版上），最后输出 1920×1080，中间为裁切条、左右黑边。
@@ -2213,7 +2243,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
 
         subtitles = parse_srt_for_clip(transcript_path, start_sec, end_sec, delay_sec=actual_delay)
         for sub in subtitles:
-            if not _is_mostly_chinese(sub['text']):
+            if not skip_ollama_translate and not _is_mostly_chinese(sub['text']):
                 sub['text'] = _translate_to_chinese(sub['text']) or sub['text']
         subtitles = _filter_relevant_subtitles(subtitles)
         if _is_bad_transcript(subtitles):
@@ -2423,6 +2453,11 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     
     # 5.3 加速 + 音频增强（可关：不加速、不重编码音轨，避免中间叠音/变调）
     speed_output = os.path.join(temp_dir, 'speed.mp4')
+    sf = float(speed_factor) if speed_factor is not None else float(SPEED_FACTOR)
+    if sf < 1.0:
+        sf = 1.0
+    if sf > 1.35:
+        sf = 1.35
     if no_speedup:
         print(f"  [4/5] 跳过加速与音频滤镜（原速、音轨不重编码）…", flush=True)
         try:
@@ -2433,15 +2468,16 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
             print(f"  ⚠ 复制中间成片失败: {e}，沿用当前文件", file=sys.stderr)
     else:
         mode_audio = "强降噪会议室" if strong_audio_clean else "标准"
-        print(f"  [4/5] 加速 10% + 音频清晰化（{mode_audio}）…", flush=True)
+        pct = int(round((sf - 1.0) * 100))
+        print(f"  [4/5] 加速约 {pct}%（×{sf:.3f}）+ 音频清晰化（{mode_audio}）…", flush=True)
 
         audio_enhance = _audio_enhance_filter_str(bool(strong_audio_clean))
         # 加速 + 音频增强 合并成一次 ffmpeg
         cmd = [
             'ffmpeg', '-y', '-i', current_video,
             '-filter_complex',
-            f"[0:v]setpts={1/SPEED_FACTOR}*PTS[v];"
-            f"[0:a]atempo={SPEED_FACTOR},{audio_enhance}[a]",
+            f"[0:v]setpts={1/sf}*PTS[v];"
+            f"[0:a]atempo={sf},{audio_enhance}[a]",
             '-map', '[v]', '-map', '[a]',
             '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
             '-c:a', 'aac', '-b:a', '192k',
@@ -2451,13 +2487,13 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         result = subprocess.run(cmd, capture_output=True, text=True)
         if result.returncode == 0 and os.path.exists(speed_output):
             current_video = speed_output
-            print(f"  ✓ 加速 10% + 音频增强完成", flush=True)
+            print(f"  ✓ 加速 ×{sf:.3f} + 音频增强完成", flush=True)
         else:
             print(f"  ⚠ 加速步骤失败，尝试仅加速（跳过音频增强）", file=sys.stderr)
             # 降级：只做加速，不做音频增强
             cmd_fallback = [
                 'ffmpeg', '-y', '-i', current_video,
-                '-filter_complex', f"[0:v]setpts={1/SPEED_FACTOR}*PTS[v];[0:a]atempo={SPEED_FACTOR}[a]",
+                '-filter_complex', f"[0:v]setpts={1/sf}*PTS[v];[0:a]atempo={sf}[a]",
                 '-map', '[v]', '-map', '[a]',
                 '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
                 '-c:a', 'aac', '-b:a', '128k',
@@ -2631,6 +2667,21 @@ def main():
         action="store_true",
         help="不加速、不对音轨做 loudnorm/atempo 等滤镜（原速成片，减轻叠音/变调感；尾帧拼接前推荐）",
     )
+    parser.add_argument(
+        "--ollama-translate",
+        action="store_false",
+        dest="no_ollama_translate",
+        help="[已废弃] 历史项：曾允许非中文字幕走 Ollama；当前默认永不调用 Ollama，请用中文稿或 Cursor 改 SRT",
+    )
+    parser.add_argument(
+        "--speed-factor",
+        type=float,
+        default=None,
+        dest="speed_factor",
+        metavar="X",
+        help="成片音视频同倍率加速系数，默认 1.10；可试 1.03～1.06 更丝滑、少变调（须未加 --no-speedup）",
+    )
+    parser.set_defaults(no_ollama_translate=True)
     args = parser.parse_args()
     
     clips_dir = Path(args.clips) if args.clips else CLIPS_DIR
@@ -2705,7 +2756,13 @@ def main():
     print("="*60)
     print(
         f"功能: 封面+字幕+"
-        + ("原速无加速 " if getattr(args, "no_speedup", False) else "加速10%+")
+        + (
+            "原速无加速 "
+            if getattr(args, "no_speedup", False)
+            else (
+                f"加速{float(getattr(args, 'speed_factor') or SPEED_FACTOR):.2f}x+"
+            )
+        )
         + "去语气词"
         + (
             "+去长静音"
@@ -2777,13 +2834,20 @@ def main():
         print("=" * 60, flush=True)
         
         if getattr(args, "title_only", False):
-            # 文件名：优先 highlights「title」完整抖音向长标题（sanitize 72 字内）；封面仍由 enhance_clip 内 pick_cover_hook（viral_hook 短句）
-            long_t = (highlight_info.get("title") or "").strip()
-            short_fallback = pick_cover_hook_text(highlight_info) or long_t or clip_path.stem
-            fn_src = long_t if long_t else short_fallback
-            fn_norm = _normalize_title_for_display(str(fn_src)) or str(fn_src)
-            stem = sanitize_filename(fn_norm, max_length=72)
-            if not stem or stem == "片段":
+            # 文件名：优先 file_stem（2～6 字抽象主题、可与 title/hook 不重名）；否则用 title 长标题
+            fs = (highlight_info.get("file_stem") or "").strip()
+            if fs:
+                stem = sanitize_filename(
+                    _normalize_title_for_display(fs) or fs,
+                    max_length=12,
+                )
+            else:
+                long_t = (highlight_info.get("title") or "").strip()
+                short_fallback = pick_cover_hook_text(highlight_info) or long_t or clip_path.stem
+                fn_src = long_t if long_t else short_fallback
+                fn_norm = _normalize_title_for_display(str(fn_src)) or str(fn_src)
+                stem = sanitize_filename(fn_norm, max_length=72)
+            if not fs and (not stem or stem == "片段"):
                 stem = sanitize_filename(
                     _normalize_title_for_display(str(short_fallback)) or str(short_fallback),
                     max_length=50,
@@ -2820,6 +2884,8 @@ def main():
                 silence_trim_margin=smar,
                 merge_subtitle_gap_silences=not getattr(args, "no_subtitle_gap_merge", False),
                 no_speedup=getattr(args, "no_speedup", False),
+                skip_ollama_translate=getattr(args, "no_ollama_translate", True),
+                speed_factor=getattr(args, "speed_factor", None),
             ):
                 success_count += 1
         finally:

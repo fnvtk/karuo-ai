@@ -130,6 +130,12 @@ def main():
         default=None,
         help="传给 identify_highlights：送模型的 SRT 从该秒之后截取（ops-short 默认 450）",
     )
+    parser.add_argument(
+        "--no-openai-api",
+        action="store_true",
+        dest="no_openai_api",
+        help="高光不走 OPENAI_*，仅用规则切分（不调 Ollama）；建议配置 API 或在 Cursor 手改 highlights",
+    )
     parser.add_argument("--skip-transcribe", action="store_true", help="跳过转录（已有 transcript.srt）")
     parser.add_argument("--skip-highlights", action="store_true", help="跳过高光识别（已有 highlights.json）")
     parser.add_argument("--skip-clips", action="store_true", help="跳过切片（已有 clips/，仅重新增强）")
@@ -144,6 +150,35 @@ def main():
     parser.add_argument("--montage-source", choices=["auto", "clips", "finals"], default="auto", help="快速混剪使用切片还是成片")
     parser.add_argument("--montage-max-clips", type=int, default=8, help="快速混剪最多取多少条片段")
     parser.add_argument("--montage-seconds", type=float, default=4.0, help="快速混剪每条截取秒数")
+    parser.add_argument(
+        "--crop-vf",
+        default="",
+        help="传给 soul_enhance：与 §三 裁剪检查 txt 中 CROP_VF 一致",
+    )
+    parser.add_argument(
+        "--overlay-x",
+        type=int,
+        default=-1,
+        help="传给 soul_enhance：与塑形参数 OVERLAY_X 一致；-1 表示不传",
+    )
+    parser.add_argument(
+        "--typewriter-subs",
+        action="store_true",
+        help="成片逐字渐显字幕（跟读）",
+    )
+    parser.add_argument(
+        "--speed-factor",
+        type=float,
+        default=None,
+        dest="speed_factor",
+        metavar="X",
+        help="传给 soul_enhance，如 1.06；不设则用 soul_enhance 默认",
+    )
+    parser.add_argument(
+        "--silence-gentle",
+        action="store_true",
+        help="传给 soul_enhance：去静音参数更温和",
+    )
     args = parser.parse_args()
 
     if getattr(args, "ops_short", False):
@@ -198,7 +233,7 @@ def main():
             run(
                 ["ffmpeg", "-y", "-i", str(video_path), "-vn", "-ar", "16000", "-ac", "1", str(audio_path)],
                 "提取音频",
-                timeout=120,
+                timeout=max(120, int(video_path.stat().st_size / (1024 * 1024)) + 300),
             )
         if not transcript_path.exists() and audio_path.exists():
             print("  MLX Whisper 转录（需 conda mlx-whisper）...")
@@ -246,9 +281,13 @@ def main():
             hl_cmd.append("--ops-jingju-hotspot")
         if getattr(args, "prompt_min_sec", None) is not None:
             hl_cmd.extend(["--prompt-min-sec", str(args.prompt_min_sec)])
+        if getattr(args, "no_openai_api", False):
+            hl_cmd.append("--no-openai-api")
         run(
             hl_cmd,
-            "高光识别（已配置的 API 优先 → 否则 Ollama → 规则）",
+            "高光识别（禁用 OPENAI_*：仅规则切分）"
+            if getattr(args, "no_openai_api", False)
+            else "高光识别（OPENAI 兼容 API 队列 → 失败则规则；不使用 Ollama）",
             timeout=600,
         )
     if not highlights_path.exists():
@@ -281,7 +320,7 @@ def main():
                 "--prefix", clip_prefix,
             ],
             "批量切片",
-            timeout=300,
+            timeout=1800,
         )
     elif not list(clips_dir.glob("*.mp4")):
         print(f"❌ {clips_dir_name}/ 为空，请去掉 --skip-clips 或先完成切片")
@@ -328,7 +367,20 @@ def main():
         args, "skip_subs", False
     ):
         enhance_cmd.append("--force-burn-subs")
-    enhance_timeout = max(900, 600 + len(clips_list) * 90)  # 约 90 秒/片
+    crop_vf_arg = (getattr(args, "crop_vf", "") or "").strip()
+    if crop_vf_arg:
+        enhance_cmd.extend(["--crop-vf", crop_vf_arg])
+    ox_arg = int(getattr(args, "overlay_x", -1) or -1)
+    if ox_arg >= 0:
+        enhance_cmd.extend(["--overlay-x", str(ox_arg)])
+    if getattr(args, "typewriter_subs", False):
+        enhance_cmd.append("--typewriter-subs")
+    if getattr(args, "speed_factor", None) is not None:
+        enhance_cmd.extend(["--speed-factor", str(float(args.speed_factor))])
+    if getattr(args, "silence_gentle", False):
+        enhance_cmd.append("--silence-gentle")
+    # 竖条+逐字字幕较慢，按约 180 秒/片估上限，避免 12 条长片中途被 run() 超时打断
+    enhance_timeout = max(2400, 900 + len(clips_list) * 180)
     ok = run(enhance_cmd, "增强处理（封面+字幕+加速）", timeout=enhance_timeout, check=False)
     import shutil
     enhanced_count = len(list(enhanced_dir.glob("*.mp4")))

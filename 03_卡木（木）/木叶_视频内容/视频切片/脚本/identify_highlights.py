@@ -2,8 +2,11 @@
 # -*- coding: utf-8 -*-
 """
 高光识别 - AI 分析视频文字稿，输出高光片段 JSON
-级联：环境已配置的 API 队列优先（OPENAI_API_*）→ Ollama → 规则备用。
---api-only：仅 API，禁止 Ollama/规则；未配置任何 API 时直接退出（可选）。
+级联（卡若默认）：OPENAI 兼容 API 队列（OPENAI_API_*，多接口故障切换）→ 规则均匀切分兜底。
+禁止 Ollama：标题/钩子/摘要等文案生成与英译中均不走本机 Ollama；请用环境内「当前最佳」API
+（OPENAI_MODEL / OPENAI_MODELS）或在 Cursor 中手搓 highlights.json。
+--api-only：仅 API，失败则退出，不用规则兜底。
+--no-openai-api：不使用 OPENAI_*，直接规则切分（无 Ollama）；质量有限，建议仅应急或后续手改 JSON。
 """
 import argparse
 import json
@@ -13,7 +16,6 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-OLLAMA_URL = "http://localhost:11434"
 DEFAULT_CTA = "关注我，每天学一招私域干货"
 CLIP_COUNT = 15
 MIN_DURATION = 60   # 最少 1 分钟（长切片默认）
@@ -326,57 +328,24 @@ def _is_mostly_chinese(text: str) -> bool:
     return chinese / max(1, len(text.strip())) > 0.3
 
 
-def _translate_to_chinese(text: str) -> str:
-    """用 Ollama 将英文翻译为中文"""
-    if not text or _is_mostly_chinese(text):
-        return text
-    import requests
-    try:
-        r = requests.post(
-            f"{OLLAMA_URL}/api/generate",
-            json={
-                "model": "qwen2.5:1.5b",
-                "prompt": f"将以下英文翻译成简体中文，只输出中文翻译结果，不要其他内容：\n{text[:200]}",
-                "stream": False,
-                "options": {"temperature": 0.1, "num_predict": 100},
-            },
-            timeout=30,
-        )
-        if r.status_code == 200:
-            out = r.json().get("response", "").strip()
-            if out and _is_mostly_chinese(out):
-                return out.split("\n")[0][:50]
-    except Exception:
-        pass
-    return text
-
-
-def _ensure_chinese_highlights(data: list, api_only: bool = False) -> list:
-    """确保 title、hook_3sec、transcript_excerpt 全为中文，无英文。
-    api_only=True 时禁止调用本地 Ollama 翻译，非中文字段改为简体占位文案。"""
+def _ensure_chinese_highlights(data: list) -> list:
+    """确保可读；非中文标题类字段改为简体占位（禁止 Ollama 翻译）。
+    英文化稿请用 OPENAI 兼容 API 直接生成中文 JSON，或在 Cursor 中改 highlights / transcript。"""
     for i, item in enumerate(data):
         if not isinstance(item, dict):
             continue
         for key in ["title", "hook_3sec", "question", "transcript_excerpt"]:
             val = item.get(key)
             if val and not _is_mostly_chinese(str(val)):
-                if api_only:
-                    lim = 20 if key != "transcript_excerpt" else 50
-                    item[key] = (f"干货片段{i + 1}" if key != "transcript_excerpt" else f"精彩片段{i + 1}摘要")[:lim]
-                else:
-                    translated = _translate_to_chinese(str(val))
-                    item[key] = (translated if translated else f"片段{i+1}")[:20 if key != "transcript_excerpt" else 50]
+                lim = 20 if key != "transcript_excerpt" else 50
+                item[key] = (
+                    f"干货片段{i + 1}" if key != "transcript_excerpt" else f"精彩片段{i + 1}摘要"
+                )[:lim]
         if item.get("cta_ending") and not _is_mostly_chinese(str(item["cta_ending"])):
             item["cta_ending"] = DEFAULT_CTA
         if item.get("reason") and not _is_mostly_chinese(str(item.get("reason", ""))):
-            if api_only:
-                item["reason"] = "核心观点"
-            else:
-                item["reason"] = _translate_to_chinese(str(item["reason"]))[:80] or "干货观点"
+            item["reason"] = "核心观点"
     return data
-
-
-OLLAMA_MODELS = ["qwen2.5:3b", "qwen2.5:1.5b"]  # 优先 3b，能力更强
 
 
 def _split_csv(s: str) -> list:
@@ -444,51 +413,6 @@ def call_openai_api(
     return content
 
 
-def call_ollama(
-    transcript: str,
-    clip_count: int = CLIP_COUNT,
-    model: str = "qwen2.5:3b",
-    min_dur: float = 60,
-    max_dur: float = 300,
-    ops_jingju_hotspot: bool = False,
-) -> str:
-    """调用卡若AI本地模型（Ollama），使用 chat 接口避免对话式误判"""
-    import requests
-    prompt = _build_prompt(
-        transcript, clip_count, min_dur, max_dur, ops_jingju_hotspot=ops_jingju_hotspot
-    )
-    system = (
-        "你是短视频策划师。用户会提供视频文字稿，你只输出一个 JSON 数组。"
-        "若某片段内有人提问（观众/连麦者问的问题），必须提取提问原文填 question，且 hook_3sec 用该提问（前3秒先展示提问再回答）；无提问则 hook_3sec 用金句/悬念。"
-        "格式含 title, start_time, end_time, hook_3sec, cta_ending, transcript_excerpt, reason；有提问时加 question。"
-        "必须严格遵守用户给出的单段时长区间（秒）。禁止输出任何非 JSON 内容。"
-    )
-    try:
-        r = requests.post(
-            f"{OLLAMA_URL}/api/chat",
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-                "stream": False,
-                "options": {"temperature": 0.2, "num_predict": 8192},
-            },
-            timeout=300,
-        )
-        if r.status_code != 200:
-            raise RuntimeError(f"Ollama {r.status_code}")
-        body = r.json()
-        msg = body.get("message", {})
-        resp = (msg.get("content") or "").strip()
-        if not resp:
-            raise RuntimeError("Ollama 返回空响应")
-        return resp
-    except Exception as e:
-        raise RuntimeError(f"Ollama 调用失败: {e}") from e
-
-
 def main():
     parser = argparse.ArgumentParser(description="高光识别 - AI 分析文字稿输出 highlights.json")
     parser.add_argument("--transcript", "-t", required=True, help="transcript.srt 路径")
@@ -527,7 +451,13 @@ def main():
     parser.add_argument(
         "--api-only",
         action="store_true",
-        help="仅使用 OpenAI 兼容 API 队列（OPENAI_API_*），禁止 Ollama、禁止规则均匀切分兜底；未配置 API 时直接退出",
+        help="仅使用 OpenAI 兼容 API 队列（OPENAI_API_*），失败则退出；禁止规则兜底；未配置 API 时直接退出",
+    )
+    parser.add_argument(
+        "--no-openai-api",
+        action="store_true",
+        dest="no_openai_api",
+        help="禁用 OPENAI_*，仅用规则切分（不调 Ollama）；标题为启发式，建议 Cursor 手改 highlights 或配置 API 重跑",
     )
     args = parser.parse_args()
 
@@ -576,16 +506,28 @@ def main():
         print("❌ 文字稿过短，请检查 SRT 格式", file=sys.stderr)
         sys.exit(1)
     api_only = bool(getattr(args, "api_only", False))
-    if api_only and not _build_api_provider_queue():
+    no_openai_api = bool(getattr(args, "no_openai_api", False))
+    if no_openai_api and api_only:
+        print("❌ --no-openai-api 与 --api-only 互斥", file=sys.stderr)
+        sys.exit(1)
+    api_queue = [] if no_openai_api else _build_api_provider_queue()
+    if api_only and not api_queue:
         print(
             "❌ --api-only 已开启但未配置 API：请设置 OPENAI_API_KEY，或 OPENAI_API_BASES + OPENAI_API_KEYS（及可选 OPENAI_MODELS）",
             file=sys.stderr,
         )
         sys.exit(1)
-    # 级联：API 优先（当前可用最佳模型）→ Ollama → 规则备用（--api-only 或 --require-ai 时不用后两者）
+    if no_openai_api:
+        print("  ℹ 已禁用 OPENAI_*：按规范不使用 Ollama，将仅用规则切分（标题类为启发式）", flush=True)
+    elif not api_queue and not api_only:
+        print(
+            "  ⚠️ 未检测到 OPENAI_API_KEY / OPENAI_API_BASES… 按规范不使用 Ollama；"
+            "将用规则切分。建议在 shell 配置 API 或用 Cursor 编辑 highlights.json 后重跑。",
+            flush=True,
+        )
+    # 级联：API 队列 → 规则兜底（不使用 Ollama）
     data = None
     raw = ""
-    api_queue = _build_api_provider_queue()
     for provider in api_queue:
         try:
             print(f"正在调用 API {provider.get('model', '?')} 分析高光片段...")
@@ -617,48 +559,10 @@ def main():
             if raw:
                 print(f"  返回预览: {str(raw)[:400]}...", file=sys.stderr)
             data = None
-    if (not data or not isinstance(data, list)) and not api_queue:
-        pass  # 未配置 API，继续尝试 Ollama
-    elif data and isinstance(data, list) and len(data) > 0:
-        pass  # API 已成功，保持 data
-    else:
-        data = None
-    if (not data or not isinstance(data, list)) and not api_only:
-        for model in OLLAMA_MODELS:
-            try:
-                print(f"正在调用 Ollama {model} 分析高光片段...")
-                raw = call_ollama(
-                    text,
-                    clip_n,
-                    model,
-                    min_dur=min_dur,
-                    max_dur=max_dur,
-                    ops_jingju_hotspot=ops_focus,
-                )
-                if not raw:
-                    raise ValueError("模型返回空")
-                data = _parse_ai_json(raw)
-                if data and isinstance(data, list) and len(data) > 0:
-                    if args.preset == "ops-short" and not _ops_short_ai_plausible(
-                        data, min_dur, max_dur, prompt_min_sec
-                    ):
-                        print(
-                            f"  {model} 结果不符合运营短切片规则，尝试下一模型",
-                            file=sys.stderr,
-                        )
-                        data = None
-                    else:
-                        print(f"  ✓ {model} 成功，识别 {len(data)} 段")
-                        break
-            except Exception as e:
-                print(f"  {model} 失败: {e}", file=sys.stderr)
-                if raw:
-                    print(f"  返回预览: {str(raw)[:400]}...", file=sys.stderr)
-                data = None
     if not data or not isinstance(data, list):
         if getattr(args, "require_ai", False) or api_only:
             print(
-                "❌ 高光识别失败：API 无可用结果（--api-only / --require-ai 下不使用 Ollama 与规则切分）",
+                "❌ 高光识别失败：API 无可用结果（--api-only / --require-ai 下不使用规则切分）",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -696,7 +600,7 @@ def main():
         )
     # 强制中文
     print("  确保导出名与封面为简体中文...")
-    data = _ensure_chinese_highlights(data, api_only=api_only)
+    data = _ensure_chinese_highlights(data)
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:

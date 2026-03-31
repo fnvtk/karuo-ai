@@ -21,7 +21,7 @@ updated: "2026-03-20"
 ## ⭐ Soul派对切片流程（默认）
 
 ```
-原始视频 → MLX转录 → 字幕转简体 → 高光识别(API 优先/最佳模型，失败则 Ollama→规则) → 批量切片 → soul_enhance → 输出成片
+原始视频 → MLX转录 → 字幕转简体 → 高光识别(OPENAI 兼容 API 队列/最佳模型，失败则规则；**禁止 Ollama**) → 批量切片 → soul_enhance → 输出成片
                      ↑                        ↓
             提取后立即繁转简+修正错误    封面+字幕(已简体)+加速10%+去语气词
 ```
@@ -103,9 +103,9 @@ eval "$(~/miniforge3/bin/conda shell.zsh hook)"
 conda activate mlx-whisper
 mlx_whisper audio.wav --model mlx-community/whisper-small-mlx --language zh --output-format all
 
-# 2. 高光识别（API 优先，未配置则 Ollama → 规则；流水线会在读取 transcript 前自动转简体）
+# 2. 高光识别（OPENAI 兼容 API → 规则；**不使用 Ollama**；无 Key 时 `--no-openai-api` 仅规则，建议 Cursor 手改 highlights）
 python3 identify_highlights.py -t transcript.srt -o highlights.json -n 6
-# 需配置 OPENAI_API_KEY 或 OPENAI_API_BASES/KEYS/MODELS，默认模型 gpt-4o
+# 需配置 OPENAI_API_KEY 或 OPENAI_API_BASES/KEYS/MODELS，默认模型 gpt-4o（可用 OPENAI_MODEL 换最佳模型）
 
 # 3. 切片
 python3 batch_clip.py -i 视频.mp4 -l highlights.json -o clips/ -p soul
@@ -383,8 +383,8 @@ python3 scripts/burn_subtitles_clean.py -i enhanced.mp4 -s clean.srt -o 成片.m
 | **soul_vertical_crop.py** | Soul 竖屏中段批量裁剪（横版→498×1080 去白边） | ⭐⭐⭐ |
 | **kill_ffmpeg_when_clip_done.py** | 剪辑结束后自动关掉 ffmpeg（监视剪映/PID 或立即杀） | ⭐ 按需 |
 | **scene_detect_to_highlights.py** | 镜头/场景检测 → highlights.json（PySceneDetect，可接 batch_clip） | ⭐⭐ |
-| chapter_themes_to_highlights.py | 按章节 .md 主题提取片段（本地模型→highlights.json） | ⭐⭐⭐ |
-| identify_highlights.py | 高光识别（API→Ollama→规则；`--preset ops-short` 为 15～30 秒运营密度） | ⭐⭐ |
+| chapter_themes_to_highlights.py | 按章节 .md 主题提取片段（**仍含 Ollama**，与现行「禁 Ollama」不一致；优先 API/Cursor） | ⭐ |
+| identify_highlights.py | 高光识别（API→规则，**无 Ollama**；`--preset ops-short` 为 15～30 秒运营密度） | ⭐⭐ |
 | batch_clip.py | 批量切片 | ⭐⭐ |
 | one_video.py | 单视频一键成片 | ⭐⭐ |
 | burn_subtitles_clean.py | 字幕烧录（无阴影） | ⭐ |
@@ -415,7 +415,7 @@ mlx_whisper audio.wav --model mlx-community/whisper-small-mlx --language zh --ou
 
 ### 高光识别模型（API 优先）
 
-高光识别默认使用**当前可用最佳模型**：优先走 **OpenAI 兼容 API**（见下），未配置或失败时再用本地 Ollama，最后规则兜底。
+高光识别**禁止 Ollama**：仅用 **OpenAI 兼容 API 队列**（见下，按 `OPENAI_MODEL`/`MODELS` 选当前最佳），全部失败或未配置 Key 时用**规则切分**；文案级质量请在 **Cursor** 中编辑 `highlights.json` 或补全 API。
 
 - **单接口**：`OPENAI_API_BASE`、`OPENAI_API_KEY`、`OPENAI_MODEL`（默认 `gpt-4o`）。
 - **多接口故障切换**：`OPENAI_API_BASES`、`OPENAI_API_KEYS`、`OPENAI_MODELS`（逗号分隔，按顺序尝试）。

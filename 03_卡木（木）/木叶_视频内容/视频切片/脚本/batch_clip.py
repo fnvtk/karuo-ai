@@ -233,9 +233,14 @@ def batch_clip(input_video: str, highlights_json: str, output_dir: str = None,
             fail_count += 1
             continue
         
-        # 获取标题
-        title = clip.get("title") or clip.get("name") or f"clip_{i}"
-        safe_title = sanitize_filename(title)
+        # 获取标题：优先 file_stem（成片短文件名/抽象主题），否则 title/name
+        title = (
+            (clip.get("file_stem") or "").strip()
+            or clip.get("title")
+            or clip.get("name")
+            or f"clip_{i}"
+        )
+        safe_title = sanitize_filename(title, max_length=12)
         
         # 计算时长
         try:
@@ -286,8 +291,13 @@ def batch_clip(input_video: str, highlights_json: str, output_dir: str = None,
     }
     
     for i, clip in enumerate(highlights, 1):
-        title = clip.get("title") or clip.get("name") or f"clip_{i}"
-        safe_title = sanitize_filename(title)
+        title = (
+            (clip.get("file_stem") or "").strip()
+            or clip.get("title")
+            or clip.get("name")
+            or f"clip_{i}"
+        )
+        safe_title = sanitize_filename(title, max_length=12)
         if prefix:
             filename = f"{prefix}_{i:02d}_{safe_title}.mp4"
         else:
@@ -296,7 +306,8 @@ def batch_clip(input_video: str, highlights_json: str, output_dir: str = None,
         manifest["clips"].append({
             "index": i,
             "filename": filename,
-            "title": title,
+            "title": clip.get("title") or "",
+            "file_stem": clip.get("file_stem") or "",
             "start_time": clip.get("start_time") or clip.get("start"),
             "end_time": clip.get("end_time") or clip.get("end"),
             "hook": clip.get("hook", ""),

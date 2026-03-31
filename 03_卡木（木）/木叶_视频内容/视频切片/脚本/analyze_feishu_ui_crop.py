@@ -7,7 +7,8 @@
   python3 analyze_feishu_ui_crop.py /path/to/frame.jpg
   python3 analyze_feishu_ui_crop.py /path/to/video.mp4 --at 0.2
   python3 analyze_feishu_ui_crop.py /path/to/video.mp4 --at 0.2 --save-dir ./裁剪检查
-    → 写入「全画面取样」与「竖条塑形预览 498×1080」，便于对照后再跑 soul_enhance --crop-vf
+    → 写入「全画面取样」与「竖条塑形预览 Wx1080」，便于对照后再跑 soul_enhance --crop-vf
+  可选 --edge-shrink N（左右内收减白边）、--edge-expand N（左右外扩露头像），宜对照 PNG 验收后再定稿。
 """
 
 import argparse
@@ -165,6 +166,20 @@ def main():
         action="store_true",
         help="扩边后横向压到 498 宽（会拉伸变形，仅兼容旧抖音尺寸）",
     )
+    ap.add_argument(
+        "--edge-shrink",
+        type=int,
+        default=0,
+        metavar="N",
+        help="包络确定后左右各向内收 N 像素再 crop，减轻竖条里残留浅底/白边（0=关闭；可试 12～36）",
+    )
+    ap.add_argument(
+        "--edge-expand",
+        type=int,
+        default=0,
+        metavar="N",
+        help="在上述结果上左右各再外扩 N 像素（含进画面），便于露出两侧头像/参会条；与 edge-shrink 可同时用：先缩后扩。过大可能带入过多白边，须对照竖条预览验收",
+    )
     args = ap.parse_args()
 
     arr = load_frame(args.input, args.at)
@@ -177,6 +192,32 @@ def main():
     w, h = geo["w"], geo["h"]
     L0, R0 = geo["L0"], geo["R0"]
     L, W_band, right = geo["L"], geo["W_band"], geo["right"]
+
+    es = max(0, int(getattr(args, "edge_shrink", 0) or 0))
+    if es > 0:
+        L2 = L + es
+        W2 = W_band - 2 * es
+        if W2 >= 200:
+            L, W_band = L2, W2
+            print(f"# edge-shrink={es}px → 包络改为 L={L} W={W_band}", flush=True)
+        else:
+            print(
+                f"# edge-shrink={es}px 跳过（带宽将变为 {W2}<200，保持原包络）",
+                file=sys.stderr,
+            )
+
+    ex = max(0, int(getattr(args, "edge_expand", 0) or 0))
+    if ex > 0:
+        Ln = max(0, L - ex)
+        Wn = min(w - Ln, W_band + 2 * ex)
+        if Wn >= 200:
+            L, W_band = Ln, Wn
+            print(f"# edge-expand={ex}px → 包络改为 L={L} W={W_band}（左右各尽量外扩）", flush=True)
+        else:
+            print(
+                f"# edge-expand={ex}px 跳过（带宽将变为 {Wn}<200）",
+                file=sys.stderr,
+            )
 
     if args.squeeze_498 and args.center_in_band:
         print("同时指定 --squeeze-498 与 --center-in-band 时以 --center-in-band 为准", file=sys.stderr)
@@ -242,6 +283,8 @@ def main():
         txt_path = args.save_dir / f"{stem}_塑形裁剪参数.txt"
         txt_path.write_text(
             f"# 取样: {args.input.name}  ratio={ratio}\n"
+            f"# edge-shrink: {es}px（左右各内收，减轻白边；0=关）\n"
+            f"# edge-expand: {ex}px（左右各外扩，便于露两侧头像；0=关）\n"
             f"# 成片宽高（竖条）\n"
             f"CROP_VF={vf!r}\nOVERLAY_X={ox}\nOUTPUT_SIZE={out_px}x1080\n\n"
             f"soul_enhance 示例:\n"
