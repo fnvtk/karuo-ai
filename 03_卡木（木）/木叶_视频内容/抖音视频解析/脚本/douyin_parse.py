@@ -295,6 +295,11 @@ def main():
         action="store_true",
         help="页面解析失败时再尝试 missuo 接口",
     )
+    parser.add_argument(
+        "--keep-video",
+        action="store_true",
+        help="下载后保留 mp4；默认下载成功即删除视频，仅保留文案 JSON/TXT（省空间、不留缓存视频）",
+    )
     args = parser.parse_args()
 
     raw = args.url.strip()
@@ -385,11 +390,19 @@ def main():
             except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
                 print(f"yt-dlp 失败: {e}", file=sys.stderr)
         if ok:
-            print(f"✅ 视频已下载: {out_file} ({out_file.stat().st_size / 1024 / 1024:.1f} MB)")
+            size_mb = out_file.stat().st_size / 1024 / 1024
+            print(f"✅ 视频已下载: {out_file} ({size_mb:.1f} MB)")
+            if not args.keep_video:
+                try:
+                    out_file.unlink()
+                    print(
+                        "🗑️ 已删除本地 mp4（默认不留视频；需要保留请加 --keep-video）",
+                        file=sys.stderr,
+                    )
+                except OSError as e:
+                    print(f"⚠️ 无法删除视频文件: {e}", file=sys.stderr)
     elif args.no_download:
         print("已跳过下载 (--no-download)")
-    else:
-        print("⚠️ 未解析到视频 URL，可尝试 MCP 浏览器访问页面", file=sys.stderr)
 
     # 5. 打印摘要
     print("\n--- 解析结果 ---")

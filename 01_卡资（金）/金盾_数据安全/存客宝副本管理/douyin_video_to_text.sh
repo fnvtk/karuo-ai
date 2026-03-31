@@ -3,7 +3,7 @@
 # 用法：
 #   本地视频：  ./douyin_video_to_text.sh /path/to/video.mp4
 #   抖音链接：  ./douyin_video_to_text.sh "https://v.douyin.com/xxx" [cookie.txt]
-# 输出：卡若Ai的文件夹/导出/ 下同名的 .txt
+# 输出：卡若Ai的文件夹/导出/ 下同名的 .txt（临时下载与中间文件在 /tmp/douyin_extract_*，脚本结束自动删除）
 
 set -e
 OUT_ROOT="/Users/karuo/Documents/卡若Ai的文件夹/导出"
@@ -48,7 +48,7 @@ else
   if ! yt-dlp "${OPTS[@]}" "$INPUT"; then
     if [[ "$INPUT" == *"douyin"* ]] && [[ -f "$DOUYIN_PARSE_PY" ]]; then
       echo "yt-dlp 未成功，改用 douyin_parse.py 下载…" >&2
-      python3 "$DOUYIN_PARSE_PY" "$INPUT" -o "$WORK" || { echo "下载失败，请提供 cookie.txt 或本地 mp4"; exit 1; }
+      python3 "$DOUYIN_PARSE_PY" "$INPUT" -o "$WORK" --keep-video || { echo "下载失败，请提供 cookie.txt 或本地 mp4"; exit 1; }
     else
       echo "下载失败，请提供 cookie 或本地视频文件"; exit 1
     fi
