@@ -23,3 +23,23 @@
 
 - Turnstile / 企业策略可能拦截自动化或一次性域名。
 - 客观无法代劳时：向卡若交付 **可勾选清单**（含「逐格 OTP」等），符合 `.cursor/rules/karuo-ai.mdc` 问题自治分工。
+
+## 循环策略（取码不行就换邮箱 · 做通）
+
+**原则**：不要跟**同一封收不到码 / 只有 Attempted Sign-in / OTP 总失败**的邮箱死磕——**超时无「Sign-up Verification」→ 放弃该 mail.tm → 脚本自动生成下一邮箱 → 继续注册**。
+
+**脚本（木根）**：`03_卡木（木）/木根_逆向分析/全网AI自动注册/脚本/vercel_mailtm_signup_loop.py`
+
+```bash
+cd "/Users/karuo/Documents/个人/卡若AI/03_卡木（木）/木根_逆向分析/全网AI自动注册/脚本"
+# 每轮打印新邮箱 + 注册链接；你在浏览器点 Continue with Email；收不到注册验证码则自动下一轮
+python3 vercel_mailtm_signup_loop.py --max-rounds 8 --poll-timeout 180
+
+# 需要先手动点发码再轮询时：
+python3 vercel_mailtm_signup_loop.py --pause-enter --poll-timeout 240
+
+# 每轮结果落盘备查：
+python3 vercel_mailtm_signup_loop.py --out-jsonl ./vercel_mailtm_rounds.jsonl
+```
+
+说明：脚本**忽略**环境变量 `MAILTM_ADDRESS` / `MAILTM_PASSWORD`，每轮都是**全新** mail.tm，避免固定邮箱卡死。

@@ -500,8 +500,10 @@ MIN_SILENCE_TRIM_TOTAL_SEC = 0.12
 COVER_TITLE_MAX_CJK = 6
 # 封面优先用 hook_3sec（吸睛高光句），可略长于纯标题字数上限
 COVER_HOOK_MAX_CJK = 16
-CTA_END_MIN_SEC = 2.0
-CTA_END_MAX_SEC = 3.8
+CTA_END_MIN_SEC = 2.2
+CTA_END_MAX_SEC = 4.5
+# 最后一条口播字幕后，CTA 再停留一小段（多为静音），方便读完 + 过渡到无声 SEO 尾帧
+CTA_HOLD_AFTER_VOICE_SEC = 0.32
 
 # ============ 工具函数 ============
 
@@ -1872,14 +1874,19 @@ def append_cta_ending_subtitle(
     if anchor_end < CTA_END_MIN_SEC + float(subtitle_overlay_start) * 0.5:
         return sub_images
 
-    span = min(CTA_END_MAX_SEC, max(CTA_END_MIN_SEC, anchor_end * 0.08))
+    span = min(CTA_END_MAX_SEC, max(CTA_END_MIN_SEC, anchor_end * 0.11))
     cta_start = max(float(subtitle_overlay_start), anchor_end - span)
     if cta_start >= anchor_end - 0.15:
         cta_start = max(0.0, anchor_end - CTA_END_MIN_SEC)
 
+    # 收口：CTA 结束略晚于最后一条语音字幕结束（不超过片长），便于「读完再断声」
+    cta_end = min(anchor_end + float(CTA_HOLD_AFTER_VOICE_SEC), dur - 0.04)
+    if cta_end <= cta_start + 0.2:
+        cta_end = min(anchor_end, dur - 0.02)
+
     img_path = os.path.join(temp_dir, "sub_cta_ending.png")
     create_subtitle_image(cta, out_w, out_h, img_path)
-    sub_images.append({"path": img_path, "start": cta_start, "end": anchor_end})
+    sub_images.append({"path": img_path, "start": cta_start, "end": cta_end})
     sub_images.sort(key=lambda x: (float(x["start"]), float(x["end"])))
     return sub_images
 

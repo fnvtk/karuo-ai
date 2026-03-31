@@ -4,7 +4,7 @@
 Soul 切片一体化流水线
 视频制作（封面/Hook格式）+ 视频切片
 
-流程：转录 → 字幕转简体 → 高光识别(AI) → 批量切片 → 增强(封面+字幕+CTA) → 快速混剪（可选）
+流程：转录 → 字幕转简体 → 高光识别(AI) → 批量切片 → 增强(封面+字幕+CTA) → [two-folders 默认] SEO 两页尾帧 → 快速混剪（可选）
 """
 import argparse
 import atexit
@@ -178,6 +178,16 @@ def main():
         "--silence-gentle",
         action="store_true",
         help="传给 soul_enhance：去静音参数更温和",
+    )
+    parser.add_argument(
+        "--no-seo-tail",
+        action="store_true",
+        help="成片后不自动跑 append_seo_keyword_tail（默认 --two-folders 且出成片时会拼 SEO 两页）",
+    )
+    parser.add_argument(
+        "--seo-tail-force",
+        action="store_true",
+        help="SEO 忽略 .soul_seo_tail_state.json（须已换回无尾帧母片，否则会叠双尾帧）",
     )
     args = parser.parse_args()
 
@@ -411,6 +421,30 @@ def main():
             "--seconds-per-clip", str(args.montage_seconds),
         ]
         run(montage_cmd, "生成快速混剪", timeout=600, check=False)
+
+    # 5. 成片 SEO 尾帧（两页藏词 + 第二页轻引导）：与 soul_enhance 分离，默认在 two-folders 成片后执行
+    run_seo_tail = (
+        use_two_folders
+        and not getattr(args, "slices_only", False)
+        and not getattr(args, "no_seo_tail", False)
+        and enhanced_count > 0
+    )
+    kw_file = SKILL_DIR / "参考资料" / "视频尾帧_SEO关键词200.txt"
+    if run_seo_tail and kw_file.is_file():
+        seo_cmd = [
+            sys.executable,
+            str(SCRIPT_DIR / "append_seo_keyword_tail.py"),
+            "--dir",
+            str(enhanced_dir),
+            "--keywords",
+            str(kw_file),
+        ]
+        if getattr(args, "seo_tail_force", False):
+            seo_cmd.append("--ignore-state")
+        seo_timeout = max(900, 180 * max(1, enhanced_count))
+        run(seo_cmd, "成片末尾 SEO 尾帧（×2 静帧，无声）", timeout=seo_timeout, check=False)
+    elif run_seo_tail and not kw_file.is_file():
+        print(f"  ⚠ 跳过 SEO 尾帧：未找到词表 {kw_file}", flush=True)
 
     print()
     print("=" * 60)

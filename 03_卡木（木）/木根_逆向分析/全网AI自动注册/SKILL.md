@@ -68,6 +68,11 @@ python3 auto_register.py add-key -p cerebras -k csk-xxx  # 手动添加
 
 # ====== 网关健康检查 ======
 python3 ../../运营中枢/scripts/karuo_ai_gateway/key_health_check.py
+
+# ====== Vercel / v0（mail.tm 多轮：取码失败换新邮箱）======
+python3 vercel_mailtm_signup_loop.py --max-rounds 8 --poll-timeout 180
+python3 vercel_mailtm_signup_loop.py --pause-enter --poll-timeout 240   # 先回车再轮询
+python3 vercel_mailtm_signup_loop.py --out-jsonl ./vercel_mailtm_rounds.jsonl
 ```
 
 ### 自动化全链路
@@ -108,6 +113,13 @@ python3 ../../运营中枢/scripts/karuo_ai_gateway/key_health_check.py
 5. 调用 Cerebras API 创建 API Key
 6. 验证 Key 可用性 → 存入 key_pool.db
 7. 网关下次请求自动读取新 Key
+
+### Vercel / v0 邮箱注册（mail.tm 循环）
+
+1. **不要单邮箱死磕**：登录页试邮只会收到「Attempted Sign-in」+ signup 链接；**注册页** `Continue with Email` 才会收到 **Sign-up Verification** 六位码。
+2. **循环**：本轮 `poll-timeout` 内无注册验证邮件 → **放弃该 mail.tm** → 脚本 `vercel_mailtm_signup_loop.py` 自动生成下一邮箱 → 重复，直到取到码或达 `--max-rounds`。
+3. OTP 建议**逐格输入**；团队 URL 需全局唯一。
+4. 经验与命令见 `水溪_整理归档/经验库/待沉淀/2026-03-31_Vercel与v0_mail.tm注册_OTP与团队创建.md`。
 
 ### 新增平台支持
 

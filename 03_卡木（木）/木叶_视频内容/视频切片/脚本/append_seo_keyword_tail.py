@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -36,6 +37,10 @@ _BASE_RGB = (26, 28, 34)  # 与字同系深灰蓝
 _WASH_ALPHA = int(255 * 0.05)  # 整屏极淡底雾（约 95% 透）
 _TITLE_ALPHA = int(255 * 0.09)
 _BODY_ALPHA = int(255 * 0.11)
+# 第二页底部「轻行动」略亮于正文，仍属低调（普通人能扫到，不抢 SEO 藏词主责）
+_ACTION_ALPHA = int(255 * 0.22)
+
+_STATE_NAME = ".soul_seo_tail_state.json"
 
 
 def load_keywords(path: Path) -> list[str]:
@@ -114,6 +119,40 @@ def probe_size_rate(main_mp4: Path) -> tuple[int, int, int]:
     return width, height, sr
 
 
+def probe_duration_sec(mp4: Path) -> float:
+    r = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(mp4),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    try:
+        return float((r.stdout or "").strip() or 0.0)
+    except ValueError:
+        return 0.0
+
+
+def load_tail_state(state_path: Path) -> dict:
+    if not state_path.is_file():
+        return {}
+    try:
+        return json.loads(state_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_tail_state(state_path: Path, state: dict) -> None:
+    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def render_keyword_page_subtle_rgba(
     width: int,
     height: int,
@@ -121,8 +160,13 @@ def render_keyword_page_subtle_rgba(
     png_path: Path,
     font_path: Path | None,
     page_label: str,
+    footer_line: str | None = None,
+    footer_alpha: int | None = None,
 ) -> None:
-    """全透明底 + 极淡同色系雾 + 同色系略亮字（低对比、高透明）。"""
+    """全透明底 + 极淡同色系雾 + 同色系略亮字（低对比、高透明）。
+
+    footer_line：可选，多画在底部（用于第二页轻引导，不替代正片 cta_ending）。
+    """
     if Image is None:
         raise RuntimeError("需要安装 Pillow: pip install pillow")
     img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
@@ -134,8 +178,12 @@ def render_keyword_page_subtle_rgba(
     try:
         title_font = ImageFont.truetype(str(fp), 26)
         body_font = ImageFont.truetype(str(fp), 20)
+        try:
+            foot_font = ImageFont.truetype(str(fp), 18)
+        except OSError:
+            foot_font = body_font
     except OSError:
-        title_font = body_font = ImageFont.load_default()
+        title_font = body_font = foot_font = ImageFont.load_default()
 
     # 标题：与底同系，仅略亮 + 极低 alpha
     tr, tg, tb = _BASE_RGB
@@ -154,6 +202,15 @@ def render_keyword_page_subtle_rgba(
         y += 32
         if y > height - 36:
             break
+    fl = (footer_line or "").strip()
+    if fl:
+        fa = int(footer_alpha) if footer_alpha is not None else _ACTION_ALPHA
+        ar, ag, ab = min(tr + 18, 255), min(tg + 20, 255), min(tb + 24, 255)
+        bbox = draw.textbbox((0, 0), fl, font=foot_font)
+        tw = bbox[2] - bbox[0]
+        fx = max(24, (width - tw) // 2)
+        fy = height - 46
+        draw.text((fx, fy), fl, fill=(ar, ag, ab, fa), font=foot_font)
     img.save(str(png_path), "PNG")
 
 
@@ -286,6 +343,21 @@ def main() -> None:
         nargs="*",
         help="可选：只处理这些文件名（相对于 --dir），不填则处理目录下全部 .mp4",
     )
+    ap.add_argument(
+        "--ignore-state",
+        action="store_true",
+        help="忽略状态文件、不做「已含尾帧」跳过（仅当你已换回无尾帧母片时再开，否则会叠双尾帧）",
+    )
+    ap.add_argument(
+        "--action-line",
+        default="点头像进房 · 每晚派对直播",
+        help="第二页底部轻引导（略亮于藏词正文）；设为空字符串可关",
+    )
+    ap.add_argument(
+        "--no-action-line",
+        action="store_true",
+        help="不绘制第二页底部引导（仍保留两页 SEO 藏词）",
+    )
     args = ap.parse_args()
     words = load_keywords(args.keywords)
     font_try = args.font
@@ -297,6 +369,9 @@ def main() -> None:
                 break
 
     d = args.dir.resolve()
+    state_path = d / _STATE_NAME
+    state: dict = load_tail_state(state_path)
+
     if args.files:
         mp4s = []
         for f in args.files:
@@ -311,10 +386,22 @@ def main() -> None:
         return
 
     dur_each = args.duration / max(1, args.pages)
+    page2_footer = ""
+    if not args.no_action_line:
+        page2_footer = (args.action_line or "").strip()
 
     for main in mp4s:
         idx = clip_index_from_name(main.name)
         try:
+            dur_before = probe_duration_sec(main)
+            if (
+                not args.ignore_state
+                and main.name in state
+                and dur_before > 1.0
+                and abs(float(state[main.name]) - dur_before) < 1.05
+            ):
+                print(f"⏭ 已含尾帧（时长与状态一致，跳过防叠双尾）: {main.name}")
+                continue
             w, h, sr = probe_size_rate(main)
             block_a, block_b = pick_two_blocks(words, idx, args.per_page)
             with tempfile.TemporaryDirectory(prefix="seo_tail_") as td:
@@ -329,7 +416,13 @@ def main() -> None:
                         w, h, block_a, png_a, font_try, "搜索关键词 1/2"
                     )
                     render_keyword_page_subtle_rgba(
-                        w, h, block_b, png_b, font_try, "搜索关键词 2/2"
+                        w,
+                        h,
+                        block_b,
+                        png_b,
+                        font_try,
+                        "搜索关键词 2/2",
+                        footer_line=page2_footer or None,
                     )
                     make_tail_clip_from_rgba_overlay(
                         png_a, ta, dur_each, w, h, sr
@@ -352,6 +445,9 @@ def main() -> None:
                     tails.append(one)
 
                 concat_videos_list(main, [main, *tails])
+            new_d = probe_duration_sec(main)
+            state[main.name] = round(new_d, 2)
+            save_tail_state(state_path, state)
             nkw = len(block_a) + len(block_b)
             print(
                 f"✅ 已加关键字尾帧×{args.pages}: {main.name}（序号 {idx}，共 {nkw} 词，"
