@@ -743,6 +743,7 @@ ssh nas "netstat -tlnp | grep 27017"
 | `export_macos_vm_to_downloads.sh` | CKB NAS 上 macOS VM 打包下载到本机「下载」文件夹，实时显示大小与用时，并生成使用说明 | `./scripts/` | 见下方「macOS VM 导出到本机」 |
 | `optimize_macos_vm_compose.sh` | 本机→NAS：macOS VM 流畅度优化 | `./scripts/` | 需本机与 NAS 同网 |
 | `optimize_macos_vm_on_nas.sh` | **NAS 上直接执行**：macOS VM 流畅度优化（外网推荐） | `./scripts/` | SSH 登录 NAS 后运行 |
+| `deploy_karuo_ai_home_nas_webide.sh` | **家里 NAS 局域网**：部署 code-server，挂载 `/volume1` 整卷，浏览器内访问 NAS 文件 + 可选克隆 `karuo-ai` 仓库 | `./scripts/` | 见脚本头注释（需 `WEBIDE_PASS`） |
 | `nas_status.sh` | 一键检查NAS状态（内存/磁盘/容器/端口） | `./scripts/` | `./scripts/nas_status.sh` |
 | `docker_list.sh` | 列出所有Docker容器及状态 | `./scripts/` | `./scripts/docker_list.sh` |
 | `get_mongodb_info.py` | 自动获取MongoDB连接信息 | `./scripts/` | `python3 ./scripts/get_mongodb_info.py` |
