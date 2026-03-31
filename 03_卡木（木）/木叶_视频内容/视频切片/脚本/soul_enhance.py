@@ -1848,12 +1848,7 @@ def append_cta_ending_subtitle(
     duration,
     subtitle_overlay_start,
 ):
-    """片尾 CTA：叠加在最后一条真实字幕的结尾处（有声段），不延伸到静音区域。
-
-    锚点：取 sub_images 里已有字幕的最大 end 时间（即最后一条语音字幕结束时间）作为
-    CTA 的 end，而不是视频总时长 duration。这样 CTA 永远出现在有声音的帧上，
-    不会产生「字幕悬在无声段」的空洞感。
-    """
+    """片尾 CTA：锚定最后一条口播字幕结束时刻，向前铺开展示时长；结束可略延后 CTA_HOLD_AFTER_VOICE_SEC（不超过片长），再接流水线 SEO 无声尾帧。"""
     cta = (highlight_info.get("cta_ending") or "").strip()
     if not cta:
         return sub_images
