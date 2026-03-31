@@ -9,6 +9,9 @@ set -e
 OUT_ROOT="/Users/karuo/Documents/卡若Ai的文件夹/导出"
 mkdir -p "$OUT_ROOT"
 
+# 木叶 · 抖音解析（yt-dlp 无 Cookie 失败时兜底下载）
+DOUYIN_PARSE_PY="/Users/karuo/Documents/个人/卡若AI/03_卡木（木）/木叶_视频内容/抖音视频解析/脚本/douyin_parse.py"
+
 # 优先用本机 MLX-Whisper（Apple Silicon 更快）
 MLX_WHISPER="/Users/karuo/miniforge3/envs/mlx-whisper/bin/mlx_whisper"
 if [[ -x "$MLX_WHISPER" ]]; then
@@ -36,16 +39,23 @@ if [[ -f "$INPUT" ]]; then
   VIDEO="$INPUT"
   BASE=$(basename "$INPUT" | sed 's/\.[^.]*$//')
 else
-  BASE="douyin_$(date +%H%M%S)"
   OPTS=(-o "$WORK/%(id)s.%(ext)s" --no-warnings)
   if [[ -n "$COOKIE" && -f "$COOKIE" ]]; then
     OPTS+=(--cookies "$COOKIE")
   else
-    echo "提示: 抖音需 Cookie。可从浏览器导出 cookie.txt 后: $0 '$INPUT' cookie.txt"
+    echo "提示: yt-dlp 拉抖音常需 Cookie；失败将自动改用 douyin_parse.py（无需 Cookie）" >&2
   fi
-  yt-dlp "${OPTS[@]}" "$INPUT" || { echo "下载失败，请提供 cookie 或本地视频文件"; exit 1; }
+  if ! yt-dlp "${OPTS[@]}" "$INPUT"; then
+    if [[ "$INPUT" == *"douyin"* ]] && [[ -f "$DOUYIN_PARSE_PY" ]]; then
+      echo "yt-dlp 未成功，改用 douyin_parse.py 下载…" >&2
+      python3 "$DOUYIN_PARSE_PY" "$INPUT" -o "$WORK" || { echo "下载失败，请提供 cookie.txt 或本地 mp4"; exit 1; }
+    else
+      echo "下载失败，请提供 cookie 或本地视频文件"; exit 1
+    fi
+  fi
   VIDEO=$(find "$WORK" -type f \( -name "*.mp4" -o -name "*.webm" -o -name "*.mkv" \) | head -1)
   [[ -z "$VIDEO" ]] && { echo "未找到下载的视频"; exit 1; }
+  BASE=$(basename "$VIDEO" | sed 's/\.[^.]*$//')
 fi
 
 echo "正在转写（${TRANScribe}）: $VIDEO"

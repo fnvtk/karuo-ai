@@ -65,7 +65,7 @@ python3 douyin_parse.py "https://v.douyin.com/xxx" -o /path/to/output
 ```
 
 - **仅文案**：`douyin_caption_only.sh` 或 `--no-download`，不下载视频。
-- **视频内语音转文字**：用 `01_卡资（金）/金盾_数据安全/存客宝副本管理/douyin_video_to_text.sh`（需下载后 Whisper 转写）。
+- **视频内语音转文字（口播）**：`01_卡资（金）/金盾_数据安全/存客宝副本管理/douyin_video_to_text.sh`（**Apple Silicon 优先 MLX-Whisper**；`yt-dlp` 无 Cookie 失败时**自动**用 `douyin_parse.py` 下载再转写）。
 
 ---
 
