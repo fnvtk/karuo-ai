@@ -13,6 +13,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+# 与 soul_enhance 封面大字同源，切片文件名中间段与成片/封面对齐
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+from soul_enhance import cover_text_for_filename  # noqa: E402
+
 
 def _kill_child_ffmpeg_on_exit():
     """脚本退出时（含 Ctrl+C）杀死本进程启动的 ffmpeg 子进程，避免剪辑结束后仍占用 CPU。"""
@@ -233,14 +239,17 @@ def batch_clip(input_video: str, highlights_json: str, output_dir: str = None,
             fail_count += 1
             continue
         
-        # 获取标题：优先 file_stem（成片短文件名/抽象主题），否则 title/name
-        title = (
-            (clip.get("file_stem") or "").strip()
-            or clip.get("title")
-            or clip.get("name")
-            or f"clip_{i}"
-        )
-        safe_title = sanitize_filename(title, max_length=12)
+        # 与成片封面大字一致（viral_hook → hook_3sec → …），非 file_stem
+        raw_stem = cover_text_for_filename(clip, "")
+        safe_title = sanitize_filename(raw_stem, max_length=36)
+        if not safe_title or safe_title == "片段":
+            fb = (
+                (clip.get("file_stem") or "").strip()
+                or clip.get("title")
+                or clip.get("name")
+                or f"clip_{i}"
+            )
+            safe_title = sanitize_filename(fb, max_length=36)
         
         # 计算时长
         try:
@@ -259,7 +268,7 @@ def batch_clip(input_video: str, highlights_json: str, output_dir: str = None,
             filename = f"{i:02d}_{safe_title}.mp4"
         output_path = output_dir / filename
         
-        print(f"   [{i}/{len(highlights)}] {safe_title}")
+        print(f"   [{i}/{len(highlights)}] {safe_title}（与封面 hook 同源）")
         print(f"       时间: {start_time} → {end_time} ({duration:.1f}秒)")
         
         try:
@@ -291,13 +300,16 @@ def batch_clip(input_video: str, highlights_json: str, output_dir: str = None,
     }
     
     for i, clip in enumerate(highlights, 1):
-        title = (
-            (clip.get("file_stem") or "").strip()
-            or clip.get("title")
-            or clip.get("name")
-            or f"clip_{i}"
-        )
-        safe_title = sanitize_filename(title, max_length=12)
+        raw_stem = cover_text_for_filename(clip, "")
+        safe_title = sanitize_filename(raw_stem, max_length=36)
+        if not safe_title or safe_title == "片段":
+            fb = (
+                (clip.get("file_stem") or "").strip()
+                or clip.get("title")
+                or clip.get("name")
+                or f"clip_{i}"
+            )
+            safe_title = sanitize_filename(fb, max_length=36)
         if prefix:
             filename = f"{prefix}_{i:02d}_{safe_title}.mp4"
         else:

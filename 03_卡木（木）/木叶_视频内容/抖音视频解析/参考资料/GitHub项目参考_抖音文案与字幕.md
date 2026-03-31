@@ -13,6 +13,15 @@
 
 ---
 
+## missuo / DouyinParsing（短链 → 文案 + 无水印直链）
+
+- 仓库：[missuo/DouyinParsing](https://github.com/missuo/DouyinParsing)（Python 实现已迁至 [missuo/DouyinParser](https://github.com/missuo/DouyinParser)）
+- 作者提供的 HTTP 示例：`GET https://api.missuo.me/douyin?url=https://v.douyin.com/xxx/`
+- 成功时 JSON 含 `desc`（作品文案/标题）、`nickname`、`mp4`、`mp3` 等；**禁止商用**（仓库 License 声明）
+- 本技能已接入：`douyin_parse.py --missuo-fallback` / `--missuo-first`；默认仍走移动端页面解析（不依赖第三方）
+
+---
+
 ## GitHub 可参考项目（检索于 2026-03）
 
 1. **douyin-AI-wenan** (fangyuan99)  

@@ -1,11 +1,11 @@
 ---
 name: Soul竖屏切片
 description: Soul 派对视频→竖屏成片；高光**单主题完整**（1～5min/条，每场约 8～12 条）、去穿插话题；**前3秒两种风格**（优先：嘉宾第一人称处境+反差；备选：房主刺激性观点）；**收尾丝滑**（片尾约 2.85s 不剪静音 + cta_ending 信息钩子引流下一条）；**全链路强制简体中文+标点**（繁体自动转简）。封面底**约 10% 轻模糊**（非全糊）。字幕用**得意黑描边白字**（无底色）、纠错+关键词金黄高亮、逐字渐显；**表情贴片默认开启**；流程：裁剪检查→soul_enhance。
-triggers: Soul竖屏切片、视频切片、热点切片、竖屏成片、派对切片、裁剪检查、重新截图、全画面标定、竖屏裁剪、全画面成片、letterbox、画面显示全、白边、飞书录屏、LTX、AI生成视频、Retake重剪、字幕优化、字幕同步、逐字字幕、上麦项目、月营收、融资、前三秒钩子
+triggers: Soul竖屏切片、视频切片、热点切片、竖屏成片、派对切片、裁剪检查、重新截图、全画面标定、竖屏裁剪、全画面成片、letterbox、画面显示全、白边、飞书录屏、LTX、AI生成视频、Retake重剪、字幕优化、字幕同步、逐字字幕、字幕动态、ASS卡拉OK、词级字幕、KFX、上麦项目、月营收、融资、前三秒钩子
 owner: 木叶
 group: 木
-version: "2.12"
-updated: "2026-03-24"
+version: "2.17"
+updated: "2026-03-31"
 ---
 
 # Soul 竖屏切片 · 专用 Skill
@@ -13,6 +13,8 @@ updated: "2026-03-24"
 > 专门切 Soul 派对视频为**竖屏成片**，用于抖音/首页。**主链路两文件夹**：横版切片 → 成片；另设 **`裁剪检查/`** 仅放 analyze 标定图与 txt（不占「成片」逻辑）。
 
 **横屏全幅（整幅 16:9、无左右黑边）**：先跑 **`Soul剪辑取向分析_SKILL.md`**，再按报告选 **`Soul横屏全幅高光_SKILL.md`**（`--horizontal-full`）。若必须中间一条+黑边：`soul_enhance --horizontal-center-pad`。
+
+**剪映三类拆分（字幕 / 封面 / 特效）**：编排入口 **`Soul成片三件套_剪映对照_总览_SKILL.md`（M01k）**；子 Skill **M01l～M01n** 与 `Soul派对成片工作流_从零到片尾.md` §〇-2 一致。本文件仍为竖屏**样式与钩子**真源。
 
 ---
 
@@ -72,16 +74,28 @@ updated: "2026-03-24"
 
 详见：`参考资料/视频结构_提问回答与高光.md`、`参考资料/高光识别提示词.md`。
 
-### GitHub 样式吸收（v2.5）
+### GitHub 字幕动态吸收（v2.16 · 详表见参考资料）
 
-参考并吸收了 GitHub 上的逐字/卡拉 OK 字幕思路（ASS/Karaoke 风格）：
-- `zoharbabin/karaokify`（逐词高亮、时间轴驱动）
-- `bubblesub/ass_renderer`（字幕渲染层次）
+**全量归纳**（效果类型、仓库链接、与 Soul 对齐）：→ `参考资料/字幕动态效果_GitHub吸收与Soul对齐.md`（2026-03-31 检索 GitHub 整理）。
 
-落地规则：
-1. 逐字字幕必须有**轻重缓急**：句号/问号停顿更明显，逗号次之，普通字稳定推进。
-2. 字幕文本先做**严格清洗**：去字间空白、去空字幕帧、修复标点前空格。
-3. 风格：**纯描边白字**，无底色背景条（v2.10 起）。
+**按路线速览**（实现时对照，不强制全部接入）：
+
+| 路线 | 仓库示例 | 可吸收点 |
+|------|----------|----------|
+| **词级时间轴** | [m-bain/whisperX](https://github.com/m-bain/whisperX) | 词级戳 / 对齐质量；与现有 MLX Whisper SRT 二选一或后处理 |
+| **KFX / ASS 卡拉 OK** | [CoffeeStraw/PyonFX](https://github.com/CoffeeStraw/PyonFX)、Seekladoom ASS/TCAX 模板 | `\k`、模板化动效；派对片优先低侵略性（渐入、当前词加权） |
+| **libass 程序化** | [bubblesub/ass_renderer](https://github.com/bubblesub/ass_renderer) | ASS → 位图/合成；未来若走 `ffmpeg subtitles=.ass` 可评估 |
+| **社交短视频逐词** | [zoharbabin/karaokify](https://github.com/zoharbabin/karaokify)、[glenwrhodes/KillerSubtitles](https://github.com/glenwrhodes/KillerSubtitles) | 逐词高亮节奏；对照 Soul 描边+金黄关键词，实验风格时守简体与安全区 |
+| **VTT→ASS 滚动** | [Sofronio/YouTubeVTT2ASS](https://github.com/Sofronio/YouTubeVTT2ASS) | 外平台字幕回灌再统一处理 |
+| **声明式 DSL** | [OpenAnime/ESL](https://github.com/OpenAnime/ESL) | 长期若要做「配置驱动动效」可扫一眼 |
+| **Remotion 组件** | [neutral-Stage/remotion-captioneer](https://github.com/neutral-Stage/remotion-captioneer) | 词级 React 字幕；与 Python 烧录链路不同栈，作产品参考 |
+
+**Soul 当前落地**（与上表对照）：
+1. **逐字**：`--typewriter-subs`；有词级 SRT 时在词内拆字；`KEYWORDS` 金黄加权 ≈ 轻量「卡拉 OK 钉词」。
+2. **节奏**：句号/问号停顿 > 逗号 > 常速字；字幕文本**清洗**（空白、空帧、标点）见上文规则层。
+3. **成片视觉**：**纯描边白字、无脏底**（v2.10）；花哨番剧向模板**不默认采用**，避免挡脸与过审风险。
+
+**历史引用保留**：v2.5 起已对照 `karaokify`、`ass_renderer`；v2.16 扩展为可检索清单与对齐表。
 
 ### 字幕样式 v2.10（当前标准）
 

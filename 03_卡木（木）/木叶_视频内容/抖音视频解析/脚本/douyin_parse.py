@@ -25,6 +25,29 @@ MOBILE_UA = (
     "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Mobile/15E148 Safari/604.1"
 )
 
+# 从「复制打开抖音…」整段粘贴里抽出第一条抖音链接（GitHub 常见分享格式）
+DOUYIN_SHORT_RE = re.compile(r"https?://v\.douyin\.com/[A-Za-z0-9]+/?", re.I)
+DOUYIN_VIDEO_PAGE_RE = re.compile(
+    r"https?://(?:www\.)?douyin\.com/video/\d+[^?\s]*", re.I
+)
+# 第三方解析（missuo/DouyinParsing README）：仅作页面解析失败时的兜底，禁止商用
+MISSUO_API = "https://api.missuo.me/douyin"
+
+
+def extract_douyin_url(text: str) -> str | None:
+    """从任意字符串中提取首个抖音视频链接（短链或 /video/ 页）。"""
+    if not text or not text.strip():
+        return None
+    text = text.strip()
+    m = DOUYIN_SHORT_RE.search(text)
+    if m:
+        u = m.group(0).rstrip("/")
+        return u + "/"
+    m = DOUYIN_VIDEO_PAGE_RE.search(text)
+    if m:
+        return m.group(0).split("?")[0]
+    return None
+
 
 def parse_url_to_aweme_id(url: str) -> str | None:
     """从抖音链接提取 aweme_id（支持 /video/ID 与 jingxuan?modal_id=ID）"""
@@ -177,6 +200,44 @@ def fetch_and_parse(url: str) -> tuple[dict, str | None]:
     return info, video_url
 
 
+def fetch_via_missuo(share_url: str) -> tuple[dict, str | None]:
+    """
+    调用 missuo 公开接口（GitHub: missuo/DouyinParsing）返回 desc/mp4 等。
+    与 fetch_and_parse 同形： (info_dict, video_url_or_none)
+    """
+    try:
+        r = requests.get(
+            MISSUO_API,
+            params={"url": share_url.strip()},
+            timeout=20,
+            headers={"User-Agent": MOBILE_UA},
+        )
+        data = r.json()
+    except Exception as e:
+        return {"error": f"missuo: {e}", "aweme_id": None}, None
+
+    if data.get("code") != 200 or data.get("status") != "success":
+        return {
+            "error": data.get("msg") or data.get("status") or "missuo failed",
+            "aweme_id": None,
+        }, None
+
+    desc = (data.get("desc") or "").strip()
+    aweme_id = str(data.get("id") or "unknown")
+    info = {
+        "aweme_id": aweme_id,
+        "video_id": None,
+        "file_id": None,
+        "title": desc.split("\n")[0][:120] if desc else "",
+        "desc": desc,
+        "hashtags": list(dict.fromkeys(re.findall(r"#([^#\s]+)", desc))),
+        "author": (data.get("nickname") or "").strip(),
+        "source": "missuo_api",
+    }
+    video_url = data.get("mp4") or None
+    return info, video_url
+
+
 def download_video(url: str, out_path: Path) -> tuple[bool, str]:
     """
     下载视频到本地。需要 Referer 等头，否则 CDN 返回 403 或封面图。
@@ -217,18 +278,50 @@ def download_video(url: str, out_path: Path) -> tuple[bool, str]:
 
 def main():
     parser = argparse.ArgumentParser(description="抖音视频解析：链接 → ID + 文案 + 下载")
-    parser.add_argument("url", help="抖音视频链接（短链或完整）")
+    parser.add_argument(
+        "url",
+        help="抖音视频链接，或含链接的整段分享文案（自动提取 v.douyin.com）",
+    )
     parser.add_argument("-o", "--output", type=Path, default=DEFAULT_OUTPUT, help="输出目录")
     parser.add_argument("--no-download", action="store_true", help="仅解析，不下载视频")
+    parser.add_argument(
+        "--missuo-first",
+        action="store_true",
+        help="优先用 missuo 公开接口解析（页面失败或与 --missuo-fallback 配合）",
+    )
+    parser.add_argument(
+        "--missuo-fallback",
+        action="store_true",
+        help="页面解析失败时再尝试 missuo 接口",
+    )
     args = parser.parse_args()
 
-    url = args.url.strip()
-    if not url:
-        print("请提供抖音视频链接", file=sys.stderr)
+    raw = args.url.strip()
+    if not raw:
+        print("请提供抖音视频链接或含链接的分享文本", file=sys.stderr)
         sys.exit(1)
 
-    # 1. 请求并解析页面
-    info, video_url = fetch_and_parse(url)
+    extracted = extract_douyin_url(raw)
+    url = extracted or raw
+    if extracted and extracted != raw.strip():
+        print(f"已从粘贴文本中提取链接: {url}", file=sys.stderr)
+
+    # 1. 请求并解析页面（或 missuo）
+    info, video_url = None, None
+    if args.missuo_first:
+        info, video_url = fetch_via_missuo(url)
+        if info.get("error") or not info.get("aweme_id") or info.get("aweme_id") == "unknown":
+            print(f"missuo 失败，改回页面解析: {info.get('error', '')}", file=sys.stderr)
+            info, video_url = fetch_and_parse(url)
+    else:
+        info, video_url = fetch_and_parse(url)
+        if (
+            args.missuo_fallback
+            and (info.get("error") or not info.get("aweme_id") or info.get("aweme_id") == "unknown")
+        ):
+            print("页面解析失败，尝试 missuo 兜底…", file=sys.stderr)
+            info, video_url = fetch_via_missuo(url)
+
     aweme_id = info.get("aweme_id")
     if not aweme_id or aweme_id == "unknown":
         print("无法解析视频，请检查链接格式或网络", file=sys.stderr)

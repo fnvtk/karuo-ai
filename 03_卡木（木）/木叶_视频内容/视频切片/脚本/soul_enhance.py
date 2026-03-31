@@ -626,6 +626,26 @@ def pick_cover_hook_text(highlight_info: dict) -> str:
     return _to_simplified((highlight_info.get("title") or "").strip())
 
 
+def cover_text_for_filename(highlight_info: dict, clip_basename: str = "") -> str:
+    """与 enhance_clip 里传入 create_cover_image 的大字文案一致（含安全替换、字数封顶、去序号前缀）。
+
+    用于 --title-only 成片文件名与封面大字对齐；batch_clip 切片中间名亦用此函数。
+    """
+    raw_hook = pick_cover_hook_text(highlight_info)
+    if not raw_hook and clip_basename:
+        m = re.search(r"\d+[_\s]+(.+?)(?:_enhanced)?\.mp4$", clip_basename)
+        if m:
+            raw_hook = m.group(1).strip()
+    hook_text = _normalize_title_for_display(raw_hook) or raw_hook or "精彩切片"
+    hook_text = apply_platform_safety(hook_text)
+    hook_text = _limit_cover_hook_display(hook_text) or hook_text
+    hook_text = _to_simplified(str(hook_text or "").strip())
+    hook_text = _strip_cover_number_prefix(hook_text)
+    if not hook_text:
+        hook_text = "精彩切片"
+    return hook_text
+
+
 def _limit_cover_hook_display(text: str, max_cjk: int = COVER_HOOK_MAX_CJK) -> str:
     """Hook 可略长，仍以汉字数封顶，避免竖屏换行爆炸。"""
     return _limit_cover_title_cjk(text, max_cjk=max_cjk)
@@ -1413,6 +1433,20 @@ def get_cover_font(size):
     return ImageFont.load_default()
 
 
+def _initial_vertical_cover_font_size(num_chars: int, width: int) -> int:
+    """竖屏封面大字起始字号：字数越少越大、越多越小；再交给 create_cover_image 内换行循环收敛。
+
+    按可用宽度估算单行「不挤爆」的字号上限，并夹在 28～100 之间（与原先固定从 50 起相比，2 字可显著放大）。
+    """
+    if width <= 0:
+        return 50
+    max_w = max(100, width - 2 * VERTICAL_COVER_PADDING)
+    n = max(1, int(num_chars))
+    # 近似：每字宽约 0.96em，单行目标总宽约 0.88 * max_w
+    ideal = int(max_w * 0.88 / (n * 0.96))
+    return max(28, min(100, ideal))
+
+
 def _draw_vertical_gradient(draw, width, height, top_rgb, bottom_rgb, alpha=255):
     """绘制竖屏封面用深色渐变背景；alpha<255 时为半透明质感"""
     for y in range(height):
@@ -1594,7 +1628,9 @@ def create_cover_image(
     # 标题文字：竖屏时严格限制在 padding 内，多行居中，绝不超出界面
     if is_vertical:
         max_text_width = width - 2 * VERTICAL_COVER_PADDING
-        cover_font_size = 50
+        visible = "".join(c for c in hook_text if not c.isspace()) or hook_text
+        n_chars = max(1, len(visible))
+        cover_font_size = _initial_vertical_cover_font_size(n_chars, width)
         font = get_cover_font(cover_font_size)
         vfill = hook_style.get("vertical_fill", (252, 252, 250))
         lines = []
@@ -1616,7 +1652,7 @@ def create_cover_image(
                 break
             cover_font_size -= 2
             font = get_cover_font(cover_font_size)
-        line_height = cover_font_size + 14
+        line_height = int(cover_font_size + max(12, round(cover_font_size * 0.22)))
         total_height = len(lines) * line_height
         start_y = (height - total_height) // 2
         for i, line in enumerate(lines):
@@ -2146,15 +2182,8 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
 
     print(f"  分辨率: {width}x{height}, 时长: {duration:.1f}秒")
     
-    # 封面文案：高光规则 — hook_3sec（吸睛）> question > title；文件名仍可用 --title-only 同步 Hook
-    raw_hook = pick_cover_hook_text(highlight_info)
-    if not raw_hook and clip_path:
-        m = re.search(r"\d+[_\s]+(.+?)(?:_enhanced)?\.mp4$", os.path.basename(clip_path))
-        if m:
-            raw_hook = m.group(1).strip()
-    hook_text = _normalize_title_for_display(raw_hook) or raw_hook or "精彩切片"
-    hook_text = apply_platform_safety(hook_text)
-    hook_text = _limit_cover_hook_display(hook_text) or hook_text
+    # 封面大字：与 --title-only 成片文件名同源（见 cover_text_for_filename）
+    hook_text = cover_text_for_filename(highlight_info, os.path.basename(clip_path) if clip_path else "")
     cover_duration = STYLE['cover']['duration']
     subtitle_overlay_start = cover_duration + SUBS_START_AFTER_COVER_SEC
     
@@ -2834,24 +2863,13 @@ def main():
         print("=" * 60, flush=True)
         
         if getattr(args, "title_only", False):
-            # 文件名：优先 file_stem（2～6 字抽象主题、可与 title/hook 不重名）；否则用 title 长标题
-            fs = (highlight_info.get("file_stem") or "").strip()
-            if fs:
-                stem = sanitize_filename(
-                    _normalize_title_for_display(fs) or fs,
-                    max_length=12,
-                )
-            else:
-                long_t = (highlight_info.get("title") or "").strip()
-                short_fallback = pick_cover_hook_text(highlight_info) or long_t or clip_path.stem
-                fn_src = long_t if long_t else short_fallback
-                fn_norm = _normalize_title_for_display(str(fn_src)) or str(fn_src)
-                stem = sanitize_filename(fn_norm, max_length=72)
-            if not fs and (not stem or stem == "片段"):
-                stem = sanitize_filename(
-                    _normalize_title_for_display(str(short_fallback)) or str(short_fallback),
-                    max_length=50,
-                )
+            # 文件名与封面大字一致（viral_hook → hook_3sec → …，同 cover_text_for_filename）
+            stem = sanitize_filename(
+                cover_text_for_filename(highlight_info, os.path.basename(clip_path)),
+                max_length=36,
+            )
+            if not stem or stem == "片段":
+                stem = sanitize_filename(clip_path.stem, max_length=36)
             # 同场多条高光标题可能相同，必须带切片序号防覆盖
             name = f"{stem}_{clip_num:02d}.mp4"
             output_path = output_dir / name
