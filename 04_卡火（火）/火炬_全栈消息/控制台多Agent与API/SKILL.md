@@ -15,7 +15,8 @@
 - **已上线 L0**：只读工具 `list_skills`、`list_workflows`；`fetch_allowed_url` 仅当服务端设置 `KARUO_AGENT_FETCH_ALLOWLIST`（主机白名单，逗号分隔）。
 - **鉴权**：`POST /api/agent/chat` 使用网关 Key（CLI/外部）；**控制台对话**走 `POST /api/chat/sessions/:id/agent`，服务端读库调网关，**无需**浏览器传 Key。
 - **控制台 UI**：`ChatPanel` 输入区上方勾选 **Agent L0**（`localStorage` 记忆）；有附件时自动仍走流式。
-- **未做**：L1 写操作、L2 OpenClaw/exec、斜杠命令、工具批准卡片、Coordinator 子会话。
+- **斜杠（仅控制台，首行解析）**：`/help`、`/agent on|off|reset|status`、`/skill list`、`/workflow list`；与附件同条发送会提示先移除附件。见 `site/src/lib/console-slash-commands.ts`。
+- **未做**：L1 写操作、L2 OpenClaw/exec、工具批准卡片、Coordinator、MCP、Agent SSE、Todo UI。
 
 ## CLI
 
