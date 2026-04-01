@@ -1,5 +1,7 @@
 # Soul 派对成片工作流：从零下载到 SEO 片尾
 
+> **默认真源（强制）**：凡 **Soul 派对 / 飞书妙记录屏 → 转录 → 切片 → 竖屏成片 → SEO 片尾**，**命令级顺序与验收**以**本文**为准。`SKILL.md` / `Soul竖屏切片_SKILL.md` 等为**参数与风格补充**；与本文阶段冲突时 **以本文为准**。Agent 执行「下载、剪辑、重剪、成片、尾帧」时**默认先读本文件**再跑脚本。
+
 > **定位**：**先转录与分段清单 → 再切片 → 再增强**；增强侧拆成「洁净 → 叙事 → 呈现」三块，并在块内按**可验收子步骤**写清（封面、字幕、人声、故事、节奏、重点、尾帧 SEO）。  
 > **高光提取**：**禁止 Ollama**；仅用 **OPENAI 兼容 API 队列**（`OPENAI_API_BASES` / `OPENAI_API_KEYS` / `OPENAI_MODELS`）选当前最佳模型，失败则规则切分；或由 **Cursor 直接制作** `highlights.json`（见 §4 与 `identify_highlights.py` 文件头）。  
 > 规则真源：`Soul竖屏切片_SKILL.md`、`参考资料/`、脚本 `--help`。每一步的执行都要告诉我执行到哪一步？下一步做什么。百分比以及还要多少的时间  
@@ -474,6 +476,7 @@ python3 "$SCRIPT/append_seo_keyword_tail.py" \
 
 | 场景          | 建议                                                            |
 | ----------- | ------------------------------------------------------------- |
+| **整场按本文重剪**（默认） | **备份** `切片/*.mp4`、`成片/*.mp4`、`highlights.json`、`成片/.soul_seo_tail_state.json`；保留 `transcript.srt`、`audio.wav`、`裁剪检查/`；`conda activate mlx-whisper` 后：`soul_slice_pipeline.py --video … --output … --two-folders --prefix soulN --skip-transcribe --force-burn-subs --typewriter-subs --crop-vf … --overlay-x …`（参数取自本场 `裁剪检查/*_塑形裁剪参数.txt`） |
 | 叙事不通、钩子不辣   | 改 `highlights.json` → 重跑 `batch_clip` → 再 `soul_enhance`      |
 | 仅字幕/封面/静音策略 | 保留 `切片/`，直接重跑 `soul_enhance`                                  |
 | 转录太差        | `--force-transcribe` 或删 `audio.wav`、`transcript.srt` 后重跑阶段Ⅰ～Ⅱ |

@@ -241,4 +241,20 @@
 
 ---
 
+## 十九、2026-04-01：局域网 / Bonjour / 隧道侧「找阿猫 MacBook」探测备忘
+
+> 卡若本机执行；结论：**当前未在局域网发现第二台可 SSH 登录的阿猫**，`macbook.quwanzhi.com:22203` 与某 Tailscale IP 的 **22/22203** 虽可建 TCP，但 **SSH 在 kex 前被对端断开**（需阿猫侧 sshd/FRP/防火墙自查）。
+
+| 探测项 | 结果摘要 |
+|--------|-----------|
+| **DNS** | `macbook.quwanzhi.com` → `198.18.1.116`（常见为代理/分流假 IP 段），ICMP 通；`ssh -p 22203 kr@…` → **Connection closed**。 |
+| **LAN `192.168.0.*`** | **仅 `192.168.0.8:22` 开放**；`hostname` 为 **karuoMAC.local**（卡若本机）。`.7` / `.9` 未开 22/22203。 |
+| **Bonjour `_ssh._tcp`** | 同时出现 **「MacBook Pro」**、**「卡若MAC」**；`MacBook-Pro.local` 解析为 **127.0.0.1**（本机回环），**「卡若MAC」** → **karuoMAC.local:22**。即 **未发现独立于卡若机的「阿猫」mDNS 主机名**。 |
+| **Tailscale `25.30.239.48`** | **22、22203** 端口 `nc` 显示 open；`ssh kr@…` → **`kex_exchange_identification: Connection closed by remote host`**（非密钥拒绝，更像对端在握手前关连接）。 |
+| **Cursor Markdown 贴图扩展** | 卡若本机已装 **`mushan.vscode-paste-image`**；阿猫在线后可在其本机执行：`运营中枢/工作台/脚本/amiao_install_cursor_markdown_paste_image.sh`（或同脚本内等价 `cursor --install-extension` 命令）。 |
+
+**建议**：阿猫与卡若**同一 WiFi** 时再看 ARP 是否出现**新设备**且 **22 或 22203** 开放；或修复 **FRP/内网穿透 → 22203 → sshd** 链路后重试 `ssh -p 22203 kr@macbook.quwanzhi.com`。
+
+---
+
 *文档生成：卡若AI 工作台。*

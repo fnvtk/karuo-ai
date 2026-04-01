@@ -118,16 +118,23 @@ async def extract_ls_finder_candidates(page) -> dict:
 async def navigate_to_trigger_raw_key(page) -> None:
     """
     finder_raw 常在「新建发表」页注入；仅首页/列表可能一直没有。
-    顺序：列表 → 新建发表页，每步后给 JS 预留时间。
+    顺序：列表 → 新建发表（多 URL 兜底）→ 每步后多等几秒给微信前端写 localStorage。
     """
     urls = [
         "https://channels.weixin.qq.com/platform/post/list",
         "https://channels.weixin.qq.com/platform/post/create",
+        # 部分账号/版本下 create 带参才拉齐密钥
+        "https://channels.weixin.qq.com/platform/post/create?tab=1",
+        "https://channels.weixin.qq.com/platform/post/create?createType=1",
     ]
     for u in urls:
         try:
-            await page.goto(u, timeout=45000, wait_until="domcontentloaded")
-            await asyncio.sleep(10)
+            await page.goto(u, timeout=60000, wait_until="load")
+            try:
+                await page.wait_for_load_state("networkidle", timeout=25000)
+            except Exception:
+                pass
+            await asyncio.sleep(18)
         except Exception as e:
             print(f"  [!] 打开 {u} 异常: {e}", flush=True)
 
@@ -389,7 +396,7 @@ async def _assistant_login_flow_save(context, page) -> bool:
         print("[i] rawKeyBuff 未出现，依次打开列表页与「新建发表」页以触发注入…", flush=True)
         try:
             await navigate_to_trigger_raw_key(page)
-            for _ in range(90):
+            for _ in range(180):
                 try:
                     _ = page.url
                 except Exception:

@@ -12,13 +12,20 @@ updated: "2026-02-15"
 
 CKB NAS 自建 Gitea 的**创建、推送、API、挂载**统一管理。Git 相关内容、API、凭证均通过本 Skill 执行。
 
+### 局域网优先（卡若AI 实时同步）
+
+- **`自动同步.sh` / `gitea_push_smart.sh`**：在 `脚本/gitea_push.conf` 配置 **`GITEA_LAN_IP`** 与 **`GITEA_LAN_PORT`**（当前默认 **192.168.1.201:3000**，与 NAS 上 Gitea 监听一致；与 git `remote` 里 FRP 端口不同时由 `GITEA_LAN_PORT` 覆盖）
+- **推送记录与 `运营中枢/工作台/代码管理.md` 链接**：以内网 **http://192.168.1.201:3000/fnvtk/karuo-ai** 为准
+- **`sync_wiki_to_gitea.sh`**：HTTPS 克隆/推送默认同上内网地址；外网可走 SSH 或自建域名
+- **外网备用**：`open.quwanzhi.com`（端口以 FRP 为准，如 13000）
+
 ---
 
 ## 一、强制规则（每次必守）
 
 1. **新建仓库**：必须用 **Gitea API 或 Web** 创建，**禁止** SSH 手动 `mkdir+git init --bare`
 2. **推送方式**：统一用 **HTTPS**（账号密码），不用 SSH
-3. **HTTPS 访问**：http://open.quwanzhi.com:3000/fnvtk/{仓库名} 可直接在浏览器打开
+3. **HTTPS 访问**：内网 **http://192.168.1.201:3000/fnvtk/{仓库名}**；外网可用 **http://open.quwanzhi.com:3000** 或 FRP 映射端口（以实际为准）
 
 > 违反上述规则会导致仓库不显示在 Gitea 界面。
 

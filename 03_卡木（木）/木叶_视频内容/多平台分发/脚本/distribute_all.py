@@ -6,7 +6,10 @@
 - 并行分发：5 平台同时上传（asyncio.gather）
 - 去重：每条视频按其在目录中的序号对齐排期（不因前面跳过而错位）
 - 失败重试：--retry；Cookie 预警；结果写入 publish_log.json
-- 视频号：发稿走 channels_api_publish（与「视频号发布/SKILL.md · 〇」一致）；登录推荐本机 CHANNELS_SILENT_QR=1 channels_login.py --silent-qr。需要自动调起登录进程时加 --auto-channels-login；NO_AUTO_CHANNELS_LOGIN=1 强制静默
+- 视频号：发稿走 channels_api_publish（与「视频号发布/SKILL.md · 〇」一致）；手动静默扫码：CHANNELS_SILENT_QR=1 channels_login.py --silent-qr。`--auto-channels-login` 调起的子进程会**清除** CHANNELS_SILENT_QR，强制弹出 Chromium 窗口扫码；NO_AUTO_CHANNELS_LOGIN=1 则不自动调起
+
+默认行为:
+  未写 --platforms 时自动排除「快手」（仍可显式: --platforms 快手 或与其它平台并列）
 
 用法:
   python3 distribute_all.py                        # 智能错峰定时排期
@@ -67,6 +70,17 @@ BAN_KEYWORDS = ("封禁", "封号", "禁止", "冻结", "suspend", "banned", "ri
 FEISHU_GROUP_SEND_DISABLED = os.environ.get("FEISHU_GROUP_SEND_DISABLED", "1").strip().lower() in {
     "1", "true", "yes", "on"
 }
+
+# 未指定 --platforms 时默认不参与分发的平台（显式写上平台名仍可发）
+DEFAULT_DISTRIBUTE_SKIP_PLATFORMS = frozenset({"快手"})
+
+
+def _apply_default_platform_skip(
+    targets: list[str], *, user_specified_platforms: bool
+) -> list[str]:
+    if user_specified_platforms:
+        return targets
+    return [t for t in targets if t not in DEFAULT_DISTRIBUTE_SKIP_PLATFORMS]
 
 
 def _print_unified_browser_profiles() -> None:
@@ -200,17 +214,22 @@ def _ensure_channels_cookie_or_login(*, auto_login: bool) -> None:
     if not CHANNELS_LOGIN_SCRIPT.exists():
         return
     print(
-        "\n[*] 视频号需补全登录态 → 打开浏览器扫码（须保持窗口直至终端提示 rawKeyBuff / Cookie 完成）\n",
+        "\n[*] 视频号需补全登录态 → 将弹出 Chromium 窗口扫码"
+        "（须保持窗口直至终端提示 rawKeyBuff / Cookie 完成）\n",
         flush=True,
     )
     try:
+        # 子进程去掉静默：即使用户 shell 里 export 了 CHANNELS_SILENT_QR=1，此处也强制有头窗口
+        _login_env = {**os.environ}
+        _login_env.pop("CHANNELS_SILENT_QR", None)
         subprocess.run(
             [sys.executable, str(CHANNELS_LOGIN_SCRIPT), "--playwright-only"],
             cwd=str(CHANNELS_LOGIN_SCRIPT.parent),
-            timeout=600,
+            timeout=1200,
+            env=_login_env,
         )
     except subprocess.TimeoutExpired:
-        print("[!] 登录流程超时（600s）", flush=True)
+        print("[!] 登录流程超时（1200s）", flush=True)
     sync_channels_cookie_files()
 
 
@@ -601,6 +620,9 @@ async def main():
             send_feishu_alert(alerts)
         targets = args.platforms if args.platforms else available
         targets = [t for t in targets if t in available]
+        targets = _apply_default_platform_skip(
+            targets, user_specified_platforms=bool(args.platforms)
+        )
         video_dir = Path(args.video_dir) if args.video_dir else DEFAULT_VIDEO_DIR
         if args.video:
             videos = [Path(args.video)]
@@ -674,6 +696,17 @@ async def _publish_one_round(args: argparse.Namespace) -> tuple[int, int]:
 
     targets = args.platforms if args.platforms else available
     targets = [t for t in targets if t in available]
+    targets = _apply_default_platform_skip(
+        targets, user_specified_platforms=bool(args.platforms)
+    )
+    if not args.platforms and DEFAULT_DISTRIBUTE_SKIP_PLATFORMS:
+        skipped = [p for p in DEFAULT_DISTRIBUTE_SKIP_PLATFORMS if p in available]
+        if skipped:
+            print(
+                f"\n  [i] 默认已排除平台: {', '.join(skipped)}"
+                f"（若要发送请显式: --platforms {' '.join(skipped)}）",
+                flush=True,
+            )
     if not targets:
         print("\n[✗] 指定的平台均不可用")
         return 1, 9999

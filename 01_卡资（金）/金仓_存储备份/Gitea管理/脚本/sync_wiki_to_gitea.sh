@@ -6,7 +6,8 @@ set -e
 REPO_DIR="/Users/karuo/Documents/个人/卡若AI"
 WIKI_SRC="$REPO_DIR/01_卡资（金）/金仓_存储备份/Gitea管理/百科源文件"
 WIKI_CLONE="$REPO_DIR/01_卡资（金）/金仓_存储备份/Gitea管理/.wiki_clone"
-WIKI_HTTPS="http://fnvtk:Zhiqun1984@open.quwanzhi.com:3000/fnvtk/karuo-ai.wiki.git"
+# 局域网 Gitea（与 gitea_push.conf、自动同步一致）；外网请改用域名或 SSH
+WIKI_HTTPS="http://fnvtk:Zhiqun1984@192.168.1.201:3000/fnvtk/karuo-ai.wiki.git"
 WIKI_SSH="ssh://fnvtk@open.quwanzhi.com:22201/volume1/git/github/fnvtk/karuo-ai.wiki.git"
 
 cd "$REPO_DIR"
@@ -29,6 +30,8 @@ if [ ! -d "$WIKI_CLONE/.git" ]; then
 fi
 
 cd "$WIKI_CLONE"
+# 已存在的百科克隆若仍指向旧域名，改为当前内网 HTTPS（与自动同步一致）
+git remote set-url origin "$WIKI_HTTPS" 2>/dev/null || true
 git fetch origin 2>/dev/null || true
 git reset --hard origin/master 2>/dev/null || git reset --hard origin/main 2>/dev/null || true
 
@@ -42,4 +45,4 @@ git commit -m "百科同步: $(date '+%Y-%m-%d %H:%M')"
 git push origin HEAD 2>/dev/null || git remote set-url origin "$WIKI_SSH" && git push origin HEAD
 git push origin HEAD:master 2>/dev/null || true
 
-echo "百科已同步 → http://open.quwanzhi.com:3000/fnvtk/karuo-ai/wiki"
+echo "百科已同步 → http://192.168.1.201:3000/fnvtk/karuo-ai/wiki"

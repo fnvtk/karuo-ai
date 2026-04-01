@@ -106,6 +106,8 @@ PARTY_VIDEO_LINKS = {
     '132': 'https://cunkebao.feishu.cn/minutes/obcnl35646ayfcgf94h4n8ir',
     '133': 'https://cunkebao.feishu.cn/minutes/obcnmr15ssh29opo6e65na6i',
     '134': 'https://cunkebao.feishu.cn/minutes/obcnng8965zat58s9v6p9mrt',
+    '138': 'https://cunkebao.feishu.cn/minutes/obcnqud3915y9o98917a54d4',
+    '139': 'https://cunkebao.feishu.cn/minutes/obcnrk36hbo1251sk9je2g5i',
 }
 
 # 团队会议（飞书妙记）链接：场次 → 完整 URL，填表时写入「团队会议」行对应列（row 31）
@@ -125,6 +127,8 @@ TEAM_MEETING_LINKS = {
     '132': 'https://cunkebao.feishu.cn/minutes/obcnl35646ayfcgf94h4n8ir',
     '133': 'https://cunkebao.feishu.cn/minutes/obcnmr15ssh29opo6e65na6i',
     '134': 'https://cunkebao.feishu.cn/minutes/obcnng8965zat58s9v6p9mrt',
+    '138': 'https://cunkebao.feishu.cn/minutes/obcnqud3915y9o98917a54d4',
+    '139': 'https://cunkebao.feishu.cn/minutes/obcnrk36hbo1251sk9je2g5i',
 }
 
 # 补充直链（A 列无独立标签的空行）：场次 → [(行号1-based, 完整URL), ...]
