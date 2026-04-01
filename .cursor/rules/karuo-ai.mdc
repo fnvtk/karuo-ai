@@ -48,7 +48,7 @@ alwaysApply: true
 - **对外输出**：报告/图片 → `/Users/karuo/Documents/卡若Ai的文件夹/` 下对应子目录；图片登记 `图片/图片索引.md`
 - **数据库**：一律用唯一 MongoDB（27017，库名 `karuo_site`）；卡若 AI 调用以此库为主（记忆条目、对话记录、消息内容）
 - **Mongo 对话留存闭环（每条对话默认格式，复盘块之前完成）**：顺序与说明见 `运营中枢/参考资料/卡若AI_Mongo对话留存闭环.md`。Agent **必须**在本轮回复写出复盘块**之前**执行：
-  1. `python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/聊天记录管理/脚本/realtime_chat_sync.py"`（同步**当前最近** Cursor 会话全量消息，`对话记录`/`消息内容` upsert，**不重复键**；并刷新 `项目分类` 汇总）
+  1. `python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/聊天记录管理/脚本/realtime_chat_sync.py"`（**仍每轮必跑**；脚本内 **同一对话ID 至多每 1 小时** 写一次 Mongo，未满 1 小时会跳过；满 1 小时则 **增量** 写入新气泡，**空白正文不入库**。须**立即**入库时用同一脚本加 **`--force`**。`--sync-all` 为全量且不应用小时节流。写后刷新 `项目分类`。）
   2. 若用户指定对话 ID：`.../realtime_chat_sync.py --current-conversation-id <UUID>`
   3. **首次/索引冲突/duplicate key**：`python3 ".../脚本/ensure_mongo_chat_indexes.py"` 或 `realtime_chat_sync.py --ensure-indexes`
   4. **低频补全本地全部会话**：`.../realtime_chat_sync.py --sync-all`（可选 `--only-new`）

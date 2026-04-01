@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 """
 实时对话同步与优化迭代
-每次对话结束时自动调用，将对话实时写入MongoDB并进行优化迭代
-
-功能：
-1. 实时写入：对话结束时立即写入MongoDB
-2. 自动优化：项目分类、标签提取、摘要生成
-3. 迭代改进：基于历史数据优化分类规则
+每条 Cursor 会话：同一 对话ID 写入 Mongo 至多每 **1 小时** 一次；未满 1 小时则跳过（减负载）。
+满 1 小时再次同步时，默认只 **增量 upsert**「上次同步时间点之后」的新消息；全量见 --force / --sync-all。
+导入时 **去掉** 仅空白/无正文的占位气泡（不写库；若库中已有则 delete）。
 
 用法（由卡若AI自动调用）:
+  python3 realtime_chat_sync.py
   python3 realtime_chat_sync.py --current-conversation-id <对话ID>
-  python3 realtime_chat_sync.py --sync-all              # 同步 state.vscdb 内全部对话（upsert，不重复）
-  python3 realtime_chat_sync.py --ensure-indexes        # 创建唯一索引防重复（见 ensure_mongo_chat_indexes.py）
-  python3 realtime_chat_sync.py --optimize-classification  # 优化分类规则
-  python3 realtime_chat_sync.py --stats  # 查看统计
-  python3 realtime_chat_sync.py --only-new              # 仅归档库中尚不存在的对话ID（跳过已存在整段）
+  python3 realtime_chat_sync.py --sync-all              # 全量；**不**按小时节流
+  python3 realtime_chat_sync.py --force                 # 强制同步当前会话（忽略小时节流 + 全量消息）
+  python3 realtime_chat_sync.py --ensure-indexes
+  python3 realtime_chat_sync.py --optimize-classification
+  python3 realtime_chat_sync.py --stats
+  python3 realtime_chat_sync.py --only-new
 """
 
 import argparse
@@ -147,6 +146,25 @@ def 时间戳转时间(ts_ms):
         return None
 
 
+def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None or not isinstance(dt, datetime):
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def 规范化消息正文(s: Any) -> str:
+    """统一换行、strip；仅空白则空串（不入库）。"""
+    if not isinstance(s, str):
+        return ""
+    t = s.replace("\r\n", "\n").replace("\r", "\n").strip()
+    return t
+
+
+SYNC_INTERVAL_SEC = 3600
+
+
 def 刷新项目分类汇总(db: Any) -> None:
     """按 对话记录.项目 聚合，写入 项目分类（名称、对话数），供 Navicat 与控制台统计。"""
     now = datetime.now(timezone.utc)
@@ -171,19 +189,17 @@ def 实时同步对话(
     db: Any = None,
     仅新对话: bool = False,
     刷新分类汇总: bool = True,
+    忽略小时节流: bool = False,
 ) -> Optional[Dict]:
     """
-    实时同步指定对话到MongoDB（对话记录 upsert + 消息内容按 对话ID+消息ID upsert，同一键不重复）
+    同步指定对话到 MongoDB（对话记录 upsert + 消息内容按 对话ID+消息ID upsert）。
+
+    - 默认：同一 对话ID 距上次 `mongo_sync_last_at` 不足 1 小时则 **整段跳过**（不写库）。
+    - 满 1 小时：更新 `对话记录`；`消息内容` 默认只写入 **创建时间晚于上次同步** 的新消息（+ 去掉空白正文）。
+    - `--force` 或 `忽略小时节流=True`（如 --sync-all）：不按小时跳过；`强制` 时消息为 **全量** upsert。
 
     Args:
-        对话ID: Cursor对话ID
-        强制: 保留参数；与「仅新对话」配合使用
-        db: 可选，传入则复用连接（如 --sync-all）
-        仅新对话: True 时若 对话记录 已有该 对话ID 则跳过整段（旧行为）；默认 False 始终合并写入最新消息
-        刷新分类汇总: 成功后按 对话记录 重算 项目分类；批量同步时可传 False 仅在末尾刷新一次
-
-    Returns:
-        对话文档或None
+        忽略小时节流: True 时用于 --sync-all，每条对话都写，且消息全量
     """
     if not os.path.exists(STATE_VSCDB):
         print(f"⚠️ state.vscdb 不存在: {STATE_VSCDB}")
@@ -207,6 +223,18 @@ def 实时同步对话(
             if 已有:
                 print(f"⏭️ 已存在（仅新对话模式跳过）: {对话ID[:8]}...")
                 return 已有
+
+        now = datetime.now(timezone.utc)
+        existing = db["对话记录"].find_one({"对话ID": 对话ID})
+        last_sync_at = _ensure_utc(existing.get("mongo_sync_last_at")) if existing else None
+
+        if not 忽略小时节流 and not 强制 and last_sync_at is not None:
+            elapsed = (now - last_sync_at).total_seconds()
+            if elapsed < SYNC_INTERVAL_SEC:
+                print(
+                    f"⏭️ 距上次写入 Mongo 不足 1 小时（{int(elapsed)}s / 阈值 {SYNC_INTERVAL_SEC}s），跳过: {对话ID[:8]}…（--force 或全量 --sync-all 可绕过）"
+                )
+                return existing
 
         # 从 state.vscdb 读取对话数据
         conn = sqlite3.connect(STATE_VSCDB)
@@ -257,7 +285,7 @@ def 实时同步对话(
             except (json.JSONDecodeError, TypeError):
                 continue
             类型 = mdata.get("type", 0)
-            内容 = mdata.get("text", "") or ""
+            内容 = 规范化消息正文(mdata.get("text", "") or "")
             角色 = "用户" if 类型 == 1 else "AI"
             if 类型 == 1 and not 首条 and 内容:
                 首条 = 内容[:500]
@@ -268,7 +296,8 @@ def 实时同步对话(
         项目 = 检测项目(文件路径, 名称, 所有内容)
         标签 = 提取标签(所有内容, 项目)
         摘要 = 生成摘要(消息内容列表)
-        now = datetime.now(timezone.utc)
+
+        全量消息模式 = bool(强制 or 忽略小时节流 or last_sync_at is None)
 
         对话文档 = {
             "对话ID": 对话ID,
@@ -286,7 +315,8 @@ def 实时同步对话(
             "来源": "实时同步",
             "来源工作区": "",
             "迁移时间": now,
-            "同步版本": "2.0",
+            "同步版本": "2.1",
+            "mongo_sync_last_at": now,
         }
 
         db["对话记录"].update_one(
@@ -312,13 +342,27 @@ def 实时同步对话(
             except (json.JSONDecodeError, TypeError):
                 continue
             类型 = mdata.get("type", 0)
-            内容 = mdata.get("text", "") or ""
+            raw_text = mdata.get("text", "") or ""
+            内容 = 规范化消息正文(raw_text)
             timing = mdata.get("timingInfo", {})
             创建时间 = (
                 时间戳转时间(timing.get("clientRpcSendTime"))
                 if timing.get("clientRpcSendTime")
                 else now
             )
+
+            if not 内容:
+                try:
+                    db["消息内容"].delete_one({"对话ID": 对话ID, "消息ID": mid})
+                except Exception:
+                    pass
+                continue
+
+            if not 全量消息模式 and last_sync_at is not None:
+                ct = _ensure_utc(创建时间) or now
+                if ct <= last_sync_at:
+                    continue
+
             消息ops.append(
                 UpdateOne(
                     {"对话ID": 对话ID, "消息ID": mid},
@@ -357,8 +401,9 @@ def 实时同步对话(
             except Exception as ex:
                 print(f"⚠️ 项目分类汇总失败: {ex}")
 
+        mode_tip = "全量消息" if 全量消息模式 else "增量消息（自 mongo_sync_last_at 起新气泡）"
         print(
-            f"✅ 实时同步完成: [{项目}] {名称 or 对话ID[:8]} ({len(headers)} 条消息, {len(标签)} 个标签)"
+            f"✅ 同步完成: [{项目}] {名称 or 对话ID[:8]} ({len(headers)} 条头, {len(消息ops)} 条写入, {len(标签)} 标签, {mode_tip})"
         )
         return 对话文档
 
@@ -481,6 +526,7 @@ def main():
                 db=db,
                 仅新对话=args.only_new,
                 刷新分类汇总=False,
+                忽略小时节流=True,
             )
             if r:
                 ok += 1

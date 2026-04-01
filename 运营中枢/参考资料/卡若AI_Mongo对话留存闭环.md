@@ -9,11 +9,13 @@
 
 按顺序执行（**由 Cursor 规则强制执行；Agent 直接跑命令，不询问**）：
 
-1. **实时同步当前 Cursor 会话**（全量 upsert 本条对话的消息，同一 `消息ID` 不重复）  
+1. **运行同步脚本**（**每轮仍执行**；脚本内部按 **对话ID** 节流，**同一会话 1 小时内最多写入 Mongo 一次**，不足 1 小时则打印跳过、不写库；满 1 小时则更新 `对话记录`，且 **`消息内容` 仅增量 upsert**「上次 `mongo_sync_last_at` 之后」的新气泡；**仅空白/无正文的气泡不写库**，若库中已有占位则删除）。  
    ```bash
    python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储备份/聊天记录管理/脚本/realtime_chat_sync.py"
    ```
-2. **（可选）** 若本轮明确知道对话 ID，可指定：  
+   - **须立即入库**（绕过 1 小时）：同路径加 **`--force`**（全量消息 upsert）。  
+   - **全量补历史**：`--sync-all`（**不**应用小时节流，每条对话全量消息）。
+2. **（可选）** 若本轮明确知道对话 ID：  
    `python3 .../realtime_chat_sync.py --current-conversation-id <UUID>`
 
 3. 再写 **强制复盘**（🎯📌💡📝▶），见 `卡若复盘格式_固定规则.md`。
@@ -46,6 +48,9 @@ python3 "/Users/karuo/Documents/个人/卡若AI/01_卡资（金）/金仓_存储
 | 项 | 说明 |
 |:---|:---|
 | 不重复键 | `对话记录` 以 **`对话ID`** upsert；`消息内容` 以 **`对话ID` + `消息ID`** upsert；唯一索引见 `ensure_mongo_chat_indexes.py`。 |
+| 小时节流 | `对话记录.mongo_sync_last_at`（UTC）：同一 `对话ID` **距上次成功写入不足 3600s** 则整段跳过；`--force` 或 `--sync-all` 不受此限。 |
+| 增量消息 | 非 force、非 sync-all 且已有 `mongo_sync_last_at` 时，只 upsert **创建时间晚于**该时间点的气泡。 |
+| 空白消息 | 正文 `strip` 后为空 **不写入** `消息内容`；若已存在则 `delete_one` 去掉占位。 |
 | 分类 | `对话记录.项目` 由脚本按路径/标题/内容匹配 15 类；同步成功后会刷新 **`项目分类`** 汇总。 |
 | 可视查询 | 官网控制台 **`/console/cursor-archive`**（只读 Mongo，不碰 `state.vscdb`）；命令行见 `query_chat_history.py`。 |
 | 详细技能 | `01_卡资（金）/金仓_存储备份/聊天记录管理/SKILL.md`（G22） |

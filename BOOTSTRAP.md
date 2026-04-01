@@ -62,7 +62,7 @@
 - 结果与用户目标匹配→交付。不匹配→回溯→搜索→再思考→再执行→再验证。
 
 **第四步：Mongo 对话留存 + 强制复盘**
-- **先**完成 Mongo 留存闭环（将本轮 Cursor 对话写入 `karuo_site`，不重复键）：执行 `python3 01_卡资（金）/金仓_存储备份/聊天记录管理/脚本/realtime_chat_sync.py`；细则与顺序见 `运营中枢/参考资料/卡若AI_Mongo对话留存闭环.md` 与 `.cursor/rules/karuo-ai.mdc`。
+- **先**完成 Mongo 留存闭环（**每轮执行** `realtime_chat_sync.py`；脚本内 **同对话 1h 节流**、增量消息、去空白；**`--force` 立即写全量**）：`python3 01_卡资（金）/金仓_存储备份/聊天记录管理/脚本/realtime_chat_sync.py`；细则见 `运营中枢/参考资料/卡若AI_Mongo对话留存闭环.md` 与 `.cursor/rules/karuo-ai.mdc`。
 - **再**用复盘形式收尾（🎯📌💡📝▶），带日期+时间（YYYY-MM-DD HH:mm），🎯 **单行一句**含达成率%（验收绑定，可负）。格式见 `运营中枢/参考资料/卡若复盘格式_固定规则.md` **v5.0**。
 
 ## 六、记忆
@@ -87,7 +87,7 @@
 | Gitea 同步 | `bash 金仓_存储备份/Gitea管理/脚本/自动同步.sh` |
 | Pipeline | 读 `运营中枢/参考资料/Pipeline执行清单.md` |
 | 对外输出 | → `/Users/karuo/Documents/卡若Ai的文件夹/` 对应子目录；图片→`图片/`+登记索引 |
-| Mongo 对话留存 | 每条对话结束前执行 `01_卡资（金）/金仓_存储备份/聊天记录管理/脚本/realtime_chat_sync.py`；闭环见 `运营中枢/参考资料/卡若AI_Mongo对话留存闭环.md` |
+| Mongo 对话留存 | 每条对话结束前执行 `realtime_chat_sync.py`（1h/对话节流 + 增量 + 去空白；`--force`/`--sync-all` 例外）；闭环见 `卡若AI_Mongo对话留存闭环.md` |
 
 ## 八、全局规则
 
