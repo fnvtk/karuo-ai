@@ -1,11 +1,11 @@
 ---
 name: 智能纪要
-description: 派对/会议录音一键转结构化纪要；飞书妙记文字+视频全命令行下载；飞书 MCP 能力整合；单条/批量妙记导出
-triggers: 会议纪要、产研纪要、派对纪要、妙记、飞书妙记、飞书链接、cunkebao.feishu.cn/minutes、meetings.feishu.cn/minutes、妙记下载、第几场、指定场次、批量下载妙记、下载妙记、妙记文字、妙记视频、飞书视频、视频下载
+description: 派对/会议录音一键转结构化纪要；飞书妙记文字+视频全命令行下载；命令行基座（lark-cli TOKEN→Open API→open）；单条/批量妙记导出
+triggers: 会议纪要、产研纪要、派对纪要、妙记、飞书妙记、飞书链接、cunkebao.feishu.cn/minutes、meetings.feishu.cn/minutes、妙记下载、第几场、指定场次、批量下载妙记、下载妙记、妙记文字、妙记视频、飞书视频、视频下载、lark-cli、飞书CLI、命令行打开妙记、打开妙记、minute_token、妙记token
 owner: 水桥
 group: 水
-version: "1.4"
-updated: "2026-03-11"
+version: "1.5"
+updated: "2026-04-02"
 ---
 
 # 派对纪要生成器
@@ -24,6 +24,58 @@ updated: "2026-03-11"
 | **统一用命令行** | 妙记拉取、批量下载、产研日报等均提供一键命令，复用已完成过的 TOKEN/会议流程 |
 
 飞书 TOKEN 与妙记/会议已完成流程见：`运营中枢/参考资料/飞书任务_命令行与API优先_经验总结.md`
+
+---
+
+## 〇、命令行基座模式（卡若AI 强制 · 与浏览器解耦）
+
+> **目标**：飞书妙记相关能力**默认走终端**：先**凭证/TOKEN**，再 **Open API 或已封装脚本**，最后必要时才用系统 `open` 拉起浏览器。**禁止**把「Cursor 内置浏览器 / MCP 浏览器 / 人工点网页」当作妙记任务的**首选路径**；仅当开放接口**客观上不存在**（如妙记列表、部分 Web 导出）时，才按本 Skill 下文 **Cookie 链** 降级。
+
+### 强制逻辑（Agent 每一轮自检）
+
+```
+lark-cli doctor
+  → 缺 user 且任务要读「我的妙记」/ 打开 minute.url → lark-cli auth login
+  → 从用户输入或 URL 解析 minute_token（路径 /minutes/ 后一段）
+  → lark-cli schema minutes.minutes.get（禁止猜参数字段）
+  → lark-cli minutes minutes get --as user --params '{"minute_token":"<token>"}'
+  → 响应 data.minute.url 存在则 open（或由脚本统一做）
+```
+
+| 步骤 | 命令/产物 | 说明 |
+|:---|:---|:---|
+| 1 | `lark-cli doctor` | 配置、连通性、是否已登录 user |
+| 2 | `lark-cli auth login` | **用户态**妙记 `get`、个人可访问 URL；token 由 CLI 托管，**不在对话里复述明文 refresh_token** |
+| 3 | 解析 `minute_token` | 从 `https://*.feishu.cn/minutes/<token>` 取 `<token>`；纯 token 则原样使用 |
+| 4 | `lark-cli schema minutes.minutes.get` | 调 API 前必查参数结构 |
+| 5 | `lark-cli minutes minutes get --as user --params '{"minute_token":"..."}' --format json` | 官方返回 **`minute.url`** 即为浏览器打开地址 |
+| 6 | `open "<url>"`（macOS） | **唯一推荐的「打开飞书妙记页」方式**：URL 来自 API，不是手抄 |
+
+### 一键封装（推荐）
+
+脚本路径（已 chmod +x）：
+
+`02_卡人（水）/水桥_平台对接/智能纪要/脚本/lark_cli_open_minute.sh`
+
+```bash
+# 妙记首页（无 Open API「列表首页」；仅统一用环境变量 + open）
+FEISHU_MINUTES_HOME="https://cunkebao.feishu.cn/minutes" \
+  /Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/智能纪要/脚本/lark_cli_open_minute.sh --home
+
+# 指定妙记：token 或完整 URL（内部 lark-cli get → 取 minute.url → open）
+/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/智能纪要/脚本/lark_cli_open_minute.sh "MINUTE_TOKEN"
+/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/智能纪要/脚本/lark_cli_open_minute.sh "https://cunkebao.feishu.cn/minutes/MINUTE_TOKEN"
+```
+
+### 与下方「租户 TOKEN / Cookie」的关系
+
+- **下载转写正文、妙记视频 Web API**：仍按 **APP_ID/SECRET → tenant** 或 **Cookie 链**（见 §「飞书权限获取策略」）；与 **lark-cli user** 并行不冲突，**各司其职**。
+- **「打开妙记在浏览器里显示」**：**优先** §〇 的 `minutes get` → `minute.url` → `open`；**不**为「打开页面」单独启动自动化浏览器。
+
+### lark-cli 能力边界（避免误用）
+
+- `lark-cli minutes` **仅有** `minutes get` 等 **API 封装**，**没有** `open` 子命令；「打开」= **CLI 取 URL + 系统 `open`**。
+- **妙记列表** 仍无稳定开放接口时：列表来源继续按 `运营中枢/参考资料/飞书任务_命令行与API优先_经验总结.md`（Cookie 或控制台脚本），**不得**因「方便」改回浏览器驱动为主流程。
 
 ---
 

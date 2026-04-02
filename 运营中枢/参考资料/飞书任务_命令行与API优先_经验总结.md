@@ -9,6 +9,7 @@
 1. **先查本经验**：本文件 + `运营中枢/工作台/00_账号与API索引.md`（飞书 Token 小节）
 2. **能用 API+TOKEN 的，一律命令行完成**：不先打开浏览器、不手动复制 Cookie，除非 API 确实不可用
 3. **飞书开放平台凭证**：`FEISHU_APP_ID` / `FEISHU_APP_SECRET` → 获取 `tenant_access_token`，用于妙记、会议等开放接口
+4. **妙记「打开网页展示」**：**强制**走 `智能纪要` Skill **§〇 命令行基座** — `lark-cli minutes minutes get` 取 `minute.url` → `open`；封装脚本：`02_卡人（水）/水桥_平台对接/智能纪要/脚本/lark_cli_open_minute.sh`。不把 MCP/内置浏览器当默认。
 
 ---
 
@@ -23,6 +24,23 @@
 ---
 
 ## 三、飞书妙记 / 会议（已完成过的流程）
+
+### 3.0 lark-cli：minute_token → API → 打开妙记页（2026-04-02）
+
+- **用途**：在 macOS 上**用命令行**打开飞书妙记官方页面（URL **必须**来自 Open API 返回的 `minute.url`，避免手抄错链）。
+- **前置**：`lark-cli doctor` 通过；`lark-cli auth login`（**user**，应用需开通 `minutes:minutes:readonly` 等 scope，以控制台报错为准）。
+- **一键**：
+  ```bash
+  "/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/智能纪要/脚本/lark_cli_open_minute.sh" "MINUTE_TOKEN_OR_FULL_URL"
+  "/Users/karuo/Documents/个人/卡若AI/02_卡人（水）/水桥_平台对接/智能纪要/脚本/lark_cli_open_minute.sh" --home
+  ```
+- **等价手写**（调试时用）：
+  ```bash
+  lark-cli schema minutes.minutes.get
+  lark-cli minutes minutes get --as user --params '{"minute_token":"<token>"}' --format json
+  # 从 JSON 取 data.minute.url 后：open "<url>"
+  ```
+- **说明**：`lark-cli` **无**浏览器 `open` 子命令；**无**妙记「首页列表」开放接口时，`--home` 仅为 `open $FEISHU_MINUTES_HOME` 的统一入口。
 
 ### 3.1 单条妙记 → TXT（全命令行）
 
@@ -91,4 +109,4 @@
 
 ---
 
-**版本**：2026-02-16 | 归属：水桥 · 智能纪要 · 飞书
+**版本**：2026-04-02 | 归属：水桥 · 智能纪要 · 飞书
