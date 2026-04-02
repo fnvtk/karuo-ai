@@ -141,6 +141,18 @@ def main():
     parser.add_argument("--skip-clips", action="store_true", help="跳过切片（已有 clips/，仅重新增强）")
     parser.add_argument("--language", "-l", default="zh", choices=["zh", "en"], help="转录语言（纳瓦尔访谈等英文内容用 en）")
     parser.add_argument("--skip-subs", action="store_true", help="跳过字幕烧录（原片已有字幕时用）")
+    parser.add_argument(
+        "--skip-cover",
+        action="store_true",
+        help="传给 soul_enhance：不生成/不烧录前导封面",
+    )
+    parser.add_argument(
+        "--filename-max-cjk",
+        type=int,
+        default=None,
+        metavar="N",
+        help="传给 batch_clip 与 soul_enhance：文件名片段最多 N 个汉字",
+    )
     parser.add_argument("--force-burn-subs", action="store_true", help="强制烧录字幕（忽略检测）")
     parser.add_argument("--force-transcribe", action="store_true", help="强制重新转录（删除旧 transcript 并重跑）")
     parser.add_argument("--two-folders", action="store_true", help="仅用两文件夹：切片、成片（默认 clips、clips_enhanced）")
@@ -319,19 +331,19 @@ def main():
     # 3. 批量切片
     clips_dir.mkdir(parents=True, exist_ok=True)
     clip_prefix = getattr(args, "prefix", None) or "soul"
+    fn_max = getattr(args, "filename_max_cjk", None)
     if not args.skip_clips:
-        run(
-            [
-                sys.executable,
-                str(SCRIPT_DIR / "batch_clip.py"),
-                "--input", str(video_path),
-                "--highlights", str(highlights_path),
-                "--output", str(clips_dir),
-                "--prefix", clip_prefix,
-            ],
-            "批量切片",
-            timeout=1800,
-        )
+        clip_cmd = [
+            sys.executable,
+            str(SCRIPT_DIR / "batch_clip.py"),
+            "--input", str(video_path),
+            "--highlights", str(highlights_path),
+            "--output", str(clips_dir),
+            "--prefix", clip_prefix,
+        ]
+        if fn_max is not None and int(fn_max) > 0:
+            clip_cmd.extend(["--filename-max-cjk", str(int(fn_max))])
+        run(clip_cmd, "批量切片", timeout=1800)
     elif not list(clips_dir.glob("*.mp4")):
         print(f"❌ {clips_dir_name}/ 为空，请去掉 --skip-clips 或先完成切片")
         sys.exit(1)
@@ -389,6 +401,10 @@ def main():
         enhance_cmd.extend(["--speed-factor", str(float(args.speed_factor))])
     if getattr(args, "silence_gentle", False):
         enhance_cmd.append("--silence-gentle")
+    if getattr(args, "skip_cover", False):
+        enhance_cmd.append("--skip-cover")
+    if fn_max is not None and int(fn_max) > 0:
+        enhance_cmd.extend(["--filename-max-cjk", str(int(fn_max))])
     # 竖条+逐字字幕较慢，按约 240 秒/片估上限（长 5min 档易顶满 50min），避免整段增强被 run() 掐断
     enhance_timeout = max(3600, 1200 + len(clips_list) * 240)
     ok = run(enhance_cmd, "增强处理（封面+字幕+加速）", timeout=enhance_timeout, check=False)

@@ -12,11 +12,13 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 # 与 soul_enhance 封面大字同源，切片文件名中间段与成片/封面对齐
 _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
+import soul_enhance as se_mod  # noqa: E402
 from soul_enhance import cover_text_for_filename  # noqa: E402
 
 
@@ -177,7 +179,7 @@ def clip_video(input_path: str, start_time: str, end_time: str, output_path: str
 
 
 def batch_clip(input_video: str, highlights_json: str, output_dir: str = None,
-               fast_mode: bool = False, prefix: str = ""):
+               fast_mode: bool = False, prefix: str = "", filename_max_cjk: Optional[int] = None):
     """
     批量切片
     
@@ -187,7 +189,21 @@ def batch_clip(input_video: str, highlights_json: str, output_dir: str = None,
         output_dir: 输出目录
         fast_mode: 快速模式
         prefix: 输出文件前缀
+        filename_max_cjk: 与 soul_enhance 一致，标题汉字上限（None 表示不设此项）
     """
+    prev_stem = se_mod.FILENAME_STEM_MAX_CJK
+    try:
+        if filename_max_cjk is not None and int(filename_max_cjk) > 0:
+            se_mod.FILENAME_STEM_MAX_CJK = int(filename_max_cjk)
+        else:
+            se_mod.FILENAME_STEM_MAX_CJK = None
+        _batch_clip_impl(input_video, highlights_json, output_dir, fast_mode, prefix)
+    finally:
+        se_mod.FILENAME_STEM_MAX_CJK = prev_stem
+
+
+def _batch_clip_impl(input_video: str, highlights_json: str, output_dir: str = None,
+                     fast_mode: bool = False, prefix: str = ""):
     input_path = Path(input_video)
     if not input_path.exists():
         print(f"❌ 视频文件不存在: {input_path}")
@@ -339,10 +355,24 @@ def main():
     parser.add_argument("--output", "-o", help="输出目录")
     parser.add_argument("--fast", "-f", action="store_true", help="快速模式（使用copy编码）")
     parser.add_argument("--prefix", "-p", default="", help="输出文件前缀")
-    
+    parser.add_argument(
+        "--filename-max-cjk",
+        type=int,
+        default=None,
+        metavar="N",
+        help="与 soul_enhance 一致：标题段最多 N 个汉字（成片 --title-only 须同参）",
+    )
+
     args = parser.parse_args()
-    
-    batch_clip(args.input, args.highlights, args.output, args.fast, args.prefix)
+
+    batch_clip(
+        args.input,
+        args.highlights,
+        args.output,
+        args.fast,
+        args.prefix,
+        filename_max_cjk=getattr(args, "filename_max_cjk", None),
+    )
 
 
 if __name__ == "__main__":

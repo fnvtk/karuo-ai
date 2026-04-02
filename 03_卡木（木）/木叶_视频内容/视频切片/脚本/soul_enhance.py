@@ -500,6 +500,8 @@ MIN_SILENCE_TRIM_TOTAL_SEC = 0.12
 COVER_TITLE_MAX_CJK = 6
 # 封面优先用 hook_3sec（吸睛高光句），可略长于纯标题字数上限
 COVER_HOOK_MAX_CJK = 16
+# None：仅用 COVER_HOOK_MAX_CJK 等默认；设为 int（如 2）时 cover_text_for_filename 再截断到最多 N 个汉字（成片/切片标题段对齐）
+FILENAME_STEM_MAX_CJK = None
 CTA_END_MIN_SEC = 2.2
 CTA_END_MAX_SEC = 4.5
 # 最后一条口播字幕后，CTA 再停留一小段（多为静音），方便读完 + 过渡到无声 SEO 尾帧
@@ -645,6 +647,13 @@ def cover_text_for_filename(highlight_info: dict, clip_basename: str = "") -> st
     hook_text = _strip_cover_number_prefix(hook_text)
     if not hook_text:
         hook_text = "精彩切片"
+    if FILENAME_STEM_MAX_CJK is not None:
+        n = int(FILENAME_STEM_MAX_CJK)
+        if n > 0:
+            before_lim = hook_text
+            hook_text = _limit_cover_title_cjk(hook_text, max_cjk=n).strip()
+            if not hook_text:
+                hook_text = before_lim
     return hook_text
 
 
@@ -2168,10 +2177,12 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
                  merge_subtitle_gap_silences=True,
                  no_speedup=False,
                  skip_ollama_translate=False,
-                 speed_factor=None):
+                 speed_factor=None,
+                 skip_cover=False):
     """增强单个切片。vertical=True 时输出竖条，宽由 --crop-vf 决定（原生包络常见 560～750×1080；旧 498 为两段裁或 scale）。
     vertical_fit_full：整幅 16:9 缩放入 498×1080 + 上下黑边。
     horizontal_center_pad：与竖条塑形相同链路（封面/字幕仍按竖条叠在横版上），最后输出 1920×1080，中间为裁切条、左右黑边。
+    skip_cover：不生成封面、不烧录前导封面；字幕起始时间与封面时长对齐为 0。
     """
     
     print(f"  输入: {os.path.basename(clip_path)}", flush=True)
@@ -2186,7 +2197,7 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     
     # 封面大字：与 --title-only 成片文件名同源（见 cover_text_for_filename）
     hook_text = cover_text_for_filename(highlight_info, os.path.basename(clip_path) if clip_path else "")
-    cover_duration = STYLE['cover']['duration']
+    cover_duration = 0.0 if skip_cover else float(STYLE["cover"]["duration"])
     subtitle_overlay_start = cover_duration + SUBS_START_AFTER_COVER_SEC
     
     # 竖屏：封面/字幕按解析出的竖条宽×1080 叠在横版上；全画面模式按原分辨率全屏叠加再整体缩放
@@ -2323,15 +2334,18 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
         )
 
     # 3. 封面图（与去静音后首帧一致；竖条须与成片同 crop-vf 取底图，勿整幅横版压竖条）
-    print(f"  [1/5] 封面生成中…", flush=True)
     cover_img = os.path.join(temp_dir, "cover.png")
-    cover_extract_vf = None
-    if vertical and not vertical_fit_full:
-        cover_extract_vf = vf_use
-    create_cover_image(
-        hook_text, out_w, out_h, cover_img, working_clip, cover_extract_vf=cover_extract_vf
-    )
-    print(f"  ✓ 封面生成", flush=True)
+    if skip_cover:
+        print("  ⊘ 跳过封面生成（--skip-cover）", flush=True)
+    else:
+        print(f"  [1/5] 封面生成中…", flush=True)
+        cover_extract_vf = None
+        if vertical and not vertical_fit_full:
+            cover_extract_vf = vf_use
+        create_cover_image(
+            hook_text, out_w, out_h, cover_img, working_clip, cover_extract_vf=cover_extract_vf
+        )
+        print(f"  ✓ 封面生成", flush=True)
 
     if subtitles:
         if typewriter_subs:
@@ -2361,21 +2375,24 @@ def enhance_clip(clip_path, output_path, highlight_info, temp_dir, transcript_pa
     current_video = working_clip
     
     # 5.1 添加封面（封面图 -loop 1 保证前若干秒完整显示；竖条时叠在 overlay_pos）
-    print(f"  [2/5] 封面烧录中…", flush=True)
-    cover_output = os.path.join(temp_dir, 'with_cover.mp4')
-    cmd = [
-        'ffmpeg', '-y', '-i', current_video,
-        '-loop', '1', '-i', cover_img,
-        '-filter_complex', f"[0:v][1:v]overlay={overlay_pos}:enable='lt(t,{cover_duration})'[v]",
-        '-map', '[v]', '-map', '0:a', '-shortest',
-        '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
-        '-c:a', 'copy', cover_output
-    ]
-    subprocess.run(cmd, capture_output=True)
-    
-    if os.path.exists(cover_output):
-        current_video = cover_output
-    print(f"  ✓ 封面烧录", flush=True)
+    if skip_cover:
+        print("  [2/5] 跳过封面烧录（--skip-cover）", flush=True)
+    else:
+        print(f"  [2/5] 封面烧录中…", flush=True)
+        cover_output = os.path.join(temp_dir, 'with_cover.mp4')
+        cmd = [
+            'ffmpeg', '-y', '-i', current_video,
+            '-loop', '1', '-i', cover_img,
+            '-filter_complex', f"[0:v][1:v]overlay={overlay_pos}:enable='lt(t,{cover_duration})'[v]",
+            '-map', '[v]', '-map', '0:a', '-shortest',
+            '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+            '-c:a', 'copy', cover_output
+        ]
+        subprocess.run(cmd, capture_output=True)
+
+        if os.path.exists(cover_output):
+            current_video = cover_output
+        print(f"  ✓ 封面烧录", flush=True)
     
     # 5.2 烧录字幕
     # 策略：concat 图片序列 + 单次 overlay（最快正确方案）
@@ -2619,6 +2636,18 @@ def main():
     )
     parser.add_argument("--title-only", action="store_true", help="输出文件名为纯标题（无序号、无_enhanced），与 --vertical 搭配用于成片")
     parser.add_argument("--skip-subs", action="store_true", help="跳过字幕烧录（原片已有字幕时用）")
+    parser.add_argument(
+        "--skip-cover",
+        action="store_true",
+        help="不生成封面图、不烧录前导封面（仅画面+加速/竖条等后续链路）",
+    )
+    parser.add_argument(
+        "--filename-max-cjk",
+        type=int,
+        default=None,
+        metavar="N",
+        help="成片/切片文件名片段最多保留 N 个汉字（须与 batch_clip 同参一致）；不设则不在此层额外截断",
+    )
     parser.add_argument("--force-burn-subs", action="store_true", help="强制烧录字幕（忽略检测）")
     parser.add_argument(
         "--crop-vf",
@@ -2714,7 +2743,14 @@ def main():
     )
     parser.set_defaults(no_ollama_translate=True)
     args = parser.parse_args()
-    
+
+    global FILENAME_STEM_MAX_CJK
+    fn_max = getattr(args, "filename_max_cjk", None)
+    if fn_max is not None and int(fn_max) > 0:
+        FILENAME_STEM_MAX_CJK = int(fn_max)
+    else:
+        FILENAME_STEM_MAX_CJK = None
+
     clips_dir = Path(args.clips) if args.clips else CLIPS_DIR
     output_dir = Path(args.output) if args.output else OUTPUT_DIR
     highlights_path = Path(args.highlights) if args.highlights else HIGHLIGHTS_PATH
@@ -2812,6 +2848,7 @@ def main():
         + ("+逐字字幕" if typewriter else "")
         + ("+强降噪" if getattr(args, "strong_audio_clean", False) else "")
         + ("+关键词条" if getattr(args, "keyword_pins", False) else "")
+        + ("+无封面" if getattr(args, "skip_cover", False) else "")
     )
     if vertical and crop_vf_arg and not vfit:
         print(f"取景: --crop-vf {crop_vf_arg}")
@@ -2906,6 +2943,7 @@ def main():
                 no_speedup=getattr(args, "no_speedup", False),
                 skip_ollama_translate=getattr(args, "no_ollama_translate", True),
                 speed_factor=getattr(args, "speed_factor", None),
+                skip_cover=getattr(args, "skip_cover", False),
             ):
                 success_count += 1
         finally:
