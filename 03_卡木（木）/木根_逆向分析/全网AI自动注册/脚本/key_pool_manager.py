@@ -15,6 +15,8 @@
   python key_pool_manager.py add <key>            # 手动添加 Cerebras Key
   python key_pool_manager.py export-env           # 导出为 .env 格式
   python key_pool_manager.py auto-fill            # 自动注册补充到最低水位
+  python key_pool_manager.py auto-fill --sync-site-mongo   # 补充后同步到官网 Mongo 网关池（gw-cerebras / gw-cohere）
+  python key_pool_manager.py sync-site-mongo      # 仅把当前池内活跃 Key 写入 karuo_site.gateways
   python key_pool_manager.py daemon               # 守护模式：定期检查+自动补充
   python key_pool_manager.py serve                # 启动 API 服务
 """
@@ -379,11 +381,19 @@ def cmd_daemon(pool: KeyPool, interval: int = 600):
 
 def main():
     parser = argparse.ArgumentParser(description="卡若AI Key 池管理器")
-    parser.add_argument("command", choices=["status", "check", "add", "export-env", "auto-fill", "daemon", "serve"],
-                        help="操作命令")
+    parser.add_argument(
+        "command",
+        choices=["status", "check", "add", "export-env", "auto-fill", "sync-site-mongo", "daemon", "serve"],
+        help="操作命令",
+    )
     parser.add_argument("key", nargs="?", default="", help="API Key (add 命令用)")
     parser.add_argument("--platform", "-p", default="cerebras", help="平台名")
     parser.add_argument("--count", "-n", type=int, default=0, help="补充数量")
+    parser.add_argument(
+        "--sync-site-mongo",
+        action="store_true",
+        help="与 auto-fill 联用：结束后将活跃 Key 同步到官网 Mongo（karuo_site.gateways）",
+    )
     parser.add_argument("--interval", type=int, default=600, help="守护模式检查间隔(秒)")
     parser.add_argument("--port", type=int, default=8898, help="API 服务端口")
     args = parser.parse_args()
@@ -403,6 +413,30 @@ def main():
         cmd_export_env(pool)
     elif args.command == "auto-fill":
         cmd_auto_fill(pool, args.count)
+        if getattr(args, "sync_site_mongo", False):
+            log.info("同步 Key 池 → 官网 Mongo ...")
+            try:
+                from sync_key_pool_to_site_mongo import sync_key_pool_to_site_mongo
+
+                summary = sync_key_pool_to_site_mongo(pool)
+                for u in summary.get("updated", []):
+                    log.info(f"  [sync] {u['id']}: {u['op']}, keys={u['keys']}")
+                for e in summary.get("errors", []):
+                    log.error(f"  [sync] {e['id']}: {e['error']}")
+            except Exception as e:
+                log.error(f"同步官网 Mongo 失败: {e}")
+    elif args.command == "sync-site-mongo":
+        try:
+            from sync_key_pool_to_site_mongo import sync_key_pool_to_site_mongo
+
+            summary = sync_key_pool_to_site_mongo(pool)
+            for u in summary.get("updated", []):
+                print(f"[sync] {u['id']}: {u['op']}，活跃 Key 数={u['keys']}")
+            for e in summary.get("errors", []):
+                print(f"[sync] ERROR {e['id']}: {e['error']}")
+        except Exception as e:
+            log.error(f"sync-site-mongo 失败: {e}")
+            raise SystemExit(1) from e
     elif args.command == "daemon":
         cmd_daemon(pool, args.interval)
     elif args.command == "serve":

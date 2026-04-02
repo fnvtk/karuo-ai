@@ -30,6 +30,7 @@ updated: "2026-03-16"
 - 卡若AI 网关自动从 Key 池读取活跃 Key（去重合并）
 - Key 池补充后网关无需重启，下次请求自动生效
 - 导出为 .env 格式供手动配置
+- **官网 Mongo**：`key_pool_manager.py sync-site-mongo` 或 `auto-fill --sync-site-mongo` 将池内活跃 Key 写入 `karuo_site.gateways`（`gw-cerebras` / `gw-cohere`），官网 `callLLMViaGateway` 对同网关多 Key **按秒级轮换起点**依次尝试（失败则换下一 Key）
 
 ## 当前 Key 池状态（2026-03-16）
 
@@ -57,8 +58,12 @@ python3 key_pool_manager.py add <csk-xxx>       # 手动添加 Cerebras Key
 python3 key_pool_manager.py export-env           # 导出网关 .env 格式
 python3 key_pool_manager.py auto-fill            # 自动注册补充到最低水位
 python3 key_pool_manager.py auto-fill -n 5       # 强制补充 5 个
+python3 key_pool_manager.py auto-fill --sync-site-mongo   # 补充后同步到官网 Mongo（gw-cerebras / gw-cohere），参与对话网关多 Key 轮换
+python3 key_pool_manager.py sync-site-mongo      # 仅同步当前池内活跃 Key → karuo_site.gateways（不写库注册）
 python3 key_pool_manager.py daemon               # 守护模式（定期检查+自动补充）
 python3 key_pool_manager.py serve                # 启动 API 服务（8898端口）
+
+# 一键（工作台脚本）：bash 运营中枢/工作台/脚本/auto_fill_pool_sync_gateway_mongo.sh
 
 # ====== 注册指定平台 ======
 python3 auto_register.py register -p cerebras -n 3    # 注册 3 个 Cerebras
@@ -147,6 +152,8 @@ python3 vercel_mailtm_signup_loop.py --out-jsonl ./vercel_mailtm_rounds.jsonl
 
 ### 核心脚本
 - Key 池管理器：`脚本/key_pool_manager.py`
+- 池 → 官网 Mongo 网关：`脚本/sync_key_pool_to_site_mongo.py`（由 `sync-site-mongo` / `auto-fill --sync-site-mongo` 调用）
+- 一键 shell：`运营中枢/工作台/脚本/auto_fill_pool_sync_gateway_mongo.sh`
 - 主程序入口：`脚本/auto_register.py`
 - Cerebras Provider：`providers/cerebras_provider.py`
 - Provider 基类：`providers/base_provider.py`
